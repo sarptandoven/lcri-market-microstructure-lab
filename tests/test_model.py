@@ -1,0 +1,25 @@
+import numpy as np
+
+from lcri_lab.model import LCRIModel
+from lcri_lab.simulator import SimulationConfig, simulate_order_books
+
+
+def test_model_scores_and_persists(tmp_path) -> None:
+    books = simulate_order_books(SimulationConfig(rows=800, seed=12))
+    train = books.iloc[:500]
+    test = books.iloc[500:]
+
+    model = LCRIModel().fit(train)
+    scored = model.score_frame(test)
+
+    assert "lcri" in scored.columns
+    assert "lcri_probability" in scored.columns
+    assert scored["lcri_probability"].between(0, 1).all()
+
+    path = tmp_path / "model.json"
+    model.save(path)
+    loaded = LCRIModel.load(path)
+
+    original = model.predict_proba(test)
+    restored = loaded.predict_proba(test)
+    assert np.allclose(original, restored)

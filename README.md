@@ -1,8 +1,8 @@
 # LCRI Market Microstructure Lab
 
-A compact research system for studying liquidity-conditioned residual imbalance in synthetic limit order books.
+A research package for liquidity-conditioned residual imbalance in limit order books.
 
-Most retail trading demos treat order book imbalance as a raw ratio:
+Raw order book imbalance is usually measured as:
 
 ```text
 bid_depth - ask_depth
@@ -10,58 +10,11 @@ bid_depth - ask_depth
 bid_depth + ask_depth
 ```
 
-That misses the central microstructure issue. The same raw imbalance can mean different things in a thick, stable book than it means in a thin, stressed, or rapidly replenishing book. This project tests that distinction directly.
+That ratio is incomplete by itself. The same imbalance can have different information content depending on spread, total depth, replenishment, volatility, and the current liquidity regime. This package estimates the expected imbalance under local liquidity conditions, then scores the residual pressure that remains after the local baseline is removed.
 
-The lab simulates order book states across liquidity regimes, computes raw imbalance, estimates the expected imbalance given local liquidity conditions, and evaluates whether the residual imbalance is more informative for short-horizon price moves.
+## Model
 
-## Research question
-
-Does imbalance become more useful when measured relative to the local liquidity baseline?
-
-The project compares two signals:
-
-- `raw_imbalance`: visible depth pressure at the top levels of the book.
-- `lcri`: liquidity-conditioned residual imbalance, standardized by regime-specific residual scale.
-
-The demo is intentionally synthetic. The goal is not to claim market profitability. The goal is to demonstrate clean market-structure reasoning, controlled experiments, and disciplined evaluation.
-
-## What the demo does
-
-- Simulates order book snapshots under thick, thin, stressed, and replenishing regimes.
-- Builds depth, spread, volatility, replenishment, and queue-pressure features.
-- Computes raw imbalance from visible bid and ask depth.
-- Fits a deterministic liquidity baseline for imbalance.
-- Computes LCRI as a standardized residual.
-- Simulates next-horizon mid-price moves with regime-dependent sensitivity.
-- Evaluates raw imbalance vs LCRI using directional accuracy, Brier score, rank correlation, and regime-stratified performance.
-- Writes figures and result tables under `reports/`.
-
-## Quick start
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-lcri-lab run-demo --rows 20000 --seed 7
-pytest
-```
-
-Generated artifacts:
-
-```text
-reports/
-  figures/
-    raw_vs_lcri_scatter.png
-    regime_signal_quality.png
-    calibration_curve.png
-  metrics.csv
-  regime_metrics.csv
-  sample_snapshots.csv
-```
-
-## Core formula
-
-Let `I_t` be raw imbalance and `X_t` be local liquidity state features. The baseline imbalance is:
+Let `I_t` be raw imbalance and `X_t` be local liquidity-state features. The baseline imbalance is:
 
 ```text
 E[I_t | X_t]
@@ -75,44 +28,159 @@ LCRI_t = (I_t - E[I_t | X_t]) / sigma_regime
 
 where `sigma_regime` is the residual scale estimated inside comparable liquidity regimes.
 
-## Why this is recruiter-relevant
+Positive LCRI means bid-side pressure is high relative to the current liquidity baseline. Negative LCRI means ask-side pressure is high relative to the current liquidity baseline.
 
-This is not a trading bot. It is a controlled microstructure research environment. The project is designed to show:
+## Inputs
 
-- market-state conditioning rather than flat feature engineering
-- awareness of liquidity, spread, and queue effects
-- post-signal evaluation by regime
-- reproducible simulation and metrics
-- clean engineering boundaries between simulation, features, modeling, and reporting
+The model expects order book snapshots with these columns for each level from 1 to 5 by default:
+
+```text
+bid_px_1, bid_sz_1, ask_px_1, ask_sz_1
+...
+bid_px_5, bid_sz_5, ask_px_5, ask_sz_5
+```
+
+Additional required state columns:
+
+```text
+timestamp
+regime
+mid
+next_mid
+spread
+spread_ticks
+volatility
+replenishment_rate
+```
+
+The included simulator generates this schema. Real market data can be scored after being normalized into the same snapshot format.
+
+## Quick start
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+lcri-lab run-demo --rows 20000 --seed 7
+pytest -q
+ruff check .
+```
+
+Generated artifacts:
+
+```text
+reports/
+  lcri-model.json
+  figures/
+    raw_vs_lcri_scatter.png
+    regime_signal_quality.png
+    calibration_curve.png
+  metrics.csv
+  regime_metrics.csv
+  sample_snapshots.csv
+```
+
+## Python usage
+
+```python
+from lcri_lab.model import LCRIModel
+from lcri_lab.simulator import SimulationConfig, simulate_order_books
+
+snapshots = simulate_order_books(SimulationConfig(rows=5000, seed=42))
+train = snapshots.iloc[:3500]
+test = snapshots.iloc[3500:]
+
+model = LCRIModel().fit(train)
+scored = model.score_frame(test)
+model.save("reports/lcri-model.json")
+
+print(scored[["timestamp", "raw_imbalance", "lcri", "lcri_probability"]].head())
+```
+
+Load a persisted model:
+
+```python
+from lcri_lab.model import LCRIModel
+
+model = LCRIModel.load("reports/lcri-model.json")
+scored = model.score_frame(order_book_snapshots)
+```
+
+## CLI usage
+
+Fit a model from normalized snapshots:
+
+```bash
+lcri-lab fit --input snapshots.csv --model reports/lcri-model.json
+```
+
+Score snapshots:
+
+```bash
+lcri-lab score \
+  --input new_snapshots.csv \
+  --model reports/lcri-model.json \
+  --output reports/scored_snapshots.csv
+```
+
+Run the synthetic research workflow:
+
+```bash
+lcri-lab run-demo --rows 20000 --seed 7
+```
+
+## Evaluation
+
+The default research workflow compares raw imbalance against LCRI using:
+
+- directional accuracy
+- Brier score
+- rank correlation
+- regime-stratified metrics
+- calibration curves
+
+Representative synthetic result from the default seed:
+
+| signal | directional accuracy | Brier score | rank correlation |
+| --- | ---: | ---: | ---: |
+| raw_imbalance | 0.40395 | 0.320357 | 0.024351 |
+| lcri | 0.56455 | 0.265111 | 0.186961 |
+
+The controlled simulation includes structural liquidity bias, spread changes, depth variation, and regime-specific pressure sensitivity. LCRI is useful when raw depth imbalance contains a mixture of persistent liquidity structure and short-horizon pressure.
 
 ## Project layout
 
 ```text
 src/lcri_lab/
-  simulator.py      synthetic limit order book generation
+  simulator.py      synthetic order book generation
   features.py       imbalance and liquidity-state features
-  baseline.py       liquidity-conditioned baseline model
+  baseline.py       liquidity-conditioned baseline estimator
+  model.py          fit, score, save, and load interface
   evaluation.py     metrics and regime-stratified analysis
   plotting.py       report figures
-  cli.py            command-line demo runner
+  cli.py            command-line interface
+
+examples/
+  fit_and_score.py
 
 tests/
   test_features.py
   test_baseline.py
+  test_model.py
   test_demo.py
 ```
 
-## Limitations
+## Current limitations
 
-- The market data is synthetic.
-- The fill model is not implemented yet.
-- The baseline is intentionally transparent instead of heavily optimized.
-- No claim is made about live trading performance.
+- The included workflow uses synthetic data.
+- Real order book feeds must be normalized into the snapshot schema before scoring.
+- The current baseline is linear and transparent by design.
+- Queue position, fill probability, and transaction-cost-aware labels are not implemented yet.
 
-## Next milestones
+## Next steps
 
-- Add a price-time priority matching engine.
-- Add queue-position simulation.
-- Add event shock regimes.
-- Add transaction-complete labels after spread and slippage.
-- Add comparison against a learned nonlinear baseline.
+- Add a real-data adapter for normalized TAQ or crypto L2 snapshots.
+- Add nonlinear baseline estimators with identical `fit` and `score_frame` semantics.
+- Add transaction-complete labels after spread, slippage, and queue position.
+- Add event-window regime tagging.
+- Add model cards with fitted coefficients and residual scales.
