@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -11,10 +12,10 @@ from lcri_lab.features import feature_columns
 @dataclass
 class LiquidityBaseline:
     ridge: float = 1e-3
-    coefficients: np.ndarray | None = None
-    mean_: np.ndarray | None = None
-    scale_: np.ndarray | None = None
-    residual_scale_by_regime: dict[str, float] | None = None
+    coefficients: Optional[np.ndarray] = None
+    mean_: Optional[np.ndarray] = None
+    scale_: Optional[np.ndarray] = None
+    residual_scale_by_regime: Optional[dict[str, float]] = None
 
     def fit(self, frame: pd.DataFrame) -> "LiquidityBaseline":
         x = _design_matrix(frame)

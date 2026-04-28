@@ -7,7 +7,7 @@ name = "lcri-market-microstructure-lab"
 version = "0.1.0"
 description = "A research demo for liquidity-conditioned residual imbalance in synthetic limit order books."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Sarp Tan Doven" }]
 dependencies = [

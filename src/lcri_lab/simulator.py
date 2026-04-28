@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -22,7 +23,7 @@ def simulate_order_books(config: SimulationConfig) -> pd.DataFrame:
     rng = np.random.default_rng(config.seed)
     regimes = rng.choice(REGIMES, size=config.rows, p=[0.38, 0.24, 0.18, 0.20])
 
-    rows: list[dict[str, float | int | str]] = []
+    rows: list[dict[str, Union[float, int, str]]] = []
     mid = config.initial_mid
 
     for ts, regime in enumerate(regimes):
@@ -57,7 +58,7 @@ def simulate_order_books(config: SimulationConfig) -> pd.DataFrame:
         mid_move = direction * move_ticks * config.tick_size
         next_mid = mid + mid_move
 
-        row: dict[str, float | int | str] = {
+        row: dict[str, Union[float, int, str]] = {
             "timestamp": ts,
             "regime": regime,
             "mid": mid,
