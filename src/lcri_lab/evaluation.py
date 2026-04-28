@@ -49,6 +49,19 @@ def regime_metrics(frame: pd.DataFrame) -> pd.DataFrame:
     ]
 
 
+def summarize_signal_lift(frame: pd.DataFrame) -> dict[str, float]:
+    metrics = evaluate_signals(frame).set_index("signal")
+    raw = metrics.loc["raw_imbalance"]
+    lcri = metrics.loc["lcri"]
+    return {
+        "directional_accuracy_lift": float(
+            lcri["directional_accuracy"] - raw["directional_accuracy"]
+        ),
+        "brier_score_reduction": float(raw["brier_score"] - lcri["brier_score"]),
+        "rank_correlation_lift": float(lcri["rank_correlation"] - raw["rank_correlation"]),
+    }
+
+
 def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.DataFrame:
     if bins < 1:
         raise ValueError("bins must be at least 1")

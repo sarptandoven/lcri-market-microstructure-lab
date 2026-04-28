@@ -14,3 +14,8 @@ def test_public_api_exports_artifact_version() -> None:
 def test_public_api_exports_design_feature_names() -> None:
     assert "spread_x_replenishment" in lcri_lab.design_feature_names()
     assert "design_feature_names" in lcri_lab.__all__
+
+
+def test_public_api_exports_signal_lift_summary() -> None:
+    assert callable(lcri_lab.summarize_signal_lift)
+    assert "summarize_signal_lift" in lcri_lab.__all__

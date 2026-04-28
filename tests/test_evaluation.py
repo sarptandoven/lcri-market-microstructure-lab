@@ -1,9 +1,28 @@
 import pandas as pd
 import pytest
 
-from lcri_lab.evaluation import calibration_curve, evaluate_signals, regime_metrics
+from lcri_lab.evaluation import (
+    calibration_curve,
+    evaluate_signals,
+    regime_metrics,
+    summarize_signal_lift,
+)
 from lcri_lab.model import LCRIModel
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
+
+
+def test_summarize_signal_lift_reports_metric_deltas() -> None:
+    books = simulate_order_books(SimulationConfig(rows=300, seed=22))
+    scored = LCRIModel().fit(books.iloc[:200]).score_frame(books.iloc[200:])
+
+    summary = summarize_signal_lift(scored)
+
+    assert set(summary) == {
+        "directional_accuracy_lift",
+        "brier_score_reduction",
+        "rank_correlation_lift",
+    }
+    assert all(isinstance(value, float) for value in summary.values())
 
 
 def test_calibration_curve_rejects_non_positive_bins() -> None:
