@@ -5,9 +5,16 @@ import pandas as pd
 
 
 def compute_features(order_books: pd.DataFrame, levels: int = 5) -> pd.DataFrame:
-    frame = order_books.copy()
+    if levels < 1:
+        raise ValueError("levels must be at least 1")
+
     bid_cols = [f"bid_sz_{level}" for level in range(1, levels + 1)]
     ask_cols = [f"ask_sz_{level}" for level in range(1, levels + 1)]
+    missing = sorted(set(_required_columns(levels)) - set(order_books.columns))
+    if missing:
+        raise ValueError(f"missing order book columns: {missing}")
+
+    frame = order_books.copy()
 
     bid_depth = frame[bid_cols].sum(axis=1)
     ask_depth = frame[ask_cols].sum(axis=1)
@@ -46,6 +53,23 @@ def feature_columns() -> list[str]:
         "depth_slope",
         "spread_depth_ratio",
         "liquidity_score",
+    ]
+
+
+def _required_columns(levels: int) -> list[str]:
+    size_columns = [
+        f"{side}_sz_{level}"
+        for level in range(1, levels + 1)
+        for side in ("bid", "ask")
+    ]
+    return [
+        "mid",
+        "next_mid",
+        "spread",
+        "spread_ticks",
+        "volatility",
+        "replenishment_rate",
+        *size_columns,
     ]
 
 

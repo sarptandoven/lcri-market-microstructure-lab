@@ -18,3 +18,14 @@ def test_compute_features_adds_expected_columns() -> None:
 
     assert features["raw_imbalance"].between(-1, 1).all()
     assert features["total_depth"].gt(0).all()
+
+
+def test_compute_features_rejects_incomplete_snapshots() -> None:
+    books = simulate_order_books(SimulationConfig(rows=10, seed=4)).drop(columns=["bid_sz_3"])
+
+    try:
+        compute_features(books)
+    except ValueError as exc:
+        assert "bid_sz_3" in str(exc)
+    else:
+        raise AssertionError("expected missing column validation")
