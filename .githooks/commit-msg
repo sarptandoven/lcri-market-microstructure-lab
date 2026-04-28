@@ -1,0 +1,8 @@
+#!/bin/sh
+
+commit_msg_file="$1"
+
+if grep -qi '^Co-authored-by:' "$commit_msg_file"; then
+  echo "Commit rejected: Co-authored-by trailers are disabled for this repository." >&2
+  exit 1
+fi
