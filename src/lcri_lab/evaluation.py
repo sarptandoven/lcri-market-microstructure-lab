@@ -44,6 +44,8 @@ def regime_metrics(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.DataFrame:
+    if bins < 1:
+        raise ValueError("bins must be at least 1")
     probability = _logistic(frame[signal].to_numpy(dtype=float))
     target = frame["future_direction"].to_numpy(dtype=float)
     bucket = np.clip(np.floor(probability * bins).astype(int), 0, bins - 1)
