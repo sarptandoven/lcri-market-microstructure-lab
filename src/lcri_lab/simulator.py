@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Union
 
@@ -17,6 +18,16 @@ class SimulationConfig:
     seed: int = 7
     tick_size: float = 0.01
     initial_mid: float = 100.0
+
+    def __post_init__(self) -> None:
+        if self.rows < 1:
+            raise ValueError("rows must be at least 1")
+        if self.levels < 1:
+            raise ValueError("levels must be at least 1")
+        if not math.isfinite(self.tick_size) or self.tick_size <= 0.0:
+            raise ValueError("tick_size must be a finite positive value")
+        if not math.isfinite(self.initial_mid) or self.initial_mid <= 0.0:
+            raise ValueError("initial_mid must be a finite positive value")
 
 
 def simulate_order_books(config: SimulationConfig) -> pd.DataFrame:
