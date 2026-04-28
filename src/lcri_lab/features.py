@@ -66,6 +66,10 @@ def _validate_numeric_inputs(
         raise ValueError("order book numeric columns must be finite")
     if (frame[size_columns] < 0.0).to_numpy().any():
         raise ValueError("order book sizes must be non-negative")
+    if (frame["spread"] <= 0.0).to_numpy().any():
+        raise ValueError("spread must be positive")
+    if (frame["spread_ticks"] < 1.0).to_numpy().any():
+        raise ValueError("spread_ticks must be at least 1")
 
 
 def _required_columns(levels: int) -> list[str]:
