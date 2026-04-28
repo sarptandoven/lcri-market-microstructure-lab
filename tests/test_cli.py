@@ -10,7 +10,8 @@ def test_fit_model_persists_requested_ridge(tmp_path: Path) -> None:
     model_path = tmp_path / "model.json"
     simulate_order_books(SimulationConfig(rows=150, seed=13)).to_csv(snapshots, index=False)
 
-    fit_model(snapshots, model_path, levels=5, ridge=0.25)
+    fit_model(snapshots, model_path, levels=5, ridge=0.25, probability_scale=2.5)
 
     payload = json.loads(model_path.read_text())
     assert payload["config"]["ridge"] == 0.25
+    assert payload["config"]["probability_scale"] == 2.5
