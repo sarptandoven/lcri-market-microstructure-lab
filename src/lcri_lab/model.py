@@ -79,6 +79,13 @@ class LCRIModel:
         model.baseline.coefficients = np.array(payload["coefficients"], dtype=float)
         model.baseline.mean_ = np.array(payload["mean"], dtype=float)
         model.baseline.scale_ = np.array(payload["scale"], dtype=float)
+        for name, values in {
+            "coefficients": model.baseline.coefficients,
+            "mean": model.baseline.mean_,
+            "scale": model.baseline.scale_,
+        }.items():
+            if not np.isfinite(values).all():
+                raise ValueError(f"model artifact contains non-finite {name}")
         model.baseline.residual_scale_by_regime = {
             str(key): float(value)
             for key, value in payload["residual_scale_by_regime"].items()

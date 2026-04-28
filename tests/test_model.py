@@ -41,3 +41,14 @@ def test_model_load_rejects_incomplete_artifact(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="missing keys"):
         LCRIModel.load(path)
+
+
+def test_model_load_rejects_non_finite_artifact_values(tmp_path) -> None:
+    books = simulate_order_books(SimulationConfig(rows=120, seed=14))
+    path = tmp_path / "model.json"
+    LCRIModel().fit(books).save(path)
+    payload = path.read_text().replace('"coefficients": [', '"coefficients": [NaN, ', 1)
+    path.write_text(payload)
+
+    with pytest.raises(ValueError, match="non-finite coefficients"):
+        LCRIModel.load(path)
