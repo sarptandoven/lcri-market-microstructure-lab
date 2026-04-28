@@ -71,6 +71,10 @@ class LCRIModel:
     @classmethod
     def load(cls, path: str | Path) -> "LCRIModel":
         payload = json.loads(Path(path).read_text())
+        required = {"config", "coefficients", "mean", "scale", "residual_scale_by_regime"}
+        missing = sorted(required - set(payload))
+        if missing:
+            raise ValueError(f"model artifact is missing keys: {missing}")
         model = cls(ModelConfig(**payload["config"]))
         model.baseline.coefficients = np.array(payload["coefficients"], dtype=float)
         model.baseline.mean_ = np.array(payload["mean"], dtype=float)

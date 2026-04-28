@@ -33,3 +33,11 @@ def test_model_config_rejects_invalid_values() -> None:
         ModelConfig(ridge=-1.0)
     with pytest.raises(ValueError, match="probability_scale"):
         ModelConfig(probability_scale=0.0)
+
+
+def test_model_load_rejects_incomplete_artifact(tmp_path) -> None:
+    path = tmp_path / "model.json"
+    path.write_text('{"config": {"levels": 5}}')
+
+    with pytest.raises(ValueError, match="missing keys"):
+        LCRIModel.load(path)
