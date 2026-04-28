@@ -13,6 +13,9 @@ from lcri_lab.baseline import LiquidityBaseline, compute_lcri
 from lcri_lab.features import compute_features
 
 
+ARTIFACT_VERSION = 1
+
+
 @dataclass(frozen=True)
 class ModelConfig:
     levels: int = 5
@@ -60,6 +63,7 @@ class LCRIModel:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
+            "schema_version": ARTIFACT_VERSION,
             "config": asdict(self.config),
             "coefficients": self.baseline.coefficients.tolist(),
             "mean": self.baseline.mean_.tolist(),
@@ -71,10 +75,21 @@ class LCRIModel:
     @classmethod
     def load(cls, path: str | Path) -> "LCRIModel":
         payload = json.loads(Path(path).read_text())
-        required = {"config", "coefficients", "mean", "scale", "residual_scale_by_regime"}
+        required = {
+            "schema_version",
+            "config",
+            "coefficients",
+            "mean",
+            "scale",
+            "residual_scale_by_regime",
+        }
         missing = sorted(required - set(payload))
         if missing:
             raise ValueError(f"model artifact is missing keys: {missing}")
+        if payload["schema_version"] != ARTIFACT_VERSION:
+            raise ValueError(
+                f"unsupported model artifact schema_version: {payload['schema_version']}"
+            )
         model = cls(ModelConfig(**payload["config"]))
         model.baseline.coefficients = np.array(payload["coefficients"], dtype=float)
         model.baseline.mean_ = np.array(payload["mean"], dtype=float)

@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-from lcri_lab.model import LCRIModel, ModelConfig
+from lcri_lab.model import ARTIFACT_VERSION, LCRIModel, ModelConfig
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
 
@@ -19,6 +19,8 @@ def test_model_scores_and_persists(tmp_path) -> None:
 
     path = tmp_path / "model.json"
     model.save(path)
+    payload = path.read_text()
+    assert f'"schema_version": {ARTIFACT_VERSION}' in payload
     loaded = LCRIModel.load(path)
 
     original = model.predict_proba(test)
@@ -40,6 +42,16 @@ def test_model_load_rejects_incomplete_artifact(tmp_path) -> None:
     path.write_text('{"config": {"levels": 5}}')
 
     with pytest.raises(ValueError, match="missing keys"):
+        LCRIModel.load(path)
+
+
+def test_model_load_rejects_unsupported_artifact_version(tmp_path) -> None:
+    books = simulate_order_books(SimulationConfig(rows=120, seed=15))
+    path = tmp_path / "model.json"
+    LCRIModel().fit(books).save(path)
+    path.write_text(path.read_text().replace('"schema_version": 1', '"schema_version": 99'))
+
+    with pytest.raises(ValueError, match="schema_version"):
         LCRIModel.load(path)
 
 

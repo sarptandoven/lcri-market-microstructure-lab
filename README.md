@@ -106,6 +106,8 @@ model = LCRIModel.load("reports/lcri-model.json")
 scored = model.score_frame(order_book_snapshots)
 ```
 
+Persisted models include a `schema_version` field so incompatible artifact changes fail fast.
+
 ## CLI usage
 
 Fit a model from normalized snapshots:
