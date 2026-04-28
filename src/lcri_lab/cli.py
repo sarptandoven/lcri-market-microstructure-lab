@@ -24,6 +24,7 @@ def main() -> None:
     fit.add_argument("--input", type=Path, required=True)
     fit.add_argument("--model", type=Path, required=True)
     fit.add_argument("--levels", type=int, default=5)
+    fit.add_argument("--ridge", type=float, default=1e-3)
 
     score = subparsers.add_parser("score", help="score order book snapshots with a fitted model")
     score.add_argument("--input", type=Path, required=True)
@@ -34,7 +35,7 @@ def main() -> None:
     if args.command == "run-demo":
         run_demo(rows=args.rows, seed=args.seed, output=args.output)
     elif args.command == "fit":
-        fit_model(input_path=args.input, model_path=args.model, levels=args.levels)
+        fit_model(input_path=args.input, model_path=args.model, levels=args.levels, ridge=args.ridge)
     elif args.command == "score":
         score_model(input_path=args.input, model_path=args.model, output_path=args.output)
 
@@ -66,9 +67,9 @@ def run_demo(rows: int, seed: int, output: Path) -> None:
     print(metrics.to_string(index=False))
 
 
-def fit_model(input_path: Path, model_path: Path, levels: int) -> None:
+def fit_model(input_path: Path, model_path: Path, levels: int, ridge: float = 1e-3) -> None:
     frame = pd.read_csv(input_path)
-    model = LCRIModel(ModelConfig(levels=levels)).fit(frame)
+    model = LCRIModel(ModelConfig(levels=levels, ridge=ridge)).fit(frame)
     model.save(model_path)
     print(f"Wrote model: {model_path}")
 
