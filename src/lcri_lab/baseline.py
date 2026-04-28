@@ -18,6 +18,8 @@ class LiquidityBaseline:
     residual_scale_by_regime: Optional[dict[str, float]] = None
 
     def fit(self, frame: pd.DataFrame) -> "LiquidityBaseline":
+        if frame.empty:
+            raise ValueError("cannot fit baseline on an empty frame")
         x = _design_matrix(frame)
         y = frame["raw_imbalance"].to_numpy(dtype=float)
         self.mean_ = x.mean(axis=0)

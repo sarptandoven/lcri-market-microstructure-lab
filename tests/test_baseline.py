@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from lcri_lab.baseline import LiquidityBaseline, compute_lcri
 from lcri_lab.features import compute_features
@@ -15,3 +16,11 @@ def test_baseline_predicts_and_computes_lcri() -> None:
     assert "lcri" in scored.columns
     assert np.isfinite(scored["lcri"]).all()
     assert set(baseline.residual_scale_by_regime) == set(scored["regime"].unique())
+
+
+def test_baseline_rejects_empty_fit_frame() -> None:
+    books = simulate_order_books(SimulationConfig(rows=10, seed=8))
+    features = compute_features(books).iloc[0:0]
+
+    with pytest.raises(ValueError, match="empty"):
+        LiquidityBaseline().fit(features)
