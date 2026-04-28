@@ -61,7 +61,7 @@ The included simulator generates this schema. Real market data can be scored aft
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
-lcri-lab run-demo --rows 20000 --seed 7
+lcri-lab run-demo --rows 20000 --seed 7 --train-frac 0.70
 pytest -q
 ruff check .
 ```
@@ -123,10 +123,10 @@ lcri-lab score \
   --output reports/scored_snapshots.csv
 ```
 
-Run the synthetic research workflow:
+Run the synthetic research workflow with a reproducible training split:
 
 ```bash
-lcri-lab run-demo --rows 20000 --seed 7
+lcri-lab run-demo --rows 20000 --seed 7 --train-frac 0.70
 ```
 
 ## Evaluation

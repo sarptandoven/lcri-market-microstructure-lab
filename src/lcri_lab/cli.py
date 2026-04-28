@@ -18,6 +18,7 @@ def main() -> None:
     demo = subparsers.add_parser("run-demo", help="run the synthetic LCRI research workflow")
     demo.add_argument("--rows", type=int, default=20_000)
     demo.add_argument("--seed", type=int, default=7)
+    demo.add_argument("--train-frac", type=float, default=0.70)
     demo.add_argument("--output", type=Path, default=Path("reports"))
 
     fit = subparsers.add_parser("fit", help="fit an LCRI model from order book snapshots")
@@ -34,7 +35,7 @@ def main() -> None:
 
     args = parser.parse_args()
     if args.command == "run-demo":
-        run_demo(rows=args.rows, seed=args.seed, output=args.output)
+        run_demo(rows=args.rows, seed=args.seed, train_frac=args.train_frac, output=args.output)
     elif args.command == "fit":
         fit_model(
             input_path=args.input,
@@ -47,12 +48,15 @@ def main() -> None:
         score_model(input_path=args.input, model_path=args.model, output_path=args.output)
 
 
-def run_demo(rows: int, seed: int, output: Path) -> None:
+def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> None:
+    if not 0.0 < train_frac < 1.0:
+        raise ValueError("train_frac must be between 0 and 1")
+
     output.mkdir(parents=True, exist_ok=True)
     (output / "figures").mkdir(parents=True, exist_ok=True)
 
     books = simulate_order_books(SimulationConfig(rows=rows, seed=seed))
-    train = books.sample(frac=0.70, random_state=seed)
+    train = books.sample(frac=train_frac, random_state=seed)
     model = LCRIModel().fit(train)
     scored = model.score_frame(books)
 
@@ -65,7 +69,10 @@ def run_demo(rows: int, seed: int, output: Path) -> None:
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
     write_figures(scored, by_regime, output / "figures")
 
+    heldout_rows = len(books) - len(train)
     print("Wrote research artifacts")
+    print(f"rows: {len(books)} total, {len(train)} train, {heldout_rows} held out")
+    print(f"train fraction: {train_frac:.2f}")
     print(f"model: {output / 'lcri-model.json'}")
     print(f"metrics: {output / 'metrics.csv'}")
     print(f"regime metrics: {output / 'regime_metrics.csv'}")
