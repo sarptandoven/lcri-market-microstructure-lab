@@ -10,11 +10,13 @@ def compute_features(order_books: pd.DataFrame, levels: int = 5) -> pd.DataFrame
 
     bid_cols = [f"bid_sz_{level}" for level in range(1, levels + 1)]
     ask_cols = [f"ask_sz_{level}" for level in range(1, levels + 1)]
-    missing = sorted(set(_required_columns(levels)) - set(order_books.columns))
+    required = _required_columns(levels)
+    missing = sorted(set(required) - set(order_books.columns))
     if missing:
         raise ValueError(f"missing order book columns: {missing}")
 
     frame = order_books.copy()
+    _validate_numeric_inputs(frame, required, bid_cols + ask_cols)
 
     bid_depth = frame[bid_cols].sum(axis=1)
     ask_depth = frame[ask_cols].sum(axis=1)
@@ -54,6 +56,16 @@ def feature_columns() -> list[str]:
         "spread_depth_ratio",
         "liquidity_score",
     ]
+
+
+def _validate_numeric_inputs(
+    frame: pd.DataFrame, required: list[str], size_columns: list[str]
+) -> None:
+    values = frame[required].to_numpy(dtype=float)
+    if not np.isfinite(values).all():
+        raise ValueError("order book numeric columns must be finite")
+    if (frame[size_columns] < 0.0).to_numpy().any():
+        raise ValueError("order book sizes must be non-negative")
 
 
 def _required_columns(levels: int) -> list[str]:
