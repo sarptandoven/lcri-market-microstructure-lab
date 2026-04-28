@@ -1,6 +1,7 @@
+import pytest
 import numpy as np
 
-from lcri_lab.model import LCRIModel
+from lcri_lab.model import LCRIModel, ModelConfig
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
 
@@ -23,3 +24,12 @@ def test_model_scores_and_persists(tmp_path) -> None:
     original = model.predict_proba(test)
     restored = loaded.predict_proba(test)
     assert np.allclose(original, restored)
+
+
+def test_model_config_rejects_invalid_values() -> None:
+    with pytest.raises(ValueError, match="levels"):
+        ModelConfig(levels=0)
+    with pytest.raises(ValueError, match="ridge"):
+        ModelConfig(ridge=-1.0)
+    with pytest.raises(ValueError, match="probability_scale"):
+        ModelConfig(probability_scale=0.0)

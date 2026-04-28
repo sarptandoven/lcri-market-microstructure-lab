@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
@@ -17,6 +18,14 @@ class ModelConfig:
     levels: int = 5
     ridge: float = 1e-3
     probability_scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        if self.levels < 1:
+            raise ValueError("levels must be at least 1")
+        if not math.isfinite(self.ridge) or self.ridge < 0.0:
+            raise ValueError("ridge must be a finite non-negative value")
+        if not math.isfinite(self.probability_scale) or self.probability_scale <= 0.0:
+            raise ValueError("probability_scale must be a finite positive value")
 
 
 class LCRIModel:
