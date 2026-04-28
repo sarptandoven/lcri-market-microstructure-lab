@@ -122,7 +122,8 @@ Score snapshots:
 lcri-lab score \
   --input new_snapshots.csv \
   --model reports/lcri-model.json \
-  --output reports/scored_snapshots.csv
+  --output reports/scored_snapshots.csv \
+  --columns timestamp,raw_imbalance,lcri,lcri_probability
 ```
 
 Run the synthetic research workflow with a reproducible training split:

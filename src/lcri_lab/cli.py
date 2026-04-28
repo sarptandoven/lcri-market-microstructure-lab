@@ -32,6 +32,7 @@ def main() -> None:
     score.add_argument("--input", type=Path, required=True)
     score.add_argument("--model", type=Path, required=True)
     score.add_argument("--output", type=Path, required=True)
+    score.add_argument("--columns", help="comma-separated output columns; defaults to all columns")
 
     args = parser.parse_args()
     if args.command == "run-demo":
@@ -45,7 +46,8 @@ def main() -> None:
             probability_scale=args.probability_scale,
         )
     elif args.command == "score":
-        score_model(input_path=args.input, model_path=args.model, output_path=args.output)
+        columns = args.columns.split(",") if args.columns else None
+        score_model(input_path=args.input, model_path=args.model, output_path=args.output, columns=columns)
 
 
 def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> None:
@@ -96,10 +98,21 @@ def fit_model(
     print(f"Wrote model: {model_path}")
 
 
-def score_model(input_path: Path, model_path: Path, output_path: Path) -> None:
+def score_model(
+    input_path: Path,
+    model_path: Path,
+    output_path: Path,
+    columns: list[str] | None = None,
+) -> None:
     frame = pd.read_csv(input_path)
     model = LCRIModel.load(model_path)
     scored = model.score_frame(frame)
+    if columns is not None:
+        columns = [column.strip() for column in columns if column.strip()]
+        missing = sorted(set(columns) - set(scored.columns))
+        if missing:
+            raise ValueError(f"requested score output columns are unavailable: {missing}")
+        scored = scored.loc[:, columns]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     scored.to_csv(output_path, index=False)
     print(f"Wrote scores: {output_path}")
