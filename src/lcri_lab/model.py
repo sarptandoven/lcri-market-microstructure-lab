@@ -113,6 +113,9 @@ class LCRIModel:
         model.is_fit = True
         return model
 
+    def artifact_version(self) -> int:
+        return ARTIFACT_VERSION
+
     def predict_proba_from_scores(self, scores: np.ndarray) -> np.ndarray:
         scaled = np.asarray(scores, dtype=float) / self.config.probability_scale
         clipped = np.clip(scaled, -20.0, 20.0)

@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from lcri_lab.cli import fit_model, score_model
+from lcri_lab.cli import describe_model, fit_model, score_model
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
 
@@ -22,6 +22,22 @@ def test_fit_model_persists_requested_ridge(tmp_path: Path) -> None:
     payload = json.loads(model_path.read_text())
     assert payload["config"]["ridge"] == 0.25
     assert payload["config"]["probability_scale"] == 2.5
+
+
+def test_describe_model_prints_artifact_metadata(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    snapshots = tmp_path / "snapshots.csv"
+    model_path = tmp_path / "model.json"
+    _write_snapshots(snapshots)
+    fit_model(snapshots, model_path, levels=5, ridge=0.25)
+
+    describe_model(model_path)
+    output = capsys.readouterr().out
+
+    assert "schema_version: 1" in output
+    assert "levels: 5" in output
+    assert "features: 10" in output
 
 
 def test_score_model_writes_selected_columns(tmp_path: Path) -> None:

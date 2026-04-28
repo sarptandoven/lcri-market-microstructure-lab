@@ -34,6 +34,9 @@ def main() -> None:
     score.add_argument("--output", type=Path, required=True)
     score.add_argument("--columns", help="comma-separated output columns; defaults to all columns")
 
+    describe = subparsers.add_parser("describe-model", help="print fitted model artifact metadata")
+    describe.add_argument("--model", type=Path, required=True)
+
     args = parser.parse_args()
     if args.command == "run-demo":
         run_demo(rows=args.rows, seed=args.seed, train_frac=args.train_frac, output=args.output)
@@ -48,6 +51,8 @@ def main() -> None:
     elif args.command == "score":
         columns = args.columns.split(",") if args.columns else None
         score_model(input_path=args.input, model_path=args.model, output_path=args.output, columns=columns)
+    elif args.command == "describe-model":
+        describe_model(model_path=args.model)
 
 
 def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> None:
@@ -96,6 +101,18 @@ def fit_model(
     )
     model.save(model_path)
     print(f"Wrote model: {model_path}")
+
+
+def describe_model(model_path: Path) -> None:
+    model = LCRIModel.load(model_path)
+    features = model.baseline.coefficients.size - 1
+    regimes = sorted(model.baseline.residual_scale_by_regime or {})
+    print(f"schema_version: {model.artifact_version()}")
+    print(f"levels: {model.config.levels}")
+    print(f"ridge: {model.config.ridge}")
+    print(f"probability_scale: {model.config.probability_scale}")
+    print(f"features: {features}")
+    print(f"regimes: {', '.join(regimes)}")
 
 
 def score_model(

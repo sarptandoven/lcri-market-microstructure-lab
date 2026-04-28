@@ -116,6 +116,12 @@ Fit a model from normalized snapshots:
 lcri-lab fit --input snapshots.csv --model reports/lcri-model.json
 ```
 
+Inspect a fitted artifact:
+
+```bash
+lcri-lab describe-model --model reports/lcri-model.json
+```
+
 Score snapshots:
 
 ```bash
