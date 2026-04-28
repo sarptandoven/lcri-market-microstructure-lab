@@ -8,6 +8,12 @@ import pandas as pd
 
 from lcri_lab.features import feature_columns
 
+INTERACTION_FEATURES = [
+    "spread_x_replenishment",
+    "volatility_x_spread_depth_ratio",
+    "log_depth_x_depth_slope",
+]
+
 
 @dataclass
 class LiquidityBaseline:
@@ -65,6 +71,10 @@ def compute_lcri(frame: pd.DataFrame, baseline: LiquidityBaseline) -> pd.DataFra
     scales = output["regime"].map(baseline.residual_scale_by_regime).fillna(default_scale)
     output["lcri"] = residual / scales.to_numpy(dtype=float)
     return output
+
+
+def design_feature_names() -> list[str]:
+    return [*feature_columns(), *INTERACTION_FEATURES]
 
 
 def _design_matrix(frame: pd.DataFrame) -> np.ndarray:

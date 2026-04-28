@@ -9,7 +9,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from lcri_lab.baseline import LiquidityBaseline, compute_lcri
+from lcri_lab.baseline import LiquidityBaseline, compute_lcri, design_feature_names
 from lcri_lab.features import compute_features
 
 
@@ -65,6 +65,7 @@ class LCRIModel:
         payload = {
             "schema_version": ARTIFACT_VERSION,
             "config": asdict(self.config),
+            "feature_names": design_feature_names(),
             "coefficients": self.baseline.coefficients.tolist(),
             "mean": self.baseline.mean_.tolist(),
             "scale": self.baseline.scale_.tolist(),
@@ -78,6 +79,7 @@ class LCRIModel:
         required = {
             "schema_version",
             "config",
+            "feature_names",
             "coefficients",
             "mean",
             "scale",
@@ -91,6 +93,9 @@ class LCRIModel:
                 f"unsupported model artifact schema_version: {payload['schema_version']}"
             )
         model = cls(ModelConfig(**payload["config"]))
+        expected_features = design_feature_names()
+        if payload["feature_names"] != expected_features:
+            raise ValueError("model artifact feature_names do not match this package version")
         model.baseline.coefficients = np.array(payload["coefficients"], dtype=float)
         model.baseline.mean_ = np.array(payload["mean"], dtype=float)
         model.baseline.scale_ = np.array(payload["scale"], dtype=float)

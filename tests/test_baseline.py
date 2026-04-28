@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from lcri_lab.baseline import LiquidityBaseline, compute_lcri
+from lcri_lab.baseline import LiquidityBaseline, compute_lcri, design_feature_names
 from lcri_lab.features import compute_features
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
@@ -16,6 +16,14 @@ def test_baseline_predicts_and_computes_lcri() -> None:
     assert "lcri" in scored.columns
     assert np.isfinite(scored["lcri"]).all()
     assert set(baseline.residual_scale_by_regime) == set(scored["regime"].unique())
+
+
+def test_design_feature_names_include_interactions() -> None:
+    names = design_feature_names()
+
+    assert "spread_ticks" in names
+    assert "spread_x_replenishment" in names
+    assert "log_depth_x_depth_slope" in names
 
 
 def test_baseline_rejects_empty_fit_frame() -> None:

@@ -21,6 +21,7 @@ def test_model_scores_and_persists(tmp_path) -> None:
     model.save(path)
     payload = path.read_text()
     assert f'"schema_version": {ARTIFACT_VERSION}' in payload
+    assert '"feature_names"' in payload
     loaded = LCRIModel.load(path)
 
     original = model.predict_proba(test)
@@ -42,6 +43,16 @@ def test_model_load_rejects_incomplete_artifact(tmp_path) -> None:
     path.write_text('{"config": {"levels": 5}}')
 
     with pytest.raises(ValueError, match="missing keys"):
+        LCRIModel.load(path)
+
+
+def test_model_load_rejects_unexpected_feature_names(tmp_path) -> None:
+    books = simulate_order_books(SimulationConfig(rows=120, seed=16))
+    path = tmp_path / "model.json"
+    LCRIModel().fit(books).save(path)
+    path.write_text(path.read_text().replace('"spread_ticks"', '"renamed_spread_ticks"', 1))
+
+    with pytest.raises(ValueError, match="feature_names"):
         LCRIModel.load(path)
 
 
