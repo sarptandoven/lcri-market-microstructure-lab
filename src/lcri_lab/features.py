@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from lcri_lab.schema import snapshot_required_columns
+
 
 def compute_features(order_books: pd.DataFrame, levels: int = 5) -> pd.DataFrame:
     if levels < 1:
@@ -10,7 +12,7 @@ def compute_features(order_books: pd.DataFrame, levels: int = 5) -> pd.DataFrame
 
     bid_cols = [f"bid_sz_{level}" for level in range(1, levels + 1)]
     ask_cols = [f"ask_sz_{level}" for level in range(1, levels + 1)]
-    required = _required_columns(levels)
+    required = snapshot_required_columns(levels)
     missing = sorted(set(required) - set(order_books.columns))
     if missing:
         raise ValueError(f"missing order book columns: {missing}")
@@ -70,23 +72,6 @@ def _validate_numeric_inputs(
         raise ValueError("spread must be positive")
     if (frame["spread_ticks"] < 1.0).to_numpy().any():
         raise ValueError("spread_ticks must be at least 1")
-
-
-def _required_columns(levels: int) -> list[str]:
-    size_columns = [
-        f"{side}_sz_{level}"
-        for level in range(1, levels + 1)
-        for side in ("bid", "ask")
-    ]
-    return [
-        "mid",
-        "next_mid",
-        "spread",
-        "spread_ticks",
-        "volatility",
-        "replenishment_rate",
-        *size_columns,
-    ]
 
 
 def _safe_divide(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
