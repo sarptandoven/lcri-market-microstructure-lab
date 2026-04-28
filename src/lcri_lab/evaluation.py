@@ -5,6 +5,8 @@ import pandas as pd
 
 
 def evaluate_signals(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty:
+        raise ValueError("cannot evaluate an empty frame")
     rows = []
     for signal in ["raw_imbalance", "lcri"]:
         score = frame[signal].to_numpy(dtype=float)
@@ -23,6 +25,8 @@ def evaluate_signals(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def regime_metrics(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty:
+        raise ValueError("cannot evaluate an empty frame")
     rows = []
     for regime, group in frame.groupby("regime", sort=True):
         metrics = evaluate_signals(group)
