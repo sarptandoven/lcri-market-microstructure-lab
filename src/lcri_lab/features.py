@@ -44,7 +44,6 @@ def feature_columns() -> list[str]:
         "replenishment_rate",
         "log_total_depth",
         "depth_slope",
-        "queue_pressure",
         "spread_depth_ratio",
         "liquidity_score",
     ]

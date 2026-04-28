@@ -33,6 +33,12 @@ def simulate_order_books(config: SimulationConfig) -> pd.DataFrame:
         volatility = float(rng.lognormal(params["vol_mu"], params["vol_sigma"]))
         replenishment = float(np.clip(rng.normal(params["replenishment_mean"], 0.12), 0.02, 1.0))
         latent_pressure = float(rng.normal(0.0, params["pressure_sigma"]))
+        structural_bias = float(
+            params["structural_bid_bias"]
+            + 0.20 * (replenishment - 0.50)
+            - 0.025 * (spread_ticks - 2)
+            + rng.normal(0.0, 0.04)
+        )
 
         base_depth = float(rng.lognormal(params["depth_mu"], params["depth_sigma"]))
         bid_depths, ask_depths = _depth_ladder(
@@ -40,6 +46,7 @@ def simulate_order_books(config: SimulationConfig) -> pd.DataFrame:
             levels=config.levels,
             base_depth=base_depth,
             latent_pressure=latent_pressure,
+            structural_bias=structural_bias,
             replenishment=replenishment,
             stress_multiplier=params["stress_multiplier"],
         )
@@ -68,6 +75,7 @@ def simulate_order_books(config: SimulationConfig) -> pd.DataFrame:
             "volatility": volatility,
             "replenishment_rate": replenishment,
             "latent_pressure": latent_pressure,
+            "structural_bias": structural_bias,
             "future_direction": 1 if next_mid > mid else 0,
             "future_return_ticks": mid_move / config.tick_size,
         }
@@ -96,6 +104,7 @@ def _regime_params(regime: str) -> dict[str, object]:
             "replenishment_mean": 0.78,
             "pressure_sigma": 0.45,
             "stress_multiplier": 0.95,
+            "structural_bid_bias": 0.08,
             "move_lambda": 0.25,
         },
         "thin": {
@@ -108,6 +117,7 @@ def _regime_params(regime: str) -> dict[str, object]:
             "replenishment_mean": 0.38,
             "pressure_sigma": 0.70,
             "stress_multiplier": 1.10,
+            "structural_bid_bias": -0.04,
             "move_lambda": 0.45,
         },
         "stressed": {
@@ -120,6 +130,7 @@ def _regime_params(regime: str) -> dict[str, object]:
             "replenishment_mean": 0.22,
             "pressure_sigma": 1.10,
             "stress_multiplier": 1.40,
+            "structural_bid_bias": -0.12,
             "move_lambda": 0.80,
         },
         "replenishing": {
@@ -132,6 +143,7 @@ def _regime_params(regime: str) -> dict[str, object]:
             "replenishment_mean": 0.90,
             "pressure_sigma": 0.55,
             "stress_multiplier": 0.80,
+            "structural_bid_bias": 0.14,
             "move_lambda": 0.32,
         },
     }
@@ -143,13 +155,15 @@ def _depth_ladder(
     levels: int,
     base_depth: float,
     latent_pressure: float,
+    structural_bias: float,
     replenishment: float,
     stress_multiplier: float,
 ) -> tuple[np.ndarray, np.ndarray]:
     decay = np.exp(-0.18 * np.arange(levels))
     noise_bid = rng.lognormal(0.0, 0.20 * stress_multiplier, size=levels)
     noise_ask = rng.lognormal(0.0, 0.20 * stress_multiplier, size=levels)
-    pressure = np.tanh(latent_pressure) * (0.28 + 0.25 * (1.0 - replenishment))
+    pressure = structural_bias + np.tanh(latent_pressure) * (0.22 + 0.20 * (1.0 - replenishment))
+    pressure = float(np.clip(pressure, -0.75, 0.75))
 
     bid_depths = base_depth * decay * noise_bid * (1.0 + pressure)
     ask_depths = base_depth * decay * noise_ask * (1.0 - pressure)
@@ -171,6 +185,6 @@ def _move_probability(
         "replenishing": 0.85,
     }[regime]
     liquidity_penalty = 0.35 * spread + 0.50 * replenishment
-    score = regime_gain * (1.35 * raw_imbalance + 0.30 * latent_pressure)
+    score = regime_gain * (0.45 * raw_imbalance + 0.85 * latent_pressure)
     score += 0.45 * volatility - liquidity_penalty
     return float(1.0 / (1.0 + np.exp(-score)))

@@ -26,9 +26,11 @@ class LiquidityBaseline:
         xz = (x - self.mean_) / self.scale_
         xz = np.column_stack([np.ones(len(xz)), xz])
 
-        penalty = self.ridge * np.eye(xz.shape[1])
+        penalty = np.sqrt(self.ridge) * np.eye(xz.shape[1])
         penalty[0, 0] = 0.0
-        self.coefficients = np.linalg.solve(xz.T @ xz + penalty, xz.T @ y)
+        augmented_x = np.vstack([xz, penalty])
+        augmented_y = np.concatenate([y, np.zeros(xz.shape[1])])
+        self.coefficients = np.linalg.lstsq(augmented_x, augmented_y, rcond=None)[0]
 
         residual = y - self.predict(frame)
         scales: dict[str, float] = {}
@@ -44,7 +46,7 @@ class LiquidityBaseline:
         x = _design_matrix(frame)
         xz = (x - self.mean_) / self.scale_
         xz = np.column_stack([np.ones(len(xz)), xz])
-        return xz @ self.coefficients
+        return np.sum(xz * self.coefficients, axis=1)
 
 
 def compute_lcri(frame: pd.DataFrame, baseline: LiquidityBaseline) -> pd.DataFrame:

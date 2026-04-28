@@ -9,7 +9,7 @@ def evaluate_signals(frame: pd.DataFrame) -> pd.DataFrame:
     for signal in ["raw_imbalance", "lcri"]:
         score = frame[signal].to_numpy(dtype=float)
         target = frame["future_direction"].to_numpy(dtype=float)
-        probability = _logistic(score)
+        probability = _logistic(_standardize(score))
         rows.append(
             {
                 "signal": signal,
@@ -66,6 +66,13 @@ def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.Da
 def _directional_accuracy(score: np.ndarray, target: np.ndarray) -> float:
     prediction = (score > 0.0).astype(float)
     return float(np.mean(prediction == target))
+
+
+def _standardize(score: np.ndarray) -> np.ndarray:
+    scale = float(np.std(score))
+    if scale == 0.0:
+        return score
+    return score / scale
 
 
 def _logistic(score: np.ndarray) -> np.ndarray:
