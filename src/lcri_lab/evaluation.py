@@ -7,6 +7,7 @@ import pandas as pd
 def evaluate_signals(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty:
         raise ValueError("cannot evaluate an empty frame")
+    _require_columns(frame, ["raw_imbalance", "lcri", "future_direction"])
     rows = []
     for signal in ["raw_imbalance", "lcri"]:
         score = frame[signal].to_numpy(dtype=float)
@@ -27,6 +28,7 @@ def evaluate_signals(frame: pd.DataFrame) -> pd.DataFrame:
 def regime_metrics(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty:
         raise ValueError("cannot evaluate an empty frame")
+    _require_columns(frame, ["regime", "raw_imbalance", "lcri", "future_direction"])
     rows = []
     for regime, group in frame.groupby("regime", sort=True):
         metrics = evaluate_signals(group)
@@ -50,6 +52,7 @@ def regime_metrics(frame: pd.DataFrame) -> pd.DataFrame:
 def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.DataFrame:
     if bins < 1:
         raise ValueError("bins must be at least 1")
+    _require_columns(frame, [signal, "future_direction"])
     probability = _logistic(frame[signal].to_numpy(dtype=float))
     target = frame["future_direction"].to_numpy(dtype=float)
     bucket = np.clip(np.floor(probability * bins).astype(int), 0, bins - 1)
@@ -67,6 +70,12 @@ def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.Da
             }
         )
     return pd.DataFrame(rows)
+
+
+def _require_columns(frame: pd.DataFrame, columns: list[str]) -> None:
+    missing = sorted(set(columns) - set(frame.columns))
+    if missing:
+        raise ValueError(f"missing evaluation columns: {missing}")
 
 
 def _directional_accuracy(score: np.ndarray, target: np.ndarray) -> float:

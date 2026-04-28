@@ -19,3 +19,24 @@ def test_evaluation_rejects_empty_frames() -> None:
         evaluate_signals(pd.DataFrame())
     with pytest.raises(ValueError, match="empty"):
         regime_metrics(pd.DataFrame())
+
+
+def test_evaluation_rejects_missing_columns() -> None:
+    frame = pd.DataFrame(
+        {
+            "raw_imbalance": [0.1, -0.2],
+            "future_direction": [1, 0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="lcri"):
+        evaluate_signals(frame)
+    with pytest.raises(ValueError, match="regime"):
+        regime_metrics(frame.assign(lcri=[0.3, -0.4]))
+
+
+def test_calibration_curve_rejects_missing_signal() -> None:
+    frame = pd.DataFrame({"future_direction": [1, 0]})
+
+    with pytest.raises(ValueError, match="missing_signal"):
+        calibration_curve(frame, signal="missing_signal")
