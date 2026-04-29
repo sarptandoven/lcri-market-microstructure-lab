@@ -4,12 +4,30 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from lcri_lab.cli import describe_model, fit_model, score_model
+from lcri_lab.cli import describe_model, fit_model, normalize_snapshots, score_model
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
 
 def _write_snapshots(path: Path, rows: int = 150) -> None:
     simulate_order_books(SimulationConfig(rows=rows, seed=13)).to_csv(path, index=False)
+
+
+def test_normalize_snapshots_writes_derived_state(tmp_path: Path) -> None:
+    input_path = tmp_path / "raw.csv"
+    output_path = tmp_path / "normalized.csv"
+    pd.DataFrame(
+        {
+            "bid_px_1": [99.99, 100.00],
+            "ask_px_1": [100.01, 100.03],
+            "bid_sz_1": [10.0, 12.0],
+            "ask_sz_1": [9.0, 11.0],
+        }
+    ).to_csv(input_path, index=False)
+
+    normalize_snapshots(input_path, output_path, tick_size=0.01, levels=1, derive_state=True)
+
+    columns = pd.read_csv(output_path).columns
+    assert {"mid", "spread_ticks", "volatility", "replenishment_rate"}.issubset(columns)
 
 
 def test_fit_model_persists_requested_ridge(tmp_path: Path) -> None:

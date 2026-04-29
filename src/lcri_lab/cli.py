@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from lcri_lab.evaluation import evaluate_signals, regime_metrics
+from lcri_lab.ingest import normalize_l2_snapshots
 from lcri_lab.model import LCRIModel, ModelConfig
 from lcri_lab.plotting import write_figures
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
@@ -20,6 +21,13 @@ def main() -> None:
     demo.add_argument("--seed", type=int, default=7)
     demo.add_argument("--train-frac", type=float, default=0.70)
     demo.add_argument("--output", type=Path, default=Path("reports"))
+
+    normalize = subparsers.add_parser("normalize", help="normalize flat L2 snapshots")
+    normalize.add_argument("--input", type=Path, required=True)
+    normalize.add_argument("--output", type=Path, required=True)
+    normalize.add_argument("--tick-size", type=float, required=True)
+    normalize.add_argument("--levels", type=int, default=5)
+    normalize.add_argument("--derive-state", action="store_true")
 
     fit = subparsers.add_parser("fit", help="fit an LCRI model from order book snapshots")
     fit.add_argument("--input", type=Path, required=True)
@@ -40,6 +48,14 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "run-demo":
         run_demo(rows=args.rows, seed=args.seed, train_frac=args.train_frac, output=args.output)
+    elif args.command == "normalize":
+        normalize_snapshots(
+            input_path=args.input,
+            output_path=args.output,
+            tick_size=args.tick_size,
+            levels=args.levels,
+            derive_state=args.derive_state,
+        )
     elif args.command == "fit":
         fit_model(
             input_path=args.input,
@@ -86,6 +102,22 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"figures: {output / 'figures'}")
     print()
     print(metrics.to_string(index=False))
+
+
+def normalize_snapshots(
+    input_path: Path,
+    output_path: Path,
+    tick_size: float,
+    levels: int = 5,
+    derive_state: bool = False,
+) -> None:
+    frame = pd.read_csv(input_path)
+    normalized = normalize_l2_snapshots(
+        frame, tick_size=tick_size, levels=levels, derive_state=derive_state
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    normalized.to_csv(output_path, index=False)
+    print(f"Wrote normalized snapshots: {output_path}")
 
 
 def fit_model(

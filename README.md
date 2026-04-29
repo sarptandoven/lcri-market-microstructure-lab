@@ -110,6 +110,17 @@ Persisted models include a `schema_version` field so incompatible artifact chang
 
 ## CLI usage
 
+Normalize flat L2 snapshots before fitting or scoring:
+
+```bash
+lcri-lab normalize \
+  --input raw_l2.csv \
+  --output snapshots.csv \
+  --tick-size 0.01 \
+  --levels 5 \
+  --derive-state
+```
+
 Fit a model from normalized snapshots:
 
 ```bash
