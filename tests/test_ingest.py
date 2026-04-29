@@ -25,6 +25,15 @@ def test_normalize_l2_snapshots_derives_top_of_book_fields() -> None:
     assert normalized["regime"].tolist() == ["unclassified", "unclassified"]
 
 
+def test_normalize_l2_snapshots_can_derive_state_features() -> None:
+    normalized = normalize_l2_snapshots(
+        _raw_snapshots(), tick_size=0.01, levels=1, derive_state=True
+    )
+
+    assert normalized["volatility"].tolist() == pytest.approx([0.0, 0.000106066])
+    assert normalized["replenishment_rate"].tolist() == pytest.approx([1.0, 0.826087])
+
+
 def test_normalize_l2_snapshots_rejects_crossed_quotes() -> None:
     frame = _raw_snapshots()
     frame.loc[0, "ask_px_1"] = 99.98

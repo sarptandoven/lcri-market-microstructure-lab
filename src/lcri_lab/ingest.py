@@ -11,6 +11,8 @@ def normalize_l2_snapshots(
     *,
     tick_size: float,
     levels: int = 5,
+    derive_state: bool = False,
+    volatility_window: int = 20,
 ) -> pd.DataFrame:
     """Normalize flat L2 snapshots into the package scoring schema.
 
@@ -62,4 +64,40 @@ def normalize_l2_snapshots(
         output["next_mid"] = output["mid"].shift(-1).fillna(output["mid"])
     if "regime" not in output:
         output["regime"] = "unclassified"
+    if derive_state:
+        output = add_l2_state_features(output, levels=levels, volatility_window=volatility_window)
+    return output
+
+
+def add_l2_state_features(
+    frame: pd.DataFrame,
+    *,
+    levels: int = 5,
+    volatility_window: int = 20,
+) -> pd.DataFrame:
+    """Fill state features required by the model from normalized L2 snapshots."""
+    if levels < 1:
+        raise ValueError("levels must be at least 1")
+    if volatility_window < 2:
+        raise ValueError("volatility_window must be at least 2")
+
+    output = frame.copy()
+    size_columns = [
+        f"{side}_sz_{level}"
+        for level in range(1, levels + 1)
+        for side in ("bid", "ask")
+    ]
+    required = ["mid", *size_columns]
+    missing = sorted(set(required) - set(output.columns))
+    if missing:
+        raise ValueError(f"missing normalized L2 columns: {missing}")
+
+    depth = output[size_columns].sum(axis=1)
+    depth_change = depth.diff().abs().fillna(0.0)
+    returns = output["mid"].astype(float).pct_change().fillna(0.0)
+
+    if "volatility" not in output:
+        output["volatility"] = returns.rolling(volatility_window, min_periods=2).std().fillna(0.0)
+    if "replenishment_rate" not in output:
+        output["replenishment_rate"] = (1.0 - depth_change / depth.replace(0.0, np.nan)).clip(0.0, 1.0).fillna(1.0)
     return output
