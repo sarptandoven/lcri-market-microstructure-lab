@@ -19,3 +19,8 @@ def test_public_api_exports_design_feature_names() -> None:
 def test_public_api_exports_signal_lift_summary() -> None:
     assert callable(lcri_lab.summarize_signal_lift)
     assert "summarize_signal_lift" in lcri_lab.__all__
+
+
+def test_public_api_exports_regime_tagger() -> None:
+    assert callable(lcri_lab.tag_liquidity_regimes)
+    assert "tag_liquidity_regimes" in lcri_lab.__all__

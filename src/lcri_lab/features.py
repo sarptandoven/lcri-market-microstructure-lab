@@ -48,6 +48,32 @@ def compute_features(order_books: pd.DataFrame, levels: int = 5) -> pd.DataFrame
     return frame
 
 
+def tag_liquidity_regimes(frame: pd.DataFrame) -> pd.DataFrame:
+    """Assign coarse liquidity regimes from spread, depth, volatility, and replenishment."""
+    required = ["spread_ticks", "volatility", "replenishment_rate", "liquidity_score"]
+    missing = sorted(set(required) - set(frame.columns))
+    if missing:
+        raise ValueError(f"missing regime tagging columns: {missing}")
+
+    output = frame.copy()
+    score = output["liquidity_score"].astype(float)
+    low_score = score.quantile(0.30)
+    high_score = score.quantile(0.70)
+    high_vol = output["volatility"].astype(float).quantile(0.75)
+
+    regimes = np.select(
+        [
+            (output["spread_ticks"] >= 4) | (output["volatility"] >= high_vol),
+            (score <= low_score) & (output["replenishment_rate"] < 0.50),
+            (score >= high_score) & (output["replenishment_rate"] >= 0.75),
+        ],
+        ["stressed", "thin", "replenishing"],
+        default="thick",
+    )
+    output["regime"] = regimes.astype(str)
+    return output
+
+
 def feature_columns() -> list[str]:
     return [
         "spread_ticks",

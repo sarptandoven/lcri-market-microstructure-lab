@@ -1,4 +1,4 @@
-from lcri_lab.features import compute_features
+from lcri_lab.features import compute_features, tag_liquidity_regimes
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
 
@@ -18,6 +18,16 @@ def test_compute_features_adds_expected_columns() -> None:
 
     assert features["raw_imbalance"].between(-1, 1).all()
     assert features["total_depth"].gt(0).all()
+
+
+def test_tag_liquidity_regimes_overwrites_unclassified_regime() -> None:
+    books = simulate_order_books(SimulationConfig(rows=100, seed=2))
+    features = compute_features(books).assign(regime="unclassified")
+
+    tagged = tag_liquidity_regimes(features)
+
+    assert set(tagged["regime"]).issubset({"thick", "thin", "stressed", "replenishing"})
+    assert tagged["regime"].nunique() > 1
 
 
 def test_compute_features_rejects_incomplete_snapshots() -> None:
