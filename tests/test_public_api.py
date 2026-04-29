@@ -24,3 +24,8 @@ def test_public_api_exports_signal_lift_summary() -> None:
 def test_public_api_exports_regime_tagger() -> None:
     assert callable(lcri_lab.tag_liquidity_regimes)
     assert "tag_liquidity_regimes" in lcri_lab.__all__
+
+
+def test_public_api_exports_cost_aware_labels() -> None:
+    assert callable(lcri_lab.add_transaction_cost_labels)
+    assert "add_transaction_cost_labels" in lcri_lab.__all__
