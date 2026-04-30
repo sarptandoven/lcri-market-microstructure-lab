@@ -8,3 +8,19 @@ reports/*.csv
 reports/*.json
 reports/figures/*.png
 reports/example/
+
+# Local OpenClaw workspace files
+.openclaw/
+.bootstrap-archive/
+state/
+AGENTS.md
+HEARTBEAT.md
+IDENTITY.md
+MEMORY.md
+SOUL.md
+TOOLS.md
+USER.md
+ltx23_ugc/
+ltx23_research/
+quant_pdf_extract.txt
+wananimate_colab.ipynb

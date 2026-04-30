@@ -177,6 +177,8 @@ src/lcri_lab/
   baseline.py       liquidity-conditioned baseline estimator
   model.py          fit, score, save, and load interface
   evaluation.py     metrics and regime-stratified analysis
+  labels.py         transaction-cost-aware labels
+  publishability.py publishable edge gate
   plotting.py       report figures
   cli.py            command-line interface
 
@@ -195,12 +197,12 @@ tests/
 - The included workflow uses synthetic data.
 - Real order book feeds must be normalized into the snapshot schema before scoring.
 - The current baseline is linear and transparent by design.
-- Queue position, fill probability, and transaction-cost-aware labels are not implemented yet.
+- Queue position and fill probability are not implemented yet.
 
 ## Next steps
 
 - Add a real-data adapter for normalized TAQ or crypto L2 snapshots.
 - Add nonlinear baseline estimators with identical `fit` and `score_frame` semantics.
-- Add transaction-complete labels after spread, slippage, and queue position.
+- Extend the publishability gate with queue-position-aware fill probability.
 - Add event-window regime tagging.
 - Add model cards with fitted coefficients and residual scales.
