@@ -22,6 +22,9 @@ def test_design_feature_names_include_interactions() -> None:
     names = design_feature_names()
 
     assert "spread_ticks" in names
+    assert "imbalance_fracture" in names
+    assert "liquidity_void_ratio" in names
+    assert "resilience_asymmetry" in names
     assert "spread_x_replenishment" in names
     assert "log_depth_x_depth_slope" in names
 

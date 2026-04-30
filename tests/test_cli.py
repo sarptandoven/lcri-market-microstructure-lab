@@ -53,9 +53,9 @@ def test_describe_model_prints_artifact_metadata(
     describe_model(model_path)
     output = capsys.readouterr().out
 
-    assert "schema_version: 1" in output
+    assert "schema_version: 2" in output
     assert "levels: 5" in output
-    assert "features: 10" in output
+    assert "features: 14" in output
 
 
 def test_score_model_writes_selected_columns(tmp_path: Path) -> None:

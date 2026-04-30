@@ -60,7 +60,7 @@ def test_model_load_rejects_unsupported_artifact_version(tmp_path) -> None:
     books = simulate_order_books(SimulationConfig(rows=120, seed=15))
     path = tmp_path / "model.json"
     LCRIModel().fit(books).save(path)
-    path.write_text(path.read_text().replace('"schema_version": 1', '"schema_version": 99'))
+    path.write_text(path.read_text().replace(f'"schema_version": {ARTIFACT_VERSION}', '"schema_version": 99'))
 
     with pytest.raises(ValueError, match="schema_version"):
         LCRIModel.load(path)

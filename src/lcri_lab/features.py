@@ -40,6 +40,12 @@ def compute_features(order_books: pd.DataFrame, levels: int = 5) -> pd.DataFrame
         frame["top_bid_depth"] - frame["top_ask_depth"],
         frame["total_depth"],
     )
+    frame["imbalance_fracture"] = frame["top_imbalance"] - frame["raw_imbalance"]
+    frame["liquidity_void_ratio"] = _liquidity_void_ratio(frame, bid_cols, ask_cols)
+    frame["depth_convexity"] = _depth_convexity(frame, bid_cols, ask_cols)
+    frame["resilience_asymmetry"] = (
+        frame["queue_pressure"] * frame["spread_ticks"] / (1.0 + frame["replenishment_rate"])
+    )
     frame["spread_depth_ratio"] = _safe_divide(frame["spread"], np.log1p(frame["total_depth"]))
     frame["liquidity_score"] = (
         frame["log_total_depth"] * frame["replenishment_rate"] / (1.0 + frame["spread_ticks"])
@@ -81,6 +87,10 @@ def feature_columns() -> list[str]:
         "replenishment_rate",
         "log_total_depth",
         "depth_slope",
+        "imbalance_fracture",
+        "liquidity_void_ratio",
+        "depth_convexity",
+        "resilience_asymmetry",
         "spread_depth_ratio",
         "liquidity_score",
     ]
@@ -108,3 +118,29 @@ def _depth_slope(frame: pd.DataFrame, bid_cols: list[str], ask_cols: list[str]) 
     near = frame[[bid_cols[0], ask_cols[0]]].sum(axis=1)
     far = frame[[bid_cols[-1], ask_cols[-1]]].sum(axis=1)
     return _safe_divide(near - far, near + far).fillna(0.0)
+
+
+def _combined_depth(frame: pd.DataFrame, bid_cols: list[str], ask_cols: list[str]) -> np.ndarray:
+    return frame[bid_cols].to_numpy(dtype=float) + frame[ask_cols].to_numpy(dtype=float)
+
+
+def _liquidity_void_ratio(
+    frame: pd.DataFrame, bid_cols: list[str], ask_cols: list[str]
+) -> pd.Series:
+    depth = _combined_depth(frame, bid_cols, ask_cols)
+    if depth.shape[1] < 2:
+        return pd.Series(np.zeros(len(frame)), index=frame.index)
+    adjacent_drop = np.maximum(depth[:, :-1] - depth[:, 1:], 0.0)
+    largest_void = adjacent_drop.max(axis=1)
+    total_depth = depth.sum(axis=1)
+    return pd.Series(largest_void / np.where(total_depth == 0.0, np.nan, total_depth), index=frame.index).fillna(0.0)
+
+
+def _depth_convexity(frame: pd.DataFrame, bid_cols: list[str], ask_cols: list[str]) -> pd.Series:
+    depth = _combined_depth(frame, bid_cols, ask_cols)
+    if depth.shape[1] < 3:
+        return pd.Series(np.zeros(len(frame)), index=frame.index)
+    center = depth[:, depth.shape[1] // 2]
+    curvature = depth[:, 0] + depth[:, -1] - 2.0 * center
+    total_depth = depth.sum(axis=1)
+    return pd.Series(curvature / np.where(total_depth == 0.0, np.nan, total_depth), index=frame.index).fillna(0.0)

@@ -7,12 +7,14 @@ def test_public_api_exports_calibration_curve() -> None:
 
 
 def test_public_api_exports_artifact_version() -> None:
-    assert lcri_lab.ARTIFACT_VERSION == 1
+    assert lcri_lab.ARTIFACT_VERSION == 2
     assert "ARTIFACT_VERSION" in lcri_lab.__all__
 
 
 def test_public_api_exports_design_feature_names() -> None:
-    assert "spread_x_replenishment" in lcri_lab.design_feature_names()
+    names = lcri_lab.design_feature_names()
+    assert "spread_x_replenishment" in names
+    assert "imbalance_fracture" in names
     assert "design_feature_names" in lcri_lab.__all__
 
 
