@@ -179,6 +179,7 @@ src/lcri_lab/
   evaluation.py     metrics and regime-stratified analysis
   labels.py         transaction-cost-aware labels
   publishability.py publishable edge gate
+  memory.py         rolling pressure persistence features
   plotting.py       report figures
   cli.py            command-line interface
 
@@ -203,6 +204,7 @@ tests/
 
 - Add a real-data adapter for normalized TAQ or crypto L2 snapshots.
 - Evaluate liquidity fracture features on real L2 data against raw LCRI.
+- Test whether pressure memory improves publishable-edge filtering.
 - Add nonlinear baseline estimators with identical `fit` and `score_frame` semantics.
 - Extend the publishability gate with queue-position-aware fill probability.
 - Add event-window regime tagging.
