@@ -10,7 +10,7 @@ bid_depth - ask_depth
 bid_depth + ask_depth
 ```
 
-That ratio is incomplete by itself. The same imbalance can have different information content depending on spread, total depth, replenishment, volatility, and the current liquidity regime. This package estimates the expected imbalance under local liquidity conditions, then scores the residual pressure that remains after the local baseline is removed.
+That ratio is incomplete by itself. The same imbalance can have different information content depending on spread, total depth, replenishment, volatility, the current liquidity regime, and whether the visible book is internally coherent. This package estimates the expected imbalance under local liquidity conditions, then scores the residual pressure that remains after the local baseline is removed.
 
 ## Model
 
@@ -173,7 +173,7 @@ The controlled simulation includes structural liquidity bias, spread changes, de
 ```text
 src/lcri_lab/
   simulator.py      synthetic order book generation
-  features.py       imbalance and liquidity-state features
+  features.py       imbalance, liquidity-state, and fracture features
   baseline.py       liquidity-conditioned baseline estimator
   model.py          fit, score, save, and load interface
   evaluation.py     metrics and regime-stratified analysis
@@ -202,6 +202,7 @@ tests/
 ## Next steps
 
 - Add a real-data adapter for normalized TAQ or crypto L2 snapshots.
+- Evaluate liquidity fracture features on real L2 data against raw LCRI.
 - Add nonlinear baseline estimators with identical `fit` and `score_frame` semantics.
 - Extend the publishability gate with queue-position-aware fill probability.
 - Add event-window regime tagging.
