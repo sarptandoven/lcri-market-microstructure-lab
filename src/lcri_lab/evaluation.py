@@ -43,6 +43,35 @@ def compare_transmission_signal(frame: pd.DataFrame) -> dict[str, float]:
     }
 
 
+def absorption_regime_metrics(frame: pd.DataFrame) -> pd.DataFrame:
+    """Evaluate LCRI and transmission pressure inside each absorption regime."""
+    if frame.empty:
+        raise ValueError("cannot evaluate an empty frame")
+    _require_columns(
+        frame,
+        ["absorption_regime", "lcri", "transmission_pressure", "future_direction"],
+    )
+
+    rows = []
+    for regime, group in frame.groupby("absorption_regime", sort=True):
+        metrics = evaluate_signals(group, signals=["lcri", "transmission_pressure"])
+        for row in metrics.to_dict("records"):
+            row["absorption_regime"] = regime
+            row["rows"] = len(group)
+            rows.append(row)
+    return pd.DataFrame(rows)[
+        [
+            "absorption_regime",
+            "signal",
+            "rows",
+            "directional_accuracy",
+            "brier_score",
+            "rank_correlation",
+            "mean_abs_score",
+        ]
+    ]
+
+
 def regime_metrics(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty:
         raise ValueError("cannot evaluate an empty frame")

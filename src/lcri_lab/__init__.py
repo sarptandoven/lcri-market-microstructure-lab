@@ -3,6 +3,7 @@
 from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.baseline import LiquidityBaseline, compute_lcri, design_feature_names
 from lcri_lab.evaluation import (
+    absorption_regime_metrics,
     calibration_curve,
     compare_transmission_signal,
     evaluate_signals,
@@ -21,6 +22,7 @@ from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
 __all__ = [
     "ARTIFACT_VERSION",
+    "absorption_regime_metrics",
     "add_transaction_cost_labels",
     "add_pressure_memory",
     "add_shadow_absorption",
