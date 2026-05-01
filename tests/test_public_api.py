@@ -31,3 +31,8 @@ def test_public_api_exports_regime_tagger() -> None:
 def test_public_api_exports_cost_aware_labels() -> None:
     assert callable(lcri_lab.add_transaction_cost_labels)
     assert "add_transaction_cost_labels" in lcri_lab.__all__
+
+
+def test_public_api_exports_cost_aware_evaluation() -> None:
+    assert callable(lcri_lab.evaluate_cost_aware_signals)
+    assert "evaluate_cost_aware_signals" in lcri_lab.__all__

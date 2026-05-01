@@ -18,3 +18,14 @@ Representative output:
 The important point is not the absolute number. The controlled setup creates structural order book bias from liquidity state, then evaluates whether subtracting a liquidity-conditioned baseline recovers more useful pressure information.
 
 In this run, LCRI improves directional accuracy, Brier score, and rank correlation versus raw imbalance.
+
+
+## Cost-aware evaluation
+
+The research workflow now separates direction from tradability.
+
+A move can have the correct sign but still fail after spread and slippage.
+Cost-aware evaluation uses `cost_aware_direction` so weak moves become
+abstentions instead of hidden false positives.
+
+This is the right comparison point for publishable signal delivery.
