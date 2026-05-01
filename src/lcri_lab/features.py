@@ -80,6 +80,33 @@ def tag_liquidity_regimes(frame: pd.DataFrame) -> pd.DataFrame:
     return output
 
 
+def add_regime_transition_features(
+    frame: pd.DataFrame,
+    *,
+    window: int = 10,
+    regime_col: str = "regime",
+) -> pd.DataFrame:
+    """Add features that mark liquidity-regime transitions."""
+    if window < 1:
+        raise ValueError("window must be at least 1")
+    if regime_col not in frame.columns:
+        raise ValueError(f"missing regime column: {regime_col}")
+
+    output = frame.copy()
+    regime = output[regime_col].astype(str)
+    previous = regime.shift(1).fillna(regime.iloc[0] if len(regime) else "")
+    changed = regime != previous
+
+    output["regime_changed"] = changed.astype(int)
+    output["stressed_entry"] = ((regime == "stressed") & changed).astype(int)
+    output["thin_entry"] = ((regime == "thin") & changed).astype(int)
+    output["regime_transition_count"] = (
+        output["regime_changed"].rolling(window=window, min_periods=1).sum().astype(float)
+    )
+    output["regime_transition_intensity"] = output["regime_transition_count"] / float(window)
+    return output
+
+
 def feature_columns() -> list[str]:
     return [
         "spread_ticks",

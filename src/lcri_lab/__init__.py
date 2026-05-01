@@ -13,7 +13,11 @@ from lcri_lab.evaluation import (
     regime_metrics,
     summarize_signal_lift,
 )
-from lcri_lab.features import compute_features, tag_liquidity_regimes
+from lcri_lab.features import (
+    add_regime_transition_features,
+    compute_features,
+    tag_liquidity_regimes,
+)
 from lcri_lab.labels import add_transaction_cost_labels
 from lcri_lab.memory import add_pressure_memory
 from lcri_lab.model import ARTIFACT_VERSION, LCRIModel, ModelConfig
@@ -28,6 +32,7 @@ __all__ = [
     "absorption_regime_metrics",
     "add_transaction_cost_labels",
     "add_pressure_memory",
+    "add_regime_transition_features",
     "add_shadow_absorption",
     "add_publishability_gate",
     "add_queue_reversal_risk",
