@@ -18,6 +18,7 @@ from lcri_lab.model import ARTIFACT_VERSION, LCRIModel, ModelConfig
 from lcri_lab.publishability import PublishabilityConfig, add_publishability_gate
 from lcri_lab.reversal import add_queue_reversal_risk
 from lcri_lab.schema import snapshot_required_columns
+from lcri_lab.sensitivity import publishability_latency_sweep
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
 __all__ = [
@@ -32,6 +33,7 @@ __all__ = [
     "LiquidityBaseline",
     "ModelConfig",
     "PublishabilityConfig",
+    "publishability_latency_sweep",
     "SimulationConfig",
     "calibration_curve",
     "compare_transmission_signal",
