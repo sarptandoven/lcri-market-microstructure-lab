@@ -109,6 +109,34 @@ def summarize_signal_lift(frame: pd.DataFrame) -> dict[str, float]:
     }
 
 
+def transition_signal_lift(
+    frame: pd.DataFrame,
+    *,
+    transition_col: str = "regime_changed",
+) -> pd.DataFrame:
+    """Summarize LCRI lift over raw imbalance during stable and transition periods."""
+    metrics = transition_conditioned_metrics(frame, transition_col=transition_col)
+    rows = []
+    for segment, group in metrics.groupby("segment", sort=True):
+        by_signal = group.set_index("signal")
+        raw = by_signal.loc["raw_imbalance"]
+        lcri = by_signal.loc["lcri"]
+        rows.append(
+            {
+                "segment": segment,
+                "rows": int(lcri["rows"]),
+                "directional_accuracy_lift": float(
+                    lcri["directional_accuracy"] - raw["directional_accuracy"]
+                ),
+                "brier_score_reduction": float(raw["brier_score"] - lcri["brier_score"]),
+                "rank_correlation_lift": float(
+                    lcri["rank_correlation"] - raw["rank_correlation"]
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def transition_conditioned_metrics(
     frame: pd.DataFrame,
     signals: list[str] | None = None,

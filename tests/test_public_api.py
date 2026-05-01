@@ -41,3 +41,8 @@ def test_public_api_exports_cost_aware_evaluation() -> None:
 def test_public_api_exports_transition_conditioned_metrics() -> None:
     assert callable(lcri_lab.transition_conditioned_metrics)
     assert "transition_conditioned_metrics" in lcri_lab.__all__
+
+
+def test_public_api_exports_transition_signal_lift() -> None:
+    assert callable(lcri_lab.transition_signal_lift)
+    assert "transition_signal_lift" in lcri_lab.__all__
