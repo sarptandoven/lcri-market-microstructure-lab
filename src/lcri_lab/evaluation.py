@@ -137,6 +137,48 @@ def transition_signal_lift(
     return pd.DataFrame(rows)
 
 
+def transition_robustness_summary(
+    frame: pd.DataFrame,
+    *,
+    transition_col: str = "regime_changed",
+    min_accuracy_lift: float = 0.0,
+) -> dict[str, float | bool]:
+    """Summarize whether LCRI lift survives both stable and transition periods."""
+    lift = transition_signal_lift(frame, transition_col=transition_col).set_index("segment")
+    stable = lift.loc["stable"] if "stable" in lift.index else None
+    transition = lift.loc["transition"] if "transition" in lift.index else None
+
+    stable_accuracy_lift = (
+        float(stable["directional_accuracy_lift"]) if stable is not None else 0.0
+    )
+    transition_accuracy_lift = (
+        float(transition["directional_accuracy_lift"]) if transition is not None else 0.0
+    )
+    stable_rows = int(stable["rows"]) if stable is not None else 0
+    transition_rows = int(transition["rows"]) if transition is not None else 0
+
+    return {
+        "stable_rows": stable_rows,
+        "transition_rows": transition_rows,
+        "stable_directional_accuracy_lift": stable_accuracy_lift,
+        "transition_directional_accuracy_lift": transition_accuracy_lift,
+        "minimum_directional_accuracy_lift": min(
+            stable_accuracy_lift,
+            transition_accuracy_lift,
+        ),
+        "transition_to_stable_lift_ratio": _safe_scalar_divide(
+            transition_accuracy_lift,
+            stable_accuracy_lift,
+        ),
+        "passes_transition_robustness": bool(
+            stable_rows > 0
+            and transition_rows > 0
+            and stable_accuracy_lift >= min_accuracy_lift
+            and transition_accuracy_lift >= min_accuracy_lift
+        ),
+    }
+
+
 def transition_conditioned_metrics(
     frame: pd.DataFrame,
     signals: list[str] | None = None,
@@ -326,6 +368,12 @@ def _standardize(score: np.ndarray) -> np.ndarray:
 def _logistic(score: np.ndarray) -> np.ndarray:
     clipped = np.clip(score, -20.0, 20.0)
     return 1.0 / (1.0 + np.exp(-clipped))
+
+
+def _safe_scalar_divide(numerator: float, denominator: float) -> float:
+    if denominator == 0.0:
+        return 0.0
+    return float(numerator / denominator)
 
 
 def _spearman(score: np.ndarray, target: np.ndarray) -> float:

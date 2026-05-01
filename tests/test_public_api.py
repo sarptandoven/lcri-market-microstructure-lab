@@ -46,3 +46,8 @@ def test_public_api_exports_transition_conditioned_metrics() -> None:
 def test_public_api_exports_transition_signal_lift() -> None:
     assert callable(lcri_lab.transition_signal_lift)
     assert "transition_signal_lift" in lcri_lab.__all__
+
+
+def test_public_api_exports_transition_robustness_summary() -> None:
+    assert callable(lcri_lab.transition_robustness_summary)
+    assert "transition_robustness_summary" in lcri_lab.__all__
