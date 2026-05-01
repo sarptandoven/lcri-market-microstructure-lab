@@ -208,6 +208,7 @@ tests/
 - Test whether pressure memory improves publishable-edge filtering.
 - Compare publishable-edge hit rate across shadow absorption regimes.
 - Track residual tail diagnostics by side, threshold, and absorption state.
+- Audit feature stability by liquidity regime before model promotion.
 - Add nonlinear baseline estimators with identical `fit` and `score_frame` semantics.
 - Extend the publishability gate with queue-position-aware fill probability.
 - Add event-window regime tagging.
