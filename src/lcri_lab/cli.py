@@ -9,12 +9,14 @@ from lcri_lab.evaluation import (
     evaluate_signals,
     regime_metrics,
     transition_conditioned_metrics,
+    transition_robustness_summary,
     transition_signal_lift,
 )
 from lcri_lab.features import add_regime_transition_features
 from lcri_lab.ingest import normalize_l2_snapshots
 from lcri_lab.model import LCRIModel, ModelConfig
 from lcri_lab.plotting import write_figures
+from lcri_lab.reporting import build_artifact_manifest, write_json, write_research_summary
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
 
@@ -93,6 +95,22 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     by_regime = regime_metrics(scored)
     by_transition = transition_conditioned_metrics(scored)
     transition_lift = transition_signal_lift(scored)
+    transition_robustness = transition_robustness_summary(scored)
+
+    artifact_paths = [
+        "lcri-model.json",
+        "sample_snapshots.csv",
+        "metrics.csv",
+        "regime_metrics.csv",
+        "transition_metrics.csv",
+        "transition_lift.csv",
+        "transition_robustness.json",
+        "research_summary.md",
+        "figures/raw_vs_lcri_scatter.png",
+        "figures/regime_signal_quality.png",
+        "figures/transition_signal_quality.png",
+        "figures/calibration_curve.png",
+    ]
 
     model.save(output / "lcri-model.json")
     scored.head(500).to_csv(output / "sample_snapshots.csv", index=False)
@@ -100,9 +118,30 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
     by_transition.to_csv(output / "transition_metrics.csv", index=False)
     transition_lift.to_csv(output / "transition_lift.csv", index=False)
+    write_json(output / "transition_robustness.json", transition_robustness)
     write_figures(scored, by_regime, output / "figures", transition_table=by_transition)
 
     heldout_rows = len(books) - len(train)
+    write_research_summary(
+        output / "research_summary.md",
+        rows=len(books),
+        train_rows=len(train),
+        heldout_rows=heldout_rows,
+        seed=seed,
+        train_frac=train_frac,
+        metrics=metrics,
+        transition_lift=transition_lift,
+        transition_robustness=transition_robustness,
+    )
+    manifest = build_artifact_manifest(
+        rows=len(books),
+        train_rows=len(train),
+        heldout_rows=heldout_rows,
+        seed=seed,
+        train_frac=train_frac,
+        artifacts=artifact_paths,
+    )
+    write_json(output / "artifact_manifest.json", manifest)
     print("Wrote research artifacts")
     print(f"rows: {len(books)} total, {len(train)} train, {heldout_rows} held out")
     print(f"train fraction: {train_frac:.2f}")
@@ -111,6 +150,9 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"regime metrics: {output / 'regime_metrics.csv'}")
     print(f"transition metrics: {output / 'transition_metrics.csv'}")
     print(f"transition lift: {output / 'transition_lift.csv'}")
+    print(f"transition robustness: {output / 'transition_robustness.json'}")
+    print(f"summary: {output / 'research_summary.md'}")
+    print(f"manifest: {output / 'artifact_manifest.json'}")
     print(f"figures: {output / 'figures'}")
     print()
     print(metrics.to_string(index=False))
