@@ -8,6 +8,7 @@ from lcri_lab.labels import add_transaction_cost_labels
 from lcri_lab.memory import add_pressure_memory
 from lcri_lab.model import ARTIFACT_VERSION, LCRIModel, ModelConfig
 from lcri_lab.publishability import PublishabilityConfig, add_publishability_gate
+from lcri_lab.reversal import add_queue_reversal_risk
 from lcri_lab.schema import snapshot_required_columns
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
@@ -17,6 +18,7 @@ __all__ = [
     "add_pressure_memory",
     "add_shadow_absorption",
     "add_publishability_gate",
+    "add_queue_reversal_risk",
     "LCRIModel",
     "LiquidityBaseline",
     "ModelConfig",
