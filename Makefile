@@ -15,4 +15,4 @@ lint:
 
 clean:
 	find . -type d -name '__pycache__' -prune -exec rm -rf {} +
-	rm -rf .pytest_cache .ruff_cache reports/*.csv reports/figures/*.png
+	rm -rf .pytest_cache .ruff_cache reports/*.csv reports/*.json reports/*.md reports/figures/*.png
