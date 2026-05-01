@@ -4,6 +4,7 @@ from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.baseline import LiquidityBaseline, compute_lcri, design_feature_names
 from lcri_lab.evaluation import (
     calibration_curve,
+    compare_transmission_signal,
     evaluate_signals,
     lcri_tail_diagnostics,
     regime_metrics,
@@ -31,6 +32,7 @@ __all__ = [
     "PublishabilityConfig",
     "SimulationConfig",
     "calibration_curve",
+    "compare_transmission_signal",
     "compute_features",
     "compute_lcri",
     "design_feature_names",

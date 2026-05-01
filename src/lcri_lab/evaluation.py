@@ -4,12 +4,13 @@ import numpy as np
 import pandas as pd
 
 
-def evaluate_signals(frame: pd.DataFrame) -> pd.DataFrame:
+def evaluate_signals(frame: pd.DataFrame, signals: list[str] | None = None) -> pd.DataFrame:
     if frame.empty:
         raise ValueError("cannot evaluate an empty frame")
-    _require_columns(frame, ["raw_imbalance", "lcri", "future_direction"])
+    signals = signals or ["raw_imbalance", "lcri"]
+    _require_columns(frame, [*signals, "future_direction"])
     rows = []
-    for signal in ["raw_imbalance", "lcri"]:
+    for signal in signals:
         score = frame[signal].to_numpy(dtype=float)
         target = frame["future_direction"].to_numpy(dtype=float)
         probability = _logistic(_standardize(score))
@@ -23,6 +24,23 @@ def evaluate_signals(frame: pd.DataFrame) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows)
+
+
+def compare_transmission_signal(frame: pd.DataFrame) -> dict[str, float]:
+    """Compare LCRI and transmission pressure as directional signals."""
+    _require_columns(frame, ["lcri", "transmission_pressure", "future_direction"])
+    metrics = evaluate_signals(frame, signals=["lcri", "transmission_pressure"]).set_index("signal")
+    lcri = metrics.loc["lcri"]
+    transmission = metrics.loc["transmission_pressure"]
+    return {
+        "directional_accuracy_delta": float(
+            transmission["directional_accuracy"] - lcri["directional_accuracy"]
+        ),
+        "brier_score_delta": float(transmission["brier_score"] - lcri["brier_score"]),
+        "rank_correlation_delta": float(
+            transmission["rank_correlation"] - lcri["rank_correlation"]
+        ),
+    }
 
 
 def regime_metrics(frame: pd.DataFrame) -> pd.DataFrame:
