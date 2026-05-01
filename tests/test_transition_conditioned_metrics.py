@@ -1,7 +1,11 @@
 import pandas as pd
 import pytest
 
-from lcri_lab.evaluation import transition_conditioned_metrics, transition_signal_lift
+from lcri_lab.evaluation import (
+    transition_conditioned_metrics,
+    transition_robustness_summary,
+    transition_signal_lift,
+)
 
 
 def test_transition_conditioned_metrics_splits_stable_and_transition_rows() -> None:
@@ -49,14 +53,7 @@ def test_transition_conditioned_metrics_rejects_missing_transition_column() -> N
 
 
 def test_transition_signal_lift_summarizes_lcri_against_raw_by_segment() -> None:
-    frame = pd.DataFrame(
-        {
-            "raw_imbalance": [0.2, -0.1, -0.7, 0.8, 0.3, -0.2],
-            "lcri": [0.4, -0.2, 1.1, -1.4, 0.5, -0.3],
-            "future_direction": [1, 0, 1, 0, 1, 0],
-            "regime_changed": [0, 0, 1, 1, 0, 0],
-        }
-    )
+    frame = _transition_lift_frame()
 
     output = transition_signal_lift(frame)
 
@@ -66,3 +63,33 @@ def test_transition_signal_lift_summarizes_lcri_against_raw_by_segment() -> None
     assert output.loc[output["segment"] == "transition", "directional_accuracy_lift"].iloc[
         0
     ] == pytest.approx(1.0)
+
+
+def test_transition_robustness_summary_requires_lift_in_both_segments() -> None:
+    summary = transition_robustness_summary(_transition_lift_frame(), min_accuracy_lift=0.2)
+
+    assert summary["stable_rows"] == 4
+    assert summary["transition_rows"] == 2
+    assert summary["minimum_directional_accuracy_lift"] == pytest.approx(0.25)
+    assert summary["transition_to_stable_lift_ratio"] == pytest.approx(4.0)
+    assert summary["passes_transition_robustness"] is True
+
+
+def test_transition_robustness_summary_fails_when_transition_lift_is_weak() -> None:
+    frame = _transition_lift_frame().assign(lcri=[0.4, -0.2, -1.1, 1.4, 0.5, -0.3])
+
+    summary = transition_robustness_summary(frame, min_accuracy_lift=0.1)
+
+    assert summary["transition_directional_accuracy_lift"] == pytest.approx(0.0)
+    assert summary["passes_transition_robustness"] is False
+
+
+def _transition_lift_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "raw_imbalance": [0.2, -0.1, -0.7, 0.8, -0.3, -0.2],
+            "lcri": [0.4, -0.2, 1.1, -1.4, 0.5, -0.3],
+            "future_direction": [1, 0, 1, 0, 1, 0],
+            "regime_changed": [0, 0, 1, 1, 0, 0],
+        }
+    )
