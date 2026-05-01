@@ -181,6 +181,38 @@ def lcri_tail_diagnostics(
     return pd.DataFrame(rows)
 
 
+def evaluate_cost_aware_signals(
+    frame: pd.DataFrame,
+    signals: list[str] | None = None,
+) -> pd.DataFrame:
+    """Evaluate signals only where transaction-cost labels choose a side."""
+    if frame.empty:
+        raise ValueError("cannot evaluate an empty frame")
+    signals = signals or ["raw_imbalance", "lcri"]
+    _require_columns(frame, [*signals, "cost_aware_direction"])
+
+    tradable = frame["cost_aware_direction"].to_numpy(dtype=float) != -1.0
+    if not np.any(tradable):
+        raise ValueError("cost-aware evaluation has no tradable rows")
+
+    rows = []
+    target = frame.loc[tradable, "cost_aware_direction"].to_numpy(dtype=float)
+    for signal in signals:
+        score = frame.loc[tradable, signal].to_numpy(dtype=float)
+        probability = _logistic(_standardize(score))
+        rows.append(
+            {
+                "signal": signal,
+                "rows": int(np.sum(tradable)),
+                "abstained_rows": int(len(frame) - np.sum(tradable)),
+                "directional_accuracy": _directional_accuracy(score, target),
+                "brier_score": float(np.mean((probability - target) ** 2)),
+                "rank_correlation": _spearman(score, target),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.DataFrame:
     if bins < 1:
         raise ValueError("bins must be at least 1")
