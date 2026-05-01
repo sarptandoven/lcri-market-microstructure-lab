@@ -12,6 +12,7 @@ from lcri_lab.evaluation import (
     lcri_tail_diagnostics,
     regime_metrics,
     summarize_signal_lift,
+    transition_conditioned_metrics,
 )
 from lcri_lab.features import (
     add_regime_transition_features,
@@ -54,6 +55,7 @@ __all__ = [
     "regime_metrics",
     "summarize_signal_lift",
     "tag_liquidity_regimes",
+    "transition_conditioned_metrics",
     "simulate_order_books",
     "snapshot_required_columns",
 ]

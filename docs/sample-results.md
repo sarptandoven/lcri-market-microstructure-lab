@@ -29,3 +29,12 @@ Cost-aware evaluation uses `cost_aware_direction` so weak moves become
 abstentions instead of hidden false positives.
 
 This is the right comparison point for publishable signal delivery.
+
+## Transition-conditioned evaluation
+
+Liquidity regime changes are evaluated separately from stable periods.
+`transition_conditioned_metrics` compares signal quality on rows where
+`regime_changed` is active versus rows where the regime is stable.
+
+This isolates whether LCRI remains useful during microstructure state changes,
+where static imbalance baselines are most likely to leak regime structure.

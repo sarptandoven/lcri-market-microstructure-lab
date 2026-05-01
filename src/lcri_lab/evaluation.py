@@ -109,6 +109,47 @@ def summarize_signal_lift(frame: pd.DataFrame) -> dict[str, float]:
     }
 
 
+def transition_conditioned_metrics(
+    frame: pd.DataFrame,
+    signals: list[str] | None = None,
+    *,
+    transition_col: str = "regime_changed",
+) -> pd.DataFrame:
+    """Evaluate signals separately around stable and transitioning liquidity states."""
+    if frame.empty:
+        raise ValueError("cannot evaluate an empty frame")
+    signals = signals or ["raw_imbalance", "lcri"]
+    _require_columns(frame, [*signals, "future_direction", transition_col])
+
+    transition = frame[transition_col].to_numpy(dtype=float) > 0.0
+    segments = [
+        ("stable", ~transition),
+        ("transition", transition),
+    ]
+
+    rows = []
+    for segment, mask in segments:
+        if not np.any(mask):
+            continue
+        metrics = evaluate_signals(frame.loc[mask], signals=signals)
+        for row in metrics.to_dict("records"):
+            row["segment"] = segment
+            row["rows"] = int(np.sum(mask))
+            rows.append(row)
+
+    if not rows:
+        raise ValueError("transition-conditioned evaluation has no rows")
+    return pd.DataFrame(rows)[
+        [
+            "segment",
+            "signal",
+            "rows",
+            "directional_accuracy",
+            "brier_score",
+            "rank_correlation",
+            "mean_abs_score",
+        ]
+    ]
 
 
 def feature_stability_report(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
