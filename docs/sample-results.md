@@ -35,6 +35,8 @@ This is the right comparison point for publishable signal delivery.
 Liquidity regime changes are evaluated separately from stable periods.
 `transition_conditioned_metrics` compares signal quality on rows where
 `regime_changed` is active versus rows where the regime is stable.
+`transition_signal_lift` condenses the same split into LCRI lift over raw
+imbalance for accuracy, Brier score, and rank correlation.
 
 This isolates whether LCRI remains useful during microstructure state changes,
 where static imbalance baselines are most likely to leak regime structure.

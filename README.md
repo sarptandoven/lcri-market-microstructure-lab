@@ -79,6 +79,7 @@ reports/
   metrics.csv
   regime_metrics.csv
   transition_metrics.csv
+  transition_lift.csv
   sample_snapshots.csv
 ```
 
