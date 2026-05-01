@@ -111,6 +111,35 @@ def summarize_signal_lift(frame: pd.DataFrame) -> dict[str, float]:
 
 
 
+def feature_stability_report(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Report finite rates and distribution stability for selected features."""
+    if frame.empty:
+        raise ValueError("cannot evaluate an empty frame")
+    if not columns:
+        raise ValueError("columns must be non-empty")
+    _require_columns(frame, ["regime", *columns])
+
+    rows = []
+    for regime, group in frame.groupby("regime", sort=True):
+        for column in columns:
+            values = group[column].to_numpy(dtype=float)
+            finite = np.isfinite(values)
+            finite_values = values[finite]
+            rows.append(
+                {
+                    "regime": regime,
+                    "feature": column,
+                    "rows": len(group),
+                    "finite_rate": float(np.mean(finite)),
+                    "mean": float(np.mean(finite_values)) if len(finite_values) else 0.0,
+                    "std": float(np.std(finite_values)) if len(finite_values) else 0.0,
+                    "p05": float(np.quantile(finite_values, 0.05)) if len(finite_values) else 0.0,
+                    "p95": float(np.quantile(finite_values, 0.95)) if len(finite_values) else 0.0,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def lcri_tail_diagnostics(
     frame: pd.DataFrame,
     thresholds: tuple[float, ...] = (1.0, 2.0, 3.0),
