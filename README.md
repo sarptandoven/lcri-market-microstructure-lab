@@ -74,6 +74,7 @@ reports/
   figures/
     raw_vs_lcri_scatter.png
     regime_signal_quality.png
+    transition_signal_quality.png
     calibration_curve.png
   metrics.csv
   regime_metrics.csv

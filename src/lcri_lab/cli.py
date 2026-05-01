@@ -93,7 +93,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     metrics.to_csv(output / "metrics.csv", index=False)
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
     by_transition.to_csv(output / "transition_metrics.csv", index=False)
-    write_figures(scored, by_regime, output / "figures")
+    write_figures(scored, by_regime, output / "figures", transition_table=by_transition)
 
     heldout_rows = len(books) - len(train)
     print("Wrote research artifacts")
