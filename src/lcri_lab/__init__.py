@@ -1,5 +1,6 @@
 """Liquidity-conditioned residual imbalance research tools."""
 
+from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.baseline import LiquidityBaseline, compute_lcri, design_feature_names
 from lcri_lab.evaluation import calibration_curve, evaluate_signals, regime_metrics, summarize_signal_lift
 from lcri_lab.features import compute_features, tag_liquidity_regimes
@@ -14,6 +15,7 @@ __all__ = [
     "ARTIFACT_VERSION",
     "add_transaction_cost_labels",
     "add_pressure_memory",
+    "add_shadow_absorption",
     "add_publishability_gate",
     "LCRIModel",
     "LiquidityBaseline",
