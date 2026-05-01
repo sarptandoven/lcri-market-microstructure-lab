@@ -2,7 +2,13 @@
 
 from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.baseline import LiquidityBaseline, compute_lcri, design_feature_names
-from lcri_lab.evaluation import calibration_curve, evaluate_signals, regime_metrics, summarize_signal_lift
+from lcri_lab.evaluation import (
+    calibration_curve,
+    evaluate_signals,
+    lcri_tail_diagnostics,
+    regime_metrics,
+    summarize_signal_lift,
+)
 from lcri_lab.features import compute_features, tag_liquidity_regimes
 from lcri_lab.labels import add_transaction_cost_labels
 from lcri_lab.memory import add_pressure_memory
@@ -29,6 +35,7 @@ __all__ = [
     "compute_lcri",
     "design_feature_names",
     "evaluate_signals",
+    "lcri_tail_diagnostics",
     "regime_metrics",
     "summarize_signal_lift",
     "tag_liquidity_regimes",

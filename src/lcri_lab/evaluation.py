@@ -62,6 +62,49 @@ def summarize_signal_lift(frame: pd.DataFrame) -> dict[str, float]:
     }
 
 
+
+
+def lcri_tail_diagnostics(
+    frame: pd.DataFrame,
+    thresholds: tuple[float, ...] = (1.0, 2.0, 3.0),
+) -> pd.DataFrame:
+    """Summarize future behavior in positive and negative LCRI tails."""
+    if frame.empty:
+        raise ValueError("cannot evaluate an empty frame")
+    if not thresholds:
+        raise ValueError("thresholds must be non-empty")
+    _require_columns(frame, ["lcri", "future_direction"])
+
+    future_ticks = None
+    if "future_return_ticks" in frame.columns:
+        future_ticks = frame["future_return_ticks"].to_numpy(dtype=float)
+    score = frame["lcri"].to_numpy(dtype=float)
+    target = frame["future_direction"].to_numpy(dtype=float)
+
+    rows = []
+    for threshold in thresholds:
+        if threshold <= 0.0:
+            raise ValueError("thresholds must be positive")
+        for side, mask, expected_direction in [
+            ("positive", score >= threshold, 1.0),
+            ("negative", score <= -threshold, 0.0),
+        ]:
+            count = int(np.sum(mask))
+            row = {
+                "threshold": float(threshold),
+                "side": side,
+                "rows": count,
+                "hit_rate": 0.0,
+                "mean_future_return_ticks": 0.0,
+            }
+            if count:
+                row["hit_rate"] = float(np.mean(target[mask] == expected_direction))
+                if future_ticks is not None:
+                    row["mean_future_return_ticks"] = float(np.mean(future_ticks[mask]))
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
 def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.DataFrame:
     if bins < 1:
         raise ValueError("bins must be at least 1")
