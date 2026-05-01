@@ -77,6 +77,7 @@ reports/
     calibration_curve.png
   metrics.csv
   regime_metrics.csv
+  transition_metrics.csv
   sample_snapshots.csv
 ```
 
@@ -157,6 +158,7 @@ The default research workflow compares raw imbalance against LCRI using:
 - Brier score
 - rank correlation
 - regime-stratified metrics
+- transition-conditioned metrics
 - calibration curves
 
 Representative synthetic result from the default seed:

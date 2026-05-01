@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from lcri_lab.evaluation import evaluate_signals, regime_metrics
+from lcri_lab.evaluation import evaluate_signals, regime_metrics, transition_conditioned_metrics
+from lcri_lab.features import add_regime_transition_features
 from lcri_lab.ingest import normalize_l2_snapshots
 from lcri_lab.model import LCRIModel, ModelConfig
 from lcri_lab.plotting import write_figures
@@ -81,15 +82,17 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     books = simulate_order_books(SimulationConfig(rows=rows, seed=seed))
     train = books.sample(frac=train_frac, random_state=seed)
     model = LCRIModel().fit(train)
-    scored = model.score_frame(books)
+    scored = add_regime_transition_features(model.score_frame(books))
 
     metrics = evaluate_signals(scored)
     by_regime = regime_metrics(scored)
+    by_transition = transition_conditioned_metrics(scored)
 
     model.save(output / "lcri-model.json")
     scored.head(500).to_csv(output / "sample_snapshots.csv", index=False)
     metrics.to_csv(output / "metrics.csv", index=False)
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
+    by_transition.to_csv(output / "transition_metrics.csv", index=False)
     write_figures(scored, by_regime, output / "figures")
 
     heldout_rows = len(books) - len(train)
@@ -99,6 +102,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"model: {output / 'lcri-model.json'}")
     print(f"metrics: {output / 'metrics.csv'}")
     print(f"regime metrics: {output / 'regime_metrics.csv'}")
+    print(f"transition metrics: {output / 'transition_metrics.csv'}")
     print(f"figures: {output / 'figures'}")
     print()
     print(metrics.to_string(index=False))
