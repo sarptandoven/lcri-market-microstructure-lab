@@ -79,6 +79,7 @@ reports/
   metrics.csv
   heldout_metrics.csv
   regime_metrics.csv
+  heldout_regime_metrics.csv
   transition_metrics.csv
   transition_lift.csv
   transition_robustness.json

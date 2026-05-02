@@ -109,6 +109,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     metrics = evaluate_signals(scored)
     heldout_metrics = evaluate_signals(heldout_scored)
     by_regime = regime_metrics(scored)
+    heldout_by_regime = regime_metrics(heldout_scored)
     by_transition = transition_conditioned_metrics(scored)
     transition_lift = transition_signal_lift(scored)
     transition_robustness = transition_robustness_summary(scored)
@@ -119,6 +120,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "metrics.csv",
         "heldout_metrics.csv",
         "regime_metrics.csv",
+        "heldout_regime_metrics.csv",
         "transition_metrics.csv",
         "transition_lift.csv",
         "transition_robustness.json",
@@ -134,6 +136,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     metrics.to_csv(output / "metrics.csv", index=False)
     heldout_metrics.to_csv(output / "heldout_metrics.csv", index=False)
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
+    heldout_by_regime.to_csv(output / "heldout_regime_metrics.csv", index=False)
     by_transition.to_csv(output / "transition_metrics.csv", index=False)
     transition_lift.to_csv(output / "transition_lift.csv", index=False)
     write_json(output / "transition_robustness.json", transition_robustness)
@@ -175,6 +178,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"metrics: {output / 'metrics.csv'}")
     print(f"heldout metrics: {output / 'heldout_metrics.csv'}")
     print(f"regime metrics: {output / 'regime_metrics.csv'}")
+    print(f"heldout regime metrics: {output / 'heldout_regime_metrics.csv'}")
     print(f"transition metrics: {output / 'transition_metrics.csv'}")
     print(f"transition lift: {output / 'transition_lift.csv'}")
     print(f"transition robustness: {output / 'transition_robustness.json'}")
