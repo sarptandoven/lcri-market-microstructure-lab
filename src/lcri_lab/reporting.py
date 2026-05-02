@@ -85,6 +85,8 @@ def write_research_summary(
     heldout_metrics: pd.DataFrame | None = None,
     transition_lift: pd.DataFrame,
     transition_robustness: dict[str, Any],
+    heldout_transition_lift: pd.DataFrame | None = None,
+    heldout_transition_robustness: dict[str, Any] | None = None,
 ) -> None:
     """Write a compact markdown summary of the demo artifacts."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -118,6 +120,19 @@ def write_research_summary(
                 *[
                     f"- {key}: {_format_value(value)}"
                     for key, value in transition_robustness.items()
+                ],
+                "",
+                "## Heldout transition lift",
+                "",
+                _markdown_table(heldout_transition_lift)
+                if heldout_transition_lift is not None
+                else "_Not generated._",
+                "",
+                "## Heldout transition robustness",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (heldout_transition_robustness or {}).items()
                 ],
                 "",
             ]

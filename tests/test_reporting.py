@@ -114,6 +114,8 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
         heldout_metrics=metrics,
         transition_lift=transition_lift,
         transition_robustness={"passes_transition_robustness": True},
+        heldout_transition_lift=transition_lift,
+        heldout_transition_robustness={"passes_transition_robustness": True},
     )
 
     text = path.read_text()
@@ -122,4 +124,6 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
     assert "## Heldout signal quality" in text
     assert "| signal | directional_accuracy | brier_score | rank_correlation |" in text
     assert "| lcri | 0.610000 | 0.220000 | 0.180000 |" in text
+    assert "## Heldout transition lift" in text
+    assert "## Heldout transition robustness" in text
     assert "- passes_transition_robustness: true" in text

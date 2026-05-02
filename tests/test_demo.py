@@ -17,8 +17,11 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "regime_metrics.csv").exists()
     assert (tmp_path / "heldout_regime_metrics.csv").exists()
     assert (tmp_path / "transition_metrics.csv").exists()
+    assert (tmp_path / "heldout_transition_metrics.csv").exists()
     assert (tmp_path / "transition_lift.csv").exists()
+    assert (tmp_path / "heldout_transition_lift.csv").exists()
     assert (tmp_path / "transition_robustness.json").exists()
+    assert (tmp_path / "heldout_transition_robustness.json").exists()
     assert (tmp_path / "research_summary.md").exists()
     assert (tmp_path / "artifact_manifest.json").exists()
     assert (tmp_path / "sample_snapshots.csv").exists()
@@ -36,11 +39,14 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["metrics.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_metrics.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_regime_metrics.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_transition_metrics.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_transition_lift.csv"]["size_bytes"] > 0
     assert len(manifest["artifact_metadata"]["metrics.csv"]["sha256"]) == 64
     summary = (tmp_path / "research_summary.md").read_text()
     assert "# LCRI Research Summary" in summary
     assert "## Heldout signal quality" in summary
     assert "## Transition robustness" in summary
+    assert "## Heldout transition lift" in summary
 
 
 def test_run_demo_rejects_invalid_train_fraction(tmp_path: Path) -> None:

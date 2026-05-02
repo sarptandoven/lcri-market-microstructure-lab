@@ -81,8 +81,11 @@ reports/
   regime_metrics.csv
   heldout_regime_metrics.csv
   transition_metrics.csv
+  heldout_transition_metrics.csv
   transition_lift.csv
+  heldout_transition_lift.csv
   transition_robustness.json
+  heldout_transition_robustness.json
   research_summary.md
   artifact_manifest.json
   sample_snapshots.csv

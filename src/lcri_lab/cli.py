@@ -111,8 +111,11 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     by_regime = regime_metrics(scored)
     heldout_by_regime = regime_metrics(heldout_scored)
     by_transition = transition_conditioned_metrics(scored)
+    heldout_by_transition = transition_conditioned_metrics(heldout_scored)
     transition_lift = transition_signal_lift(scored)
+    heldout_transition_lift = transition_signal_lift(heldout_scored)
     transition_robustness = transition_robustness_summary(scored)
+    heldout_transition_robustness = transition_robustness_summary(heldout_scored)
 
     artifact_paths = [
         "lcri-model.json",
@@ -122,8 +125,11 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "regime_metrics.csv",
         "heldout_regime_metrics.csv",
         "transition_metrics.csv",
+        "heldout_transition_metrics.csv",
         "transition_lift.csv",
+        "heldout_transition_lift.csv",
         "transition_robustness.json",
+        "heldout_transition_robustness.json",
         "research_summary.md",
         "figures/raw_vs_lcri_scatter.png",
         "figures/regime_signal_quality.png",
@@ -138,8 +144,11 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
     heldout_by_regime.to_csv(output / "heldout_regime_metrics.csv", index=False)
     by_transition.to_csv(output / "transition_metrics.csv", index=False)
+    heldout_by_transition.to_csv(output / "heldout_transition_metrics.csv", index=False)
     transition_lift.to_csv(output / "transition_lift.csv", index=False)
+    heldout_transition_lift.to_csv(output / "heldout_transition_lift.csv", index=False)
     write_json(output / "transition_robustness.json", transition_robustness)
+    write_json(output / "heldout_transition_robustness.json", heldout_transition_robustness)
     write_figures(scored, by_regime, output / "figures", transition_table=by_transition)
 
     heldout_rows = len(books) - len(train)
@@ -154,6 +163,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         heldout_metrics=heldout_metrics,
         transition_lift=transition_lift,
         transition_robustness=transition_robustness,
+        heldout_transition_lift=heldout_transition_lift,
+        heldout_transition_robustness=heldout_transition_robustness,
     )
     artifact_metadata = collect_artifact_metadata(output, artifact_paths)
     manifest = build_artifact_manifest(
@@ -180,8 +191,11 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"regime metrics: {output / 'regime_metrics.csv'}")
     print(f"heldout regime metrics: {output / 'heldout_regime_metrics.csv'}")
     print(f"transition metrics: {output / 'transition_metrics.csv'}")
+    print(f"heldout transition metrics: {output / 'heldout_transition_metrics.csv'}")
     print(f"transition lift: {output / 'transition_lift.csv'}")
+    print(f"heldout transition lift: {output / 'heldout_transition_lift.csv'}")
     print(f"transition robustness: {output / 'transition_robustness.json'}")
+    print(f"heldout transition robustness: {output / 'heldout_transition_robustness.json'}")
     print(f"summary: {output / 'research_summary.md'}")
     print(f"manifest: {output / 'artifact_manifest.json'}")
     print(f"figures: {output / 'figures'}")

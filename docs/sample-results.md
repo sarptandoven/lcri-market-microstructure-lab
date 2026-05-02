@@ -42,3 +42,9 @@ survives in both stable and transitioning periods.
 
 This isolates whether LCRI remains useful during microstructure state changes,
 where static imbalance baselines are most likely to leak regime structure.
+
+The demo also writes heldout transition metrics and heldout transition lift.
+Those files apply the same transition split only to rows excluded from fitting.
+They are the safer reference when checking whether transition robustness is
+surviving outside the model's training sample.
+Use these files before citing transition behavior as a heldout result.
