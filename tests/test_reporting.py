@@ -365,6 +365,11 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
             }
         ]
     )
+    lcri_gap_delta_summary = {
+        "rows": 3,
+        "lcri_more_stable_rows": 2,
+        "max_lcri_stability_edge_context": "signal:all",
+    }
     transition_lift = pd.DataFrame(
         [
             {
@@ -389,6 +394,7 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
         transition_generalization_gap=transition_generalization_gap,
         generalization_overview=generalization_overview,
         generalization_gap_leaderboard=generalization_gap_leaderboard,
+        lcri_gap_delta_summary=lcri_gap_delta_summary,
         transition_lift=transition_lift,
         transition_robustness={"passes_transition_robustness": True},
         heldout_transition_lift=transition_lift,
@@ -412,6 +418,8 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
     assert "- signal_rows: 2" in text
     assert "- max_signal_directional_accuracy_gap: 0.050000" in text
     assert "| transition | transition | lcri | 0.050000 |" in text
+    assert "## LCRI gap delta summary" in text
+    assert "- max_lcri_stability_edge_context: signal:all" in text
     assert "## Heldout transition lift" in text
     assert "## Heldout transition robustness" in text
     assert "- passes_transition_robustness: true" in text
