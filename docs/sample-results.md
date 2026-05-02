@@ -74,3 +74,9 @@ The markdown summary mirrors `generalization_overview.json` for a compact audit
 of the generated generalization gap artifacts. It also includes the ranked
 leaderboard so the largest heldout degradations are visible without opening CSVs.
 This is intended as the first triage table when reviewing a generated demo run.
+
+`lcri_generalization_gap_delta.csv` compares raw imbalance and LCRI degradation
+across signal, regime, and transition scopes. Positive `raw_minus_lcri` values
+mean LCRI lost less directional accuracy than raw imbalance on heldout rows.
+Negative values mark scopes where LCRI degraded more and should be inspected
+before treating the residual signal as robust.

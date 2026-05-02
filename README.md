@@ -92,6 +92,7 @@ reports/
   transition_generalization_gap.csv
   generalization_overview.json
   generalization_gap_leaderboard.csv
+  lcri_generalization_gap_delta.csv
   transition_lift.csv
   heldout_transition_lift.csv
   transition_robustness.json
