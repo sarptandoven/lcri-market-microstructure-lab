@@ -15,6 +15,7 @@ def write_figures(
     transition_table: pd.DataFrame | None = None,
     heldout_transition_table: pd.DataFrame | None = None,
     heldout_frame: pd.DataFrame | None = None,
+    generalization_gap: pd.DataFrame | None = None,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     _scatter(frame, output_dir / "raw_vs_lcri_scatter.png")
@@ -37,6 +38,11 @@ def write_figures(
             heldout_frame,
             output_dir / "heldout_calibration_curve.png",
             title="Heldout calibration curve",
+        )
+    if generalization_gap is not None:
+        _generalization_gap_bars(
+            generalization_gap,
+            output_dir / "generalization_gap.png",
         )
 
 
@@ -79,6 +85,29 @@ def _transition_bars(transition_table: pd.DataFrame, path: Path, *, title: str) 
     ax.set_ylabel("Accuracy")
     ax.set_ylim(0.0, 1.0)
     ax.legend(title="Signal")
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+
+
+def _generalization_gap_bars(gap_table: pd.DataFrame, path: Path) -> None:
+    plot_columns = [
+        "directional_accuracy_gap",
+        "brier_score_gap",
+        "rank_correlation_gap",
+    ]
+    available = [column for column in plot_columns if column in gap_table.columns]
+    if not available:
+        return
+
+    pivot = gap_table.set_index("signal")[available]
+    fig, ax = plt.subplots(figsize=(9, 5))
+    pivot.plot(kind="bar", ax=ax)
+    ax.axhline(0.0, color="black", linewidth=0.8)
+    ax.set_title("Full-sample to heldout generalization gaps")
+    ax.set_xlabel("Signal")
+    ax.set_ylabel("Gap")
+    ax.legend(title="Metric")
     fig.tight_layout()
     fig.savefig(path, dpi=160)
     plt.close(fig)

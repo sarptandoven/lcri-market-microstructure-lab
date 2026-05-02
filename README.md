@@ -78,6 +78,7 @@ reports/
     heldout_transition_signal_quality.png
     calibration_curve.png
     heldout_calibration_curve.png
+    generalization_gap.png
   metrics.csv
   heldout_metrics.csv
   generalization_gap.csv

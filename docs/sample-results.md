@@ -53,3 +53,5 @@ The heldout calibration curve applies the probability calibration check only to
 rows excluded from fitting.
 The generated summary includes `generalization_gap.csv` so full-sample and
 heldout signal quality can be compared from the main report.
+The generalization gap chart shows the same comparison as a quick visual check.
+Use it to spot signals whose full-sample lift does not survive heldout scoring.
