@@ -63,3 +63,5 @@ accuracy gaps for quick visual review.
 Positive bars indicate the full-sample score is higher than the heldout score.
 Negative bars indicate heldout scoring matched or exceeded the full-sample result.
 Read it with `regime_generalization_gap.csv` for exact metric values.
+The summary also includes transition-level generalization gaps so stable and
+transition segments can be checked against heldout scoring.

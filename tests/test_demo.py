@@ -57,6 +57,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## Heldout signal quality" in summary
     assert "## Signal generalization gap" in summary
     assert "## Regime generalization gap" in summary
+    assert "## Transition generalization gap" in summary
     assert "## Transition robustness" in summary
     assert "## Heldout transition lift" in summary
 
