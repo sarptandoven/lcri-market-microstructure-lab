@@ -10,6 +10,7 @@ from lcri_lab.evaluation import (
     evaluate_signals,
     generalization_gap_leaderboard,
     generalization_overview,
+    lcri_generalization_gap_delta,
     regime_generalization_gap,
     regime_metrics,
     signal_generalization_gap,
@@ -123,6 +124,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     transition_gap = transition_generalization_gap(by_transition, heldout_by_transition)
     overview = generalization_overview(generalization_gap, regime_gap, transition_gap)
     gap_leaderboard = generalization_gap_leaderboard(generalization_gap, regime_gap, transition_gap)
+    lcri_gap_delta = lcri_generalization_gap_delta(generalization_gap, regime_gap, transition_gap)
     transition_lift = transition_signal_lift(scored)
     heldout_transition_lift = transition_signal_lift(heldout_scored)
     transition_robustness = transition_robustness_summary(scored)
@@ -142,6 +144,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "transition_generalization_gap.csv",
         "generalization_overview.json",
         "generalization_gap_leaderboard.csv",
+        "lcri_generalization_gap_delta.csv",
         "transition_lift.csv",
         "heldout_transition_lift.csv",
         "transition_robustness.json",
@@ -171,6 +174,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     transition_gap.to_csv(output / "transition_generalization_gap.csv", index=False)
     write_json(output / "generalization_overview.json", overview)
     gap_leaderboard.to_csv(output / "generalization_gap_leaderboard.csv", index=False)
+    lcri_gap_delta.to_csv(output / "lcri_generalization_gap_delta.csv", index=False)
     transition_lift.to_csv(output / "transition_lift.csv", index=False)
     heldout_transition_lift.to_csv(output / "heldout_transition_lift.csv", index=False)
     write_json(output / "transition_robustness.json", transition_robustness)
@@ -202,6 +206,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         transition_generalization_gap=transition_gap,
         generalization_overview=overview,
         generalization_gap_leaderboard=gap_leaderboard,
+        lcri_generalization_gap_delta=lcri_gap_delta,
         transition_lift=transition_lift,
         transition_robustness=transition_robustness,
         heldout_transition_lift=heldout_transition_lift,
@@ -238,6 +243,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"transition generalization gap: {output / 'transition_generalization_gap.csv'}")
     print(f"generalization overview: {output / 'generalization_overview.json'}")
     print(f"generalization gap leaderboard: {output / 'generalization_gap_leaderboard.csv'}")
+    print(f"lcri generalization gap delta: {output / 'lcri_generalization_gap_delta.csv'}")
     print(f"transition lift: {output / 'transition_lift.csv'}")
     print(f"heldout transition lift: {output / 'heldout_transition_lift.csv'}")
     print(f"transition robustness: {output / 'transition_robustness.json'}")
