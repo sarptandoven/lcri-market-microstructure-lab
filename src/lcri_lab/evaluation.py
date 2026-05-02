@@ -147,6 +147,29 @@ def lcri_worst_generalization_context(lcri_leaderboard: pd.DataFrame) -> dict[st
     }
 
 
+def lcri_generalization_severity(
+    lcri_leaderboard: pd.DataFrame,
+    *,
+    warning_gap: float = 0.02,
+    critical_gap: float = 0.05,
+) -> pd.DataFrame:
+    """Attach severity labels to LCRI generalization gap rows."""
+    if warning_gap < 0.0 or critical_gap < warning_gap:
+        raise ValueError("severity thresholds must be non-negative and ordered")
+    if lcri_leaderboard.empty:
+        return pd.DataFrame(columns=[*lcri_leaderboard.columns, "severity"])
+    _require_columns(lcri_leaderboard, ["directional_accuracy_gap"])
+
+    output = lcri_leaderboard.copy()
+    gaps = output["directional_accuracy_gap"].astype(float)
+    output["severity"] = np.select(
+        [gaps >= critical_gap, gaps >= warning_gap],
+        ["critical", "warning"],
+        default="stable",
+    )
+    return output
+
+
 def generalization_overview(
     signal_gap: pd.DataFrame,
     regime_gap: pd.DataFrame,
