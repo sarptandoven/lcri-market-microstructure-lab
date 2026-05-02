@@ -75,7 +75,9 @@ of the generated generalization gap artifacts. It also includes the ranked
 leaderboard so the largest heldout degradations are visible without opening CSVs.
 `lcri_generalization_gap_leaderboard.csv` applies the same ranking after filtering
 to LCRI rows only, which makes the residual signal's weakest heldout contexts
-visible without scanning raw imbalance rows. These tables are intended as the
+visible without scanning raw imbalance rows. `lcri_generalization_scope_summary.csv`
+rolls those LCRI rows up by signal, regime, and transition scope so reviewers can
+see whether degradation is broad or localized. These tables are intended as the
 first triage view when reviewing a generated demo run.
 
 `lcri_generalization_gap_delta.csv` compares raw imbalance and LCRI degradation
