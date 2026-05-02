@@ -4,6 +4,7 @@ import pandas as pd
 
 from lcri_lab.reporting import (
     build_artifact_manifest,
+    collect_artifact_metadata,
     missing_artifacts,
     write_json,
     write_research_summary,
@@ -19,6 +20,7 @@ def test_build_artifact_manifest_records_run_config_and_outputs() -> None:
         train_frac=0.7,
         model_artifact_version=2,
         artifacts=["metrics.csv"],
+        artifact_metadata={"metrics.csv": {"size_bytes": 10, "sha256": "abc"}},
     )
 
     assert manifest["run"] == {
@@ -30,6 +32,17 @@ def test_build_artifact_manifest_records_run_config_and_outputs() -> None:
     }
     assert manifest["model"] == {"artifact_version": 2}
     assert manifest["artifacts"] == ["metrics.csv"]
+    assert manifest["artifact_metadata"] == {"metrics.csv": {"size_bytes": 10, "sha256": "abc"}}
+
+
+def test_collect_artifact_metadata_records_size_and_digest(tmp_path) -> None:
+    (tmp_path / "metrics.csv").write_text("signal,value\n")
+
+    metadata = collect_artifact_metadata(tmp_path, ["metrics.csv", "missing.csv"])
+
+    assert set(metadata) == {"metrics.csv"}
+    assert metadata["metrics.csv"]["size_bytes"] == len("signal,value\n")
+    assert len(metadata["metrics.csv"]["sha256"]) == 64
 
 
 def test_missing_artifacts_reports_absent_paths(tmp_path) -> None:

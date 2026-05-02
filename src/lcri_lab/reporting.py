@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ def build_artifact_manifest(
     train_frac: float,
     model_artifact_version: int,
     artifacts: list[str],
+    artifact_metadata: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build a reproducibility manifest for a demo run."""
     return {
@@ -30,7 +32,22 @@ def build_artifact_manifest(
             "artifact_version": model_artifact_version,
         },
         "artifacts": artifacts,
+        "artifact_metadata": artifact_metadata or {},
     }
+
+
+def collect_artifact_metadata(output_dir: Path, artifacts: list[str]) -> dict[str, dict[str, Any]]:
+    """Collect size and SHA-256 metadata for generated artifacts."""
+    metadata = {}
+    for artifact in artifacts:
+        path = output_dir / artifact
+        if not path.exists():
+            continue
+        metadata[artifact] = {
+            "size_bytes": path.stat().st_size,
+            "sha256": _sha256(path),
+        }
+    return metadata
 
 
 def missing_artifacts(output_dir: Path, artifacts: list[str]) -> list[str]:
@@ -88,6 +105,14 @@ def write_research_summary(
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _markdown_table(frame: pd.DataFrame) -> str:

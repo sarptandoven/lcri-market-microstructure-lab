@@ -31,6 +31,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["run"]["seed"] == 3
     assert manifest["model"]["artifact_version"] == 2
     assert "research_summary.md" in manifest["artifacts"]
+    assert manifest["artifact_metadata"]["metrics.csv"]["size_bytes"] > 0
+    assert len(manifest["artifact_metadata"]["metrics.csv"]["sha256"]) == 64
     summary = (tmp_path / "research_summary.md").read_text()
     assert "# LCRI Research Summary" in summary
     assert "## Transition robustness" in summary

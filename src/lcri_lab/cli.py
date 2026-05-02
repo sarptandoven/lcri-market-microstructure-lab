@@ -18,6 +18,7 @@ from lcri_lab.model import ARTIFACT_VERSION, LCRIModel, ModelConfig
 from lcri_lab.plotting import write_figures
 from lcri_lab.reporting import (
     build_artifact_manifest,
+    collect_artifact_metadata,
     missing_artifacts,
     write_json,
     write_research_summary,
@@ -138,6 +139,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         transition_lift=transition_lift,
         transition_robustness=transition_robustness,
     )
+    artifact_metadata = collect_artifact_metadata(output, artifact_paths)
     manifest = build_artifact_manifest(
         rows=len(books),
         train_rows=len(train),
@@ -146,6 +148,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         train_frac=train_frac,
         model_artifact_version=ARTIFACT_VERSION,
         artifacts=artifact_paths,
+        artifact_metadata=artifact_metadata,
     )
     write_json(output / "artifact_manifest.json", manifest)
     missing = missing_artifacts(output, [*artifact_paths, "artifact_manifest.json"])
