@@ -127,6 +127,20 @@ def verify_lcri_generalization_scope_summary(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_worst_generalization_context(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete worst LCRI gap context."""
+    path = output_dir / "lcri_worst_generalization_context.json"
+    if not path.exists():
+        return ["missing worst LCRI generalization context: lcri_worst_generalization_context.json"]
+
+    payload = json.loads(path.read_text())
+    required = {"scope", "context", "directional_accuracy_gap"}
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete worst LCRI generalization context: {missing}"]
+    return []
+
+
 def verify_lcri_generalization_gap_delta(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI gap delta artifact."""
     path = output_dir / "lcri_generalization_gap_delta.csv"

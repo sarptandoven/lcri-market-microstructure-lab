@@ -13,6 +13,7 @@ from lcri_lab.reporting import (
     verify_lcri_generalization_gap_delta,
     verify_lcri_generalization_gap_leaderboard,
     verify_lcri_generalization_scope_summary,
+    verify_lcri_worst_generalization_context,
     write_json,
     write_research_summary,
 )
@@ -124,6 +125,19 @@ def test_verify_lcri_generalization_scope_summary_accepts_complete_csv(tmp_path)
     ).to_csv(tmp_path / "lcri_generalization_scope_summary.csv", index=False)
 
     assert verify_lcri_generalization_scope_summary(tmp_path) == []
+
+
+def test_verify_lcri_worst_generalization_context_accepts_complete_payload(tmp_path) -> None:
+    write_json(
+        tmp_path / "lcri_worst_generalization_context.json",
+        {
+            "scope": "transition",
+            "context": "stable",
+            "directional_accuracy_gap": 0.08,
+        },
+    )
+
+    assert verify_lcri_worst_generalization_context(tmp_path) == []
 
 
 def test_verify_lcri_generalization_gap_delta_reports_missing_columns(tmp_path) -> None:

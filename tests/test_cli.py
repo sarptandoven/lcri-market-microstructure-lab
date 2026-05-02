@@ -96,6 +96,16 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
         "scope,rows,mean_directional_accuracy_gap,max_directional_accuracy_gap\n"
         "signal,1,0.05,0.05\n"
     )
+    worst_context = tmp_path / "lcri_worst_generalization_context.json"
+    worst_context.write_text(
+        json.dumps(
+            {
+                "scope": "signal",
+                "context": "all",
+                "directional_accuracy_gap": 0.05,
+            }
+        )
+    )
     delta = tmp_path / "lcri_generalization_gap_delta.csv"
     delta.write_text(
         "scope,context,raw_imbalance_directional_accuracy_gap,"
@@ -128,6 +138,7 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
             "generalization_overview.json",
             "lcri_generalization_gap_leaderboard.csv",
             "lcri_generalization_scope_summary.csv",
+            "lcri_worst_generalization_context.json",
             "lcri_generalization_gap_delta.csv",
             "lcri_gap_delta_flags.csv",
             "lcri_gap_delta_summary.json",
