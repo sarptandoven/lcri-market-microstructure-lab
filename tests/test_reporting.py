@@ -414,6 +414,16 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
             }
         ]
     )
+    lcri_generalization_gap_leaderboard = pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "context": "all",
+                "signal": "lcri",
+                "directional_accuracy_gap": 0.03,
+            }
+        ]
+    )
     lcri_gap_delta_flags = pd.DataFrame(
         [
             {
@@ -454,6 +464,7 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
         transition_generalization_gap=transition_generalization_gap,
         generalization_overview=generalization_overview,
         generalization_gap_leaderboard=generalization_gap_leaderboard,
+        lcri_generalization_gap_leaderboard=lcri_generalization_gap_leaderboard,
         lcri_gap_delta_flags=lcri_gap_delta_flags,
         lcri_gap_delta_summary=lcri_gap_delta_summary,
         transition_lift=transition_lift,
@@ -479,6 +490,8 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
     assert "- signal_rows: 2" in text
     assert "- max_signal_directional_accuracy_gap: 0.050000" in text
     assert "| transition | transition | lcri | 0.050000 |" in text
+    assert "## LCRI generalization gap leaderboard" in text
+    assert "| signal | all | lcri | 0.030000 |" in text
     assert "## LCRI gap delta flags" in text
     assert "| signal | all | lcri_more_stable |" in text
     assert "## LCRI gap delta summary" in text

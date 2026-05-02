@@ -171,6 +171,7 @@ def write_research_summary(
     transition_generalization_gap: pd.DataFrame | None = None,
     generalization_overview: dict[str, Any] | None = None,
     generalization_gap_leaderboard: pd.DataFrame | None = None,
+    lcri_generalization_gap_leaderboard: pd.DataFrame | None = None,
     lcri_generalization_gap_delta: pd.DataFrame | None = None,
     lcri_gap_delta_flags: pd.DataFrame | None = None,
     lcri_gap_delta_summary: dict[str, Any] | None = None,
@@ -232,6 +233,12 @@ def write_research_summary(
                 "",
                 _markdown_table(generalization_gap_leaderboard)
                 if generalization_gap_leaderboard is not None
+                else "_Not generated._",
+                "",
+                "## LCRI generalization gap leaderboard",
+                "",
+                _markdown_table(lcri_generalization_gap_leaderboard)
+                if lcri_generalization_gap_leaderboard is not None
                 else "_Not generated._",
                 "",
                 "## LCRI generalization gap delta",

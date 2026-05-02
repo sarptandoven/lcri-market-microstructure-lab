@@ -13,6 +13,7 @@ from lcri_lab.evaluation import (
     lcri_gap_delta_flags,
     lcri_gap_delta_summary,
     lcri_generalization_gap_delta,
+    lcri_generalization_gap_leaderboard,
     regime_generalization_gap,
     regime_metrics,
     signal_generalization_gap,
@@ -129,6 +130,11 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     transition_gap = transition_generalization_gap(by_transition, heldout_by_transition)
     overview = generalization_overview(generalization_gap, regime_gap, transition_gap)
     gap_leaderboard = generalization_gap_leaderboard(generalization_gap, regime_gap, transition_gap)
+    lcri_gap_leaderboard = lcri_generalization_gap_leaderboard(
+        generalization_gap,
+        regime_gap,
+        transition_gap,
+    )
     lcri_gap_delta = lcri_generalization_gap_delta(generalization_gap, regime_gap, transition_gap)
     lcri_gap_flags = lcri_gap_delta_flags(lcri_gap_delta)
     lcri_gap_summary = lcri_gap_delta_summary(lcri_gap_delta)
@@ -151,6 +157,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "transition_generalization_gap.csv",
         "generalization_overview.json",
         "generalization_gap_leaderboard.csv",
+        "lcri_generalization_gap_leaderboard.csv",
         "lcri_generalization_gap_delta.csv",
         "lcri_gap_delta_flags.csv",
         "lcri_gap_delta_summary.json",
@@ -184,6 +191,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     transition_gap.to_csv(output / "transition_generalization_gap.csv", index=False)
     write_json(output / "generalization_overview.json", overview)
     gap_leaderboard.to_csv(output / "generalization_gap_leaderboard.csv", index=False)
+    lcri_gap_leaderboard.to_csv(output / "lcri_generalization_gap_leaderboard.csv", index=False)
     lcri_gap_delta.to_csv(output / "lcri_generalization_gap_delta.csv", index=False)
     lcri_gap_flags.to_csv(output / "lcri_gap_delta_flags.csv", index=False)
     write_json(output / "lcri_gap_delta_summary.json", lcri_gap_summary)
@@ -219,6 +227,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         transition_generalization_gap=transition_gap,
         generalization_overview=overview,
         generalization_gap_leaderboard=gap_leaderboard,
+        lcri_generalization_gap_leaderboard=lcri_gap_leaderboard,
         lcri_generalization_gap_delta=lcri_gap_delta,
         lcri_gap_delta_flags=lcri_gap_flags,
         lcri_gap_delta_summary=lcri_gap_summary,
@@ -258,6 +267,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"transition generalization gap: {output / 'transition_generalization_gap.csv'}")
     print(f"generalization overview: {output / 'generalization_overview.json'}")
     print(f"generalization gap leaderboard: {output / 'generalization_gap_leaderboard.csv'}")
+    print(f"lcri generalization gap leaderboard: {output / 'lcri_generalization_gap_leaderboard.csv'}")
     print(f"lcri generalization gap delta: {output / 'lcri_generalization_gap_delta.csv'}")
     print(f"lcri gap delta flags: {output / 'lcri_gap_delta_flags.csv'}")
     print(f"lcri gap delta summary: {output / 'lcri_gap_delta_summary.json'}")
