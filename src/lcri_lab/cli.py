@@ -9,6 +9,7 @@ import pandas as pd
 from lcri_lab.evaluation import (
     evaluate_signals,
     regime_metrics,
+    signal_generalization_gap,
     transition_conditioned_metrics,
     transition_robustness_summary,
     transition_signal_lift,
@@ -108,6 +109,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
 
     metrics = evaluate_signals(scored)
     heldout_metrics = evaluate_signals(heldout_scored)
+    generalization_gap = signal_generalization_gap(metrics, heldout_metrics)
     by_regime = regime_metrics(scored)
     heldout_by_regime = regime_metrics(heldout_scored)
     by_transition = transition_conditioned_metrics(scored)
@@ -122,6 +124,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "sample_snapshots.csv",
         "metrics.csv",
         "heldout_metrics.csv",
+        "generalization_gap.csv",
         "regime_metrics.csv",
         "heldout_regime_metrics.csv",
         "transition_metrics.csv",
@@ -143,6 +146,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     scored.head(500).to_csv(output / "sample_snapshots.csv", index=False)
     metrics.to_csv(output / "metrics.csv", index=False)
     heldout_metrics.to_csv(output / "heldout_metrics.csv", index=False)
+    generalization_gap.to_csv(output / "generalization_gap.csv", index=False)
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
     heldout_by_regime.to_csv(output / "heldout_regime_metrics.csv", index=False)
     by_transition.to_csv(output / "transition_metrics.csv", index=False)
@@ -197,6 +201,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"model: {output / 'lcri-model.json'}")
     print(f"metrics: {output / 'metrics.csv'}")
     print(f"heldout metrics: {output / 'heldout_metrics.csv'}")
+    print(f"generalization gap: {output / 'generalization_gap.csv'}")
     print(f"regime metrics: {output / 'regime_metrics.csv'}")
     print(f"heldout regime metrics: {output / 'heldout_regime_metrics.csv'}")
     print(f"transition metrics: {output / 'transition_metrics.csv'}")

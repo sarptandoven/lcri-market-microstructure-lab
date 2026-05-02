@@ -5,6 +5,7 @@ from lcri_lab.evaluation import (
     calibration_curve,
     evaluate_signals,
     regime_metrics,
+    signal_generalization_gap,
     summarize_signal_lift,
 )
 from lcri_lab.model import LCRIModel
@@ -23,6 +24,31 @@ def test_summarize_signal_lift_reports_metric_deltas() -> None:
         "rank_correlation_lift",
     }
     assert all(isinstance(value, float) for value in summary.values())
+
+
+def test_signal_generalization_gap_compares_full_and_heldout_metrics() -> None:
+    metrics = pd.DataFrame(
+        {
+            "signal": ["raw_imbalance", "lcri"],
+            "directional_accuracy": [0.60, 0.70],
+            "brier_score": [0.30, 0.20],
+            "rank_correlation": [0.10, 0.25],
+        }
+    )
+    heldout = pd.DataFrame(
+        {
+            "signal": ["raw_imbalance", "lcri"],
+            "directional_accuracy": [0.55, 0.65],
+            "brier_score": [0.32, 0.24],
+            "rank_correlation": [0.08, 0.20],
+        }
+    )
+
+    output = signal_generalization_gap(metrics, heldout).set_index("signal")
+
+    assert output.loc["lcri", "directional_accuracy_gap"] == pytest.approx(0.05)
+    assert output.loc["lcri", "brier_score_gap"] == pytest.approx(0.04)
+    assert output.loc["lcri", "rank_correlation_gap"] == pytest.approx(0.05)
 
 
 def test_calibration_curve_rejects_non_positive_bins() -> None:

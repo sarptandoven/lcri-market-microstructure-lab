@@ -80,6 +80,7 @@ reports/
     heldout_calibration_curve.png
   metrics.csv
   heldout_metrics.csv
+  generalization_gap.csv
   regime_metrics.csv
   heldout_regime_metrics.csv
   transition_metrics.csv

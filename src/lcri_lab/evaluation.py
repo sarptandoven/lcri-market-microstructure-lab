@@ -96,6 +96,36 @@ def regime_metrics(frame: pd.DataFrame) -> pd.DataFrame:
     ]
 
 
+def signal_generalization_gap(metrics: pd.DataFrame, heldout_metrics: pd.DataFrame) -> pd.DataFrame:
+    """Compare full-sample and heldout signal metrics by signal."""
+    required = ["signal", "directional_accuracy", "brier_score", "rank_correlation"]
+    _require_columns(metrics, required)
+    _require_columns(heldout_metrics, required)
+
+    full = metrics.set_index("signal")
+    heldout = heldout_metrics.set_index("signal")
+    signals = [signal for signal in full.index if signal in heldout.index]
+    rows = []
+    for signal in signals:
+        rows.append(
+            {
+                "signal": signal,
+                "directional_accuracy_gap": float(
+                    full.loc[signal, "directional_accuracy"]
+                    - heldout.loc[signal, "directional_accuracy"]
+                ),
+                "brier_score_gap": float(
+                    heldout.loc[signal, "brier_score"] - full.loc[signal, "brier_score"]
+                ),
+                "rank_correlation_gap": float(
+                    full.loc[signal, "rank_correlation"]
+                    - heldout.loc[signal, "rank_correlation"]
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def summarize_signal_lift(frame: pd.DataFrame) -> dict[str, float]:
     metrics = evaluate_signals(frame).set_index("signal")
     raw = metrics.loc["raw_imbalance"]
