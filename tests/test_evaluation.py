@@ -11,6 +11,7 @@ from lcri_lab.evaluation import (
     lcri_generalization_gap_delta,
     lcri_generalization_gap_leaderboard,
     lcri_generalization_scope_summary,
+    lcri_worst_generalization_context,
     regime_generalization_gap,
     regime_metrics,
     signal_generalization_gap,
@@ -100,6 +101,25 @@ def test_lcri_generalization_scope_summary_groups_gap_rows() -> None:
     assert output.loc["regime", "rows"] == 2
     assert output.loc["regime", "mean_directional_accuracy_gap"] == pytest.approx(0.07)
     assert output.loc["signal", "max_directional_accuracy_gap"] == pytest.approx(0.03)
+
+
+def test_lcri_worst_generalization_context_reports_max_gap() -> None:
+    leaderboard = pd.DataFrame(
+        {
+            "scope": ["signal", "transition"],
+            "context": ["all", "stable"],
+            "signal": ["lcri", "lcri"],
+            "directional_accuracy_gap": [0.03, 0.08],
+        }
+    )
+
+    output = lcri_worst_generalization_context(leaderboard)
+
+    assert output == {
+        "scope": "transition",
+        "context": "stable",
+        "directional_accuracy_gap": pytest.approx(0.08),
+    }
 
 
 def test_generalization_overview_summarizes_gap_tables() -> None:

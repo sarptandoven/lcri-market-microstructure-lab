@@ -130,6 +130,23 @@ def lcri_generalization_scope_summary(lcri_leaderboard: pd.DataFrame) -> pd.Data
     )
 
 
+def lcri_worst_generalization_context(lcri_leaderboard: pd.DataFrame) -> dict[str, float | str]:
+    """Return the LCRI context with the largest directional accuracy gap."""
+    if lcri_leaderboard.empty:
+        return {
+            "scope": "none",
+            "context": "none",
+            "directional_accuracy_gap": 0.0,
+        }
+    _require_columns(lcri_leaderboard, ["scope", "context", "directional_accuracy_gap"])
+    row = lcri_leaderboard.loc[lcri_leaderboard["directional_accuracy_gap"].astype(float).idxmax()]
+    return {
+        "scope": str(row["scope"]),
+        "context": str(row["context"]),
+        "directional_accuracy_gap": float(row["directional_accuracy_gap"]),
+    }
+
+
 def generalization_overview(
     signal_gap: pd.DataFrame,
     regime_gap: pd.DataFrame,
