@@ -8,6 +8,7 @@ from lcri_lab.reporting import (
     missing_artifacts,
     verify_artifact_manifest,
     verify_generalization_overview,
+    verify_lcri_generalization_gap_delta,
     write_json,
     write_research_summary,
 )
@@ -89,6 +90,34 @@ def test_verify_generalization_overview_accepts_complete_payload(tmp_path) -> No
     )
 
     assert verify_generalization_overview(tmp_path) == []
+
+
+def test_verify_lcri_generalization_gap_delta_reports_missing_columns(tmp_path) -> None:
+    (tmp_path / "lcri_generalization_gap_delta.csv").write_text("scope,context\n")
+
+    errors = verify_lcri_generalization_gap_delta(tmp_path)
+
+    assert errors == [
+        "incomplete LCRI generalization gap delta: "
+        "['lcri_directional_accuracy_gap', 'raw_imbalance_directional_accuracy_gap', "
+        "'raw_minus_lcri_directional_accuracy_gap']"
+    ]
+
+
+def test_verify_lcri_generalization_gap_delta_accepts_complete_csv(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "context": "all",
+                "raw_imbalance_directional_accuracy_gap": 0.08,
+                "lcri_directional_accuracy_gap": 0.05,
+                "raw_minus_lcri_directional_accuracy_gap": 0.03,
+            }
+        ]
+    ).to_csv(tmp_path / "lcri_generalization_gap_delta.csv", index=False)
+
+    assert verify_lcri_generalization_gap_delta(tmp_path) == []
 
 
 def test_missing_artifacts_reports_absent_paths(tmp_path) -> None:

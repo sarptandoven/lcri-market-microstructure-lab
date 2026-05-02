@@ -86,18 +86,19 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
             }
         )
     )
+    delta = tmp_path / "lcri_generalization_gap_delta.csv"
+    delta.write_text(
+        "scope,context,raw_imbalance_directional_accuracy_gap,"
+        "lcri_directional_accuracy_gap,raw_minus_lcri_directional_accuracy_gap\n"
+        "signal,all,0.08,0.05,0.03\n"
+    )
     manifest = {
-        "artifacts": ["metrics.csv", "generalization_overview.json"],
-        "artifact_metadata": {
-            "metrics.csv": {
-                "size_bytes": artifact.stat().st_size,
-                "sha256": "48d81bac0e2bd3054a99e5fa3a1ebaac0d7e1d23e7903b11950ad14e8d5878c4",
-            },
-            "generalization_overview.json": {
-                "size_bytes": overview.stat().st_size,
-                "sha256": "253d019ee2569b841b640bd67a8eb61db80e073933e7d80562eca4da8f21a628",
-            },
-        },
+        "artifacts": [
+            "metrics.csv",
+            "generalization_overview.json",
+            "lcri_generalization_gap_delta.csv",
+        ],
+        "artifact_metadata": {},
     }
     (tmp_path / "artifact_manifest.json").write_text(json.dumps(manifest))
 

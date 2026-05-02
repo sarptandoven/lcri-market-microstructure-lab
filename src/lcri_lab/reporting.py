@@ -94,6 +94,26 @@ def verify_generalization_overview(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_generalization_gap_delta(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI gap delta artifact."""
+    path = output_dir / "lcri_generalization_gap_delta.csv"
+    if not path.exists():
+        return ["missing LCRI generalization gap delta: lcri_generalization_gap_delta.csv"]
+
+    columns = set(pd.read_csv(path, nrows=1).columns)
+    required = {
+        "scope",
+        "context",
+        "raw_imbalance_directional_accuracy_gap",
+        "lcri_directional_accuracy_gap",
+        "raw_minus_lcri_directional_accuracy_gap",
+    }
+    missing = sorted(required - columns)
+    if missing:
+        return [f"incomplete LCRI generalization gap delta: {missing}"]
+    return []
+
+
 def write_research_summary(
     path: Path,
     *,
