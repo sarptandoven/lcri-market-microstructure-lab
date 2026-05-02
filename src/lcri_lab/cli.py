@@ -245,6 +245,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         generalization_gap_leaderboard=gap_leaderboard,
         lcri_generalization_gap_leaderboard=lcri_gap_leaderboard,
         lcri_generalization_scope_summary=lcri_gap_scope_summary,
+        lcri_generalization_severity=lcri_gap_severity,
         lcri_worst_generalization_context=lcri_worst_gap_context,
         lcri_generalization_gap_delta=lcri_gap_delta,
         lcri_gap_delta_flags=lcri_gap_flags,
