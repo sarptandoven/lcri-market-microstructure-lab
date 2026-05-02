@@ -70,3 +70,5 @@ Positive bars indicate stronger full-sample performance than heldout performance
 Negative bars indicate heldout performance matched or exceeded the full-sample score.
 Use `transition_generalization_gap.csv` when exact metric values are needed.
 This keeps the visual artifact tied to auditable numeric output.
+The markdown summary mirrors `generalization_overview.json` for a compact audit
+of the generated generalization gap artifacts.

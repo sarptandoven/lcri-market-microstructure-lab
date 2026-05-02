@@ -195,6 +195,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         generalization_gap=generalization_gap,
         regime_generalization_gap=regime_gap,
         transition_generalization_gap=transition_gap,
+        generalization_overview=overview,
         transition_lift=transition_lift,
         transition_robustness=transition_robustness,
         heldout_transition_lift=heldout_transition_lift,
