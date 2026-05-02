@@ -141,6 +141,20 @@ def verify_lcri_worst_generalization_context(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_generalization_severity(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI severity artifact."""
+    path = output_dir / "lcri_generalization_severity.csv"
+    if not path.exists():
+        return ["missing LCRI generalization severity: lcri_generalization_severity.csv"]
+
+    columns = set(pd.read_csv(path, nrows=1).columns)
+    required = {"scope", "context", "directional_accuracy_gap", "severity"}
+    missing = sorted(required - columns)
+    if missing:
+        return [f"incomplete LCRI generalization severity: {missing}"]
+    return []
+
+
 def verify_lcri_generalization_gap_delta(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI gap delta artifact."""
     path = output_dir / "lcri_generalization_gap_delta.csv"
