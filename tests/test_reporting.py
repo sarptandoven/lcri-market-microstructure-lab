@@ -72,6 +72,39 @@ def test_missing_artifacts_reports_absent_paths(tmp_path) -> None:
     assert missing == ["transition_lift.csv"]
 
 
+def test_write_research_summary_marks_missing_generalization_gap(tmp_path) -> None:
+    path = tmp_path / "summary.md"
+    metrics = pd.DataFrame(
+        [
+            {
+                "signal": "raw_imbalance",
+                "directional_accuracy": 0.55,
+                "brier_score": 0.30,
+                "rank_correlation": 0.10,
+            }
+        ]
+    )
+    transition_lift = pd.DataFrame(
+        [{"segment": "stable", "rows": 3, "directional_accuracy_lift": 0.10}]
+    )
+
+    write_research_summary(
+        path,
+        rows=10,
+        train_rows=7,
+        heldout_rows=3,
+        seed=4,
+        train_frac=0.7,
+        metrics=metrics,
+        transition_lift=transition_lift,
+        transition_robustness={},
+    )
+
+    text = path.read_text()
+    assert "## Signal generalization gap" in text
+    assert "_Not generated._" in text
+
+
 def test_write_json_writes_sorted_pretty_payload(tmp_path) -> None:
     path = tmp_path / "payload.json"
 
@@ -90,6 +123,16 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
                 "directional_accuracy": 0.61,
                 "brier_score": 0.22,
                 "rank_correlation": 0.18,
+            }
+        ]
+    )
+    generalization_gap = pd.DataFrame(
+        [
+            {
+                "signal": "lcri",
+                "directional_accuracy_gap": 0.03,
+                "brier_score_gap": 0.01,
+                "rank_correlation_gap": 0.02,
             }
         ]
     )
@@ -112,6 +155,7 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
         train_frac=0.7,
         metrics=metrics,
         heldout_metrics=metrics,
+        generalization_gap=generalization_gap,
         transition_lift=transition_lift,
         transition_robustness={"passes_transition_robustness": True},
         heldout_transition_lift=transition_lift,
@@ -122,8 +166,10 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
     assert "# LCRI Research Summary" in text
     assert "- seed: 7" in text
     assert "## Heldout signal quality" in text
+    assert "## Signal generalization gap" in text
     assert "| signal | directional_accuracy | brier_score | rank_correlation |" in text
     assert "| lcri | 0.610000 | 0.220000 | 0.180000 |" in text
+    assert "| lcri | 0.030000 | 0.010000 | 0.020000 |" in text
     assert "## Heldout transition lift" in text
     assert "## Heldout transition robustness" in text
     assert "- passes_transition_robustness: true" in text

@@ -51,3 +51,5 @@ Use these files before citing transition behavior as a heldout result.
 The heldout transition chart provides the same check visually for quick review.
 The heldout calibration curve applies the probability calibration check only to
 rows excluded from fitting.
+The generated summary includes `generalization_gap.csv` so full-sample and
+heldout signal quality can be compared from the main report.
