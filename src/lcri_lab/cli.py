@@ -26,6 +26,7 @@ from lcri_lab.reporting import (
     collect_artifact_metadata,
     missing_artifacts,
     verify_artifact_manifest,
+    verify_generalization_overview,
     write_json,
     write_research_summary,
 )
@@ -247,7 +248,10 @@ def verify_report(report_dir: Path) -> None:
     if not manifest_path.exists():
         raise ValueError(f"missing artifact manifest: {manifest_path}")
     manifest = json.loads(manifest_path.read_text())
-    errors = verify_artifact_manifest(report_dir, manifest)
+    errors = [
+        *verify_artifact_manifest(report_dir, manifest),
+        *verify_generalization_overview(report_dir),
+    ]
     if errors:
         raise ValueError(f"report verification failed: {errors}")
     print(f"Verified report artifacts: {report_dir}")

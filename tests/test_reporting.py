@@ -7,6 +7,7 @@ from lcri_lab.reporting import (
     collect_artifact_metadata,
     missing_artifacts,
     verify_artifact_manifest,
+    verify_generalization_overview,
     write_json,
     write_research_summary,
 )
@@ -57,6 +58,37 @@ def test_verify_artifact_manifest_reports_checksum_mismatch(tmp_path) -> None:
 
     assert "size mismatch: metrics.csv" in errors
     assert "sha256 mismatch: metrics.csv" in errors
+
+
+def test_verify_generalization_overview_reports_missing_keys(tmp_path) -> None:
+    (tmp_path / "generalization_overview.json").write_text(
+        json.dumps({"signal_rows": 2, "regime_rows": 4})
+    )
+
+    errors = verify_generalization_overview(tmp_path)
+
+    assert errors == [
+        "incomplete generalization overview: "
+        "['max_regime_directional_accuracy_gap', "
+        "'max_signal_directional_accuracy_gap', "
+        "'max_transition_directional_accuracy_gap', 'transition_rows']"
+    ]
+
+
+def test_verify_generalization_overview_accepts_complete_payload(tmp_path) -> None:
+    write_json(
+        tmp_path / "generalization_overview.json",
+        {
+            "signal_rows": 2,
+            "regime_rows": 4,
+            "transition_rows": 4,
+            "max_signal_directional_accuracy_gap": 0.05,
+            "max_regime_directional_accuracy_gap": 0.08,
+            "max_transition_directional_accuracy_gap": 0.04,
+        },
+    )
+
+    assert verify_generalization_overview(tmp_path) == []
 
 
 def test_missing_artifacts_reports_absent_paths(tmp_path) -> None:

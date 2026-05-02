@@ -73,6 +73,27 @@ def verify_artifact_manifest(output_dir: Path, manifest: dict[str, Any]) -> list
     return errors
 
 
+def verify_generalization_overview(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete generalization overview."""
+    path = output_dir / "generalization_overview.json"
+    if not path.exists():
+        return ["missing generalization overview: generalization_overview.json"]
+
+    payload = json.loads(path.read_text())
+    required = {
+        "signal_rows",
+        "regime_rows",
+        "transition_rows",
+        "max_signal_directional_accuracy_gap",
+        "max_regime_directional_accuracy_gap",
+        "max_transition_directional_accuracy_gap",
+    }
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete generalization overview: {missing}"]
+    return []
+
+
 def write_research_summary(
     path: Path,
     *,
