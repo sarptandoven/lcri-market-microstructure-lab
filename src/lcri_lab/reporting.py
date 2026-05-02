@@ -155,6 +155,20 @@ def verify_lcri_generalization_severity(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_generalization_severity_summary(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI severity summary."""
+    path = output_dir / "lcri_generalization_severity_summary.json"
+    if not path.exists():
+        return ["missing LCRI generalization severity summary: lcri_generalization_severity_summary.json"]
+
+    payload = json.loads(path.read_text())
+    required = {"rows", "stable_rows", "warning_rows", "critical_rows"}
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete LCRI generalization severity summary: {missing}"]
+    return []
+
+
 def verify_lcri_generalization_gap_delta(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI gap delta artifact."""
     path = output_dir / "lcri_generalization_gap_delta.csv"
