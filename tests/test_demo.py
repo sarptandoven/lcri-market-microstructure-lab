@@ -29,6 +29,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "passes_transition_robustness" in robustness
     manifest = json.loads((tmp_path / "artifact_manifest.json").read_text())
     assert manifest["run"]["seed"] == 3
+    assert manifest["model"]["artifact_version"] == 2
     assert "research_summary.md" in manifest["artifacts"]
     summary = (tmp_path / "research_summary.md").read_text()
     assert "# LCRI Research Summary" in summary

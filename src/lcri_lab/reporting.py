@@ -14,6 +14,7 @@ def build_artifact_manifest(
     heldout_rows: int,
     seed: int,
     train_frac: float,
+    model_artifact_version: int,
     artifacts: list[str],
 ) -> dict[str, Any]:
     """Build a reproducibility manifest for a demo run."""
@@ -24,6 +25,9 @@ def build_artifact_manifest(
             "heldout_rows": heldout_rows,
             "seed": seed,
             "train_frac": train_frac,
+        },
+        "model": {
+            "artifact_version": model_artifact_version,
         },
         "artifacts": artifacts,
     }

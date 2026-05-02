@@ -14,7 +14,7 @@ from lcri_lab.evaluation import (
 )
 from lcri_lab.features import add_regime_transition_features
 from lcri_lab.ingest import normalize_l2_snapshots
-from lcri_lab.model import LCRIModel, ModelConfig
+from lcri_lab.model import ARTIFACT_VERSION, LCRIModel, ModelConfig
 from lcri_lab.plotting import write_figures
 from lcri_lab.reporting import build_artifact_manifest, write_json, write_research_summary
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
@@ -139,6 +139,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         heldout_rows=heldout_rows,
         seed=seed,
         train_frac=train_frac,
+        model_artifact_version=ARTIFACT_VERSION,
         artifacts=artifact_paths,
     )
     write_json(output / "artifact_manifest.json", manifest)

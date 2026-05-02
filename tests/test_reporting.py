@@ -12,6 +12,7 @@ def test_build_artifact_manifest_records_run_config_and_outputs() -> None:
         heldout_rows=30,
         seed=7,
         train_frac=0.7,
+        model_artifact_version=2,
         artifacts=["metrics.csv"],
     )
 
@@ -22,6 +23,7 @@ def test_build_artifact_manifest_records_run_config_and_outputs() -> None:
         "seed": 7,
         "train_frac": 0.7,
     }
+    assert manifest["model"] == {"artifact_version": 2}
     assert manifest["artifacts"] == ["metrics.csv"]
 
 
