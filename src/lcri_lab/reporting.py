@@ -206,6 +206,7 @@ def write_research_summary(
     generalization_gap_leaderboard: pd.DataFrame | None = None,
     lcri_generalization_gap_leaderboard: pd.DataFrame | None = None,
     lcri_generalization_scope_summary: pd.DataFrame | None = None,
+    lcri_worst_generalization_context: dict[str, Any] | None = None,
     lcri_generalization_gap_delta: pd.DataFrame | None = None,
     lcri_gap_delta_flags: pd.DataFrame | None = None,
     lcri_gap_delta_summary: dict[str, Any] | None = None,
@@ -280,6 +281,14 @@ def write_research_summary(
                 _markdown_table(lcri_generalization_scope_summary)
                 if lcri_generalization_scope_summary is not None
                 else "_Not generated._",
+                "",
+                "## LCRI worst generalization context",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (lcri_worst_generalization_context or {}).items()
+                ],
+                "" if lcri_worst_generalization_context else "_Not generated._",
                 "",
                 "## LCRI generalization gap delta",
                 "",
