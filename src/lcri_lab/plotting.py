@@ -14,6 +14,7 @@ def write_figures(
     output_dir: Path,
     transition_table: pd.DataFrame | None = None,
     heldout_transition_table: pd.DataFrame | None = None,
+    heldout_frame: pd.DataFrame | None = None,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     _scatter(frame, output_dir / "raw_vs_lcri_scatter.png")
@@ -30,7 +31,13 @@ def write_figures(
             output_dir / "heldout_transition_signal_quality.png",
             title="Heldout directional accuracy around regime transitions",
         )
-    _calibration(frame, output_dir / "calibration_curve.png")
+    _calibration(frame, output_dir / "calibration_curve.png", title="Calibration curve")
+    if heldout_frame is not None:
+        _calibration(
+            heldout_frame,
+            output_dir / "heldout_calibration_curve.png",
+            title="Heldout calibration curve",
+        )
 
 
 def _scatter(frame: pd.DataFrame, path: Path) -> None:
@@ -77,7 +84,7 @@ def _transition_bars(transition_table: pd.DataFrame, path: Path, *, title: str) 
     plt.close(fig)
 
 
-def _calibration(frame: pd.DataFrame, path: Path) -> None:
+def _calibration(frame: pd.DataFrame, path: Path, *, title: str) -> None:
     fig, ax = plt.subplots(figsize=(7, 6))
     for signal in ["raw_imbalance", "lcri"]:
         curve = calibration_curve(frame, signal=signal, bins=10)
@@ -88,7 +95,7 @@ def _calibration(frame: pd.DataFrame, path: Path) -> None:
             label=signal,
         )
     ax.plot([0, 1], [0, 1], linestyle="--", color="black", linewidth=0.8)
-    ax.set_title("Calibration curve")
+    ax.set_title(title)
     ax.set_xlabel("Mean predicted probability")
     ax.set_ylabel("Observed frequency")
     ax.legend()

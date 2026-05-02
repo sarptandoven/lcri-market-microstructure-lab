@@ -136,6 +136,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "figures/transition_signal_quality.png",
         "figures/heldout_transition_signal_quality.png",
         "figures/calibration_curve.png",
+        "figures/heldout_calibration_curve.png",
     ]
 
     model.save(output / "lcri-model.json")
@@ -156,6 +157,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         output / "figures",
         transition_table=by_transition,
         heldout_transition_table=heldout_by_transition,
+        heldout_frame=heldout_scored,
     )
 
     heldout_rows = len(books) - len(train)
