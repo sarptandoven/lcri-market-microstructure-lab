@@ -169,6 +169,23 @@ def lcri_gap_delta_summary(gap_delta: pd.DataFrame) -> dict[str, float | int | s
     }
 
 
+def lcri_gap_delta_flags(gap_delta: pd.DataFrame) -> pd.DataFrame:
+    """Attach categorical stability flags to LCRI gap delta rows."""
+    column = "raw_minus_lcri_directional_accuracy_gap"
+    if gap_delta.empty:
+        return pd.DataFrame(columns=[*gap_delta.columns, "stability_flag"])
+    _require_columns(gap_delta, ["scope", "context", column])
+
+    output = gap_delta.copy()
+    values = output[column].astype(float)
+    output["stability_flag"] = np.select(
+        [values > 0.0, values < 0.0],
+        ["lcri_more_stable", "lcri_less_stable"],
+        default="lcri_equal_stability",
+    )
+    return output
+
+
 def regime_generalization_gap(metrics: pd.DataFrame, heldout_metrics: pd.DataFrame) -> pd.DataFrame:
     """Compare full-sample and heldout metrics by regime and signal."""
     required = ["regime", "signal", "directional_accuracy", "brier_score", "rank_correlation"]

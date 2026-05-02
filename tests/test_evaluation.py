@@ -6,6 +6,7 @@ from lcri_lab.evaluation import (
     evaluate_signals,
     generalization_gap_leaderboard,
     generalization_overview,
+    lcri_gap_delta_flags,
     lcri_gap_delta_summary,
     lcri_generalization_gap_delta,
     regime_generalization_gap,
@@ -118,6 +119,24 @@ def test_lcri_gap_delta_summary_identifies_stability_edges() -> None:
     assert output["max_lcri_stability_edge_context"] == "signal:all"
     assert output["max_lcri_instability_edge"] == pytest.approx(-0.04)
     assert output["max_lcri_instability_edge_context"] == "regime:thin"
+
+
+def test_lcri_gap_delta_flags_label_stability_direction() -> None:
+    gap_delta = pd.DataFrame(
+        {
+            "scope": ["signal", "regime", "transition"],
+            "context": ["all", "thin", "stable"],
+            "raw_minus_lcri_directional_accuracy_gap": [0.03, -0.04, 0.0],
+        }
+    )
+
+    output = lcri_gap_delta_flags(gap_delta)
+
+    assert list(output["stability_flag"]) == [
+        "lcri_more_stable",
+        "lcri_less_stable",
+        "lcri_equal_stability",
+    ]
 
 
 def test_regime_generalization_gap_compares_matching_regime_signals() -> None:
