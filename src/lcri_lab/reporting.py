@@ -84,6 +84,7 @@ def write_research_summary(
     metrics: pd.DataFrame,
     heldout_metrics: pd.DataFrame | None = None,
     generalization_gap: pd.DataFrame | None = None,
+    regime_generalization_gap: pd.DataFrame | None = None,
     transition_lift: pd.DataFrame,
     transition_robustness: dict[str, Any],
     heldout_transition_lift: pd.DataFrame | None = None,
@@ -116,6 +117,12 @@ def write_research_summary(
                 "",
                 _markdown_table(generalization_gap)
                 if generalization_gap is not None
+                else "_Not generated._",
+                "",
+                "## Regime generalization gap",
+                "",
+                _markdown_table(regime_generalization_gap)
+                if regime_generalization_gap is not None
                 else "_Not generated._",
                 "",
                 "## Transition lift",

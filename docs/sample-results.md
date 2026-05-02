@@ -55,3 +55,7 @@ The generated summary includes `generalization_gap.csv` so full-sample and
 heldout signal quality can be compared from the main report.
 The generalization gap chart shows the same comparison as a quick visual check.
 Use it to spot signals whose full-sample lift does not survive heldout scoring.
+The summary also includes regime-level generalization gaps so degradation can be
+checked inside each liquidity condition.
+That table is useful when the headline heldout result is stable but one regime
+shows clear metric decay.
