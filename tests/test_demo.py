@@ -34,6 +34,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "figures" / "calibration_curve.png").exists()
     assert (tmp_path / "figures" / "heldout_calibration_curve.png").exists()
     assert (tmp_path / "figures" / "generalization_gap.png").exists()
+    assert (tmp_path / "figures" / "regime_generalization_gap.png").exists()
 
     robustness = json.loads((tmp_path / "transition_robustness.json").read_text())
     assert "passes_transition_robustness" in robustness

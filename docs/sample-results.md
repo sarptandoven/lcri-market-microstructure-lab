@@ -58,4 +58,8 @@ Use it to spot signals whose full-sample lift does not survive heldout scoring.
 The summary also includes regime-level generalization gaps so degradation can be
 checked inside each liquidity condition.
 That table is useful when the headline heldout result is stable but one regime
-shows clear metric decay.
+shows clear metric decay. The companion regime gap chart focuses on directional
+accuracy gaps for quick visual review.
+Positive bars indicate the full-sample score is higher than the heldout score.
+Negative bars indicate heldout scoring matched or exceeded the full-sample result.
+Read it with `regime_generalization_gap.csv` for exact metric values.

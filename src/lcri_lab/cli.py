@@ -144,6 +144,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "figures/calibration_curve.png",
         "figures/heldout_calibration_curve.png",
         "figures/generalization_gap.png",
+        "figures/regime_generalization_gap.png",
     ]
 
     model.save(output / "lcri-model.json")
@@ -168,6 +169,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         heldout_transition_table=heldout_by_transition,
         heldout_frame=heldout_scored,
         generalization_gap=generalization_gap,
+        regime_generalization_gap=regime_gap,
     )
 
     heldout_rows = len(books) - len(train)
