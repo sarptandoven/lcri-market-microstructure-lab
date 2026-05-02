@@ -91,6 +91,7 @@ reports/
   heldout_transition_metrics.csv
   transition_generalization_gap.csv
   generalization_overview.json
+  generalization_gap_leaderboard.csv
   transition_lift.csv
   heldout_transition_lift.csv
   transition_robustness.json

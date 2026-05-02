@@ -72,6 +72,29 @@ def absorption_regime_metrics(frame: pd.DataFrame) -> pd.DataFrame:
     ]
 
 
+def generalization_gap_leaderboard(
+    signal_gap: pd.DataFrame,
+    regime_gap: pd.DataFrame,
+    transition_gap: pd.DataFrame,
+    *,
+    limit: int = 10,
+) -> pd.DataFrame:
+    """Rank the largest directional accuracy gaps across generalization tables."""
+    rows = [
+        *_gap_rows(signal_gap, scope="signal", context_column=None),
+        *_gap_rows(regime_gap, scope="regime", context_column="regime"),
+        *_gap_rows(transition_gap, scope="transition", context_column="segment"),
+    ]
+    if not rows:
+        return pd.DataFrame(columns=["scope", "context", "signal", "directional_accuracy_gap"])
+    return (
+        pd.DataFrame(rows)
+        .sort_values("directional_accuracy_gap", ascending=False)
+        .head(limit)
+        .reset_index(drop=True)
+    )
+
+
 def generalization_overview(
     signal_gap: pd.DataFrame,
     regime_gap: pd.DataFrame,
@@ -457,6 +480,28 @@ def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.Da
             }
         )
     return pd.DataFrame(rows)
+
+
+def _gap_rows(
+    frame: pd.DataFrame,
+    *,
+    scope: str,
+    context_column: str | None,
+) -> list[dict[str, float | str]]:
+    if frame.empty or "directional_accuracy_gap" not in frame.columns:
+        return []
+
+    rows = []
+    for row in frame.to_dict("records"):
+        rows.append(
+            {
+                "scope": scope,
+                "context": row[context_column] if context_column else "all",
+                "signal": row["signal"],
+                "directional_accuracy_gap": float(row["directional_accuracy_gap"]),
+            }
+        )
+    return rows
 
 
 def _max_gap(frame: pd.DataFrame) -> float:
