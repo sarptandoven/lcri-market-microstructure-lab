@@ -94,6 +94,7 @@ reports/
   generalization_overview.json
   generalization_gap_leaderboard.csv
   lcri_generalization_gap_delta.csv
+  lcri_gap_delta_flags.csv
   lcri_gap_delta_summary.json
   transition_lift.csv
   heldout_transition_lift.csv
