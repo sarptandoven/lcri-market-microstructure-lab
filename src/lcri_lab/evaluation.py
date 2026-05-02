@@ -114,6 +114,22 @@ def lcri_generalization_gap_leaderboard(
     return leaderboard.loc[leaderboard["signal"] == "lcri"].head(limit).reset_index(drop=True)
 
 
+def lcri_generalization_scope_summary(lcri_leaderboard: pd.DataFrame) -> pd.DataFrame:
+    """Summarize LCRI generalization gaps by scope."""
+    if lcri_leaderboard.empty:
+        return pd.DataFrame(columns=["scope", "rows", "mean_directional_accuracy_gap", "max_directional_accuracy_gap"])
+    _require_columns(lcri_leaderboard, ["scope", "directional_accuracy_gap"])
+    return (
+        lcri_leaderboard.groupby("scope", sort=True)["directional_accuracy_gap"]
+        .agg(
+            rows="count",
+            mean_directional_accuracy_gap="mean",
+            max_directional_accuracy_gap="max",
+        )
+        .reset_index()
+    )
+
+
 def generalization_overview(
     signal_gap: pd.DataFrame,
     regime_gap: pd.DataFrame,
