@@ -13,12 +13,23 @@ def write_figures(
     regime_table: pd.DataFrame,
     output_dir: Path,
     transition_table: pd.DataFrame | None = None,
+    heldout_transition_table: pd.DataFrame | None = None,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     _scatter(frame, output_dir / "raw_vs_lcri_scatter.png")
     _regime_bars(regime_table, output_dir / "regime_signal_quality.png")
     if transition_table is not None:
-        _transition_bars(transition_table, output_dir / "transition_signal_quality.png")
+        _transition_bars(
+            transition_table,
+            output_dir / "transition_signal_quality.png",
+            title="Directional accuracy around regime transitions",
+        )
+    if heldout_transition_table is not None:
+        _transition_bars(
+            heldout_transition_table,
+            output_dir / "heldout_transition_signal_quality.png",
+            title="Heldout directional accuracy around regime transitions",
+        )
     _calibration(frame, output_dir / "calibration_curve.png")
 
 
@@ -50,13 +61,13 @@ def _regime_bars(regime_table: pd.DataFrame, path: Path) -> None:
     plt.close(fig)
 
 
-def _transition_bars(transition_table: pd.DataFrame, path: Path) -> None:
+def _transition_bars(transition_table: pd.DataFrame, path: Path, *, title: str) -> None:
     pivot = transition_table.pivot(
         index="segment", columns="signal", values="directional_accuracy"
     )
     fig, ax = plt.subplots(figsize=(7, 5))
     pivot.plot(kind="bar", ax=ax)
-    ax.set_title("Directional accuracy around regime transitions")
+    ax.set_title(title)
     ax.set_xlabel("Segment")
     ax.set_ylabel("Accuracy")
     ax.set_ylim(0.0, 1.0)

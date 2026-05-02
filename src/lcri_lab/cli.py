@@ -134,6 +134,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "figures/raw_vs_lcri_scatter.png",
         "figures/regime_signal_quality.png",
         "figures/transition_signal_quality.png",
+        "figures/heldout_transition_signal_quality.png",
         "figures/calibration_curve.png",
     ]
 
@@ -149,7 +150,13 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_transition_lift.to_csv(output / "heldout_transition_lift.csv", index=False)
     write_json(output / "transition_robustness.json", transition_robustness)
     write_json(output / "heldout_transition_robustness.json", heldout_transition_robustness)
-    write_figures(scored, by_regime, output / "figures", transition_table=by_transition)
+    write_figures(
+        scored,
+        by_regime,
+        output / "figures",
+        transition_table=by_transition,
+        heldout_transition_table=heldout_by_transition,
+    )
 
     heldout_rows = len(books) - len(train)
     write_research_summary(

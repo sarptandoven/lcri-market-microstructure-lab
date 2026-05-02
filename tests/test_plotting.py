@@ -1,0 +1,40 @@
+from pathlib import Path
+
+import pandas as pd
+
+from lcri_lab.plotting import write_figures
+
+
+def test_write_figures_writes_heldout_transition_plot(tmp_path: Path) -> None:
+    frame = pd.DataFrame(
+        {
+            "raw_imbalance": [0.1, -0.2, 0.3, -0.4],
+            "lcri": [0.2, -0.1, 0.5, -0.6],
+            "future_direction": [1, 0, 1, 0],
+        }
+    )
+    regime_table = pd.DataFrame(
+        {
+            "regime": ["thick", "thick"],
+            "signal": ["raw_imbalance", "lcri"],
+            "directional_accuracy": [0.5, 0.75],
+        }
+    )
+    transition_table = pd.DataFrame(
+        {
+            "segment": ["stable", "stable"],
+            "signal": ["raw_imbalance", "lcri"],
+            "directional_accuracy": [0.5, 0.75],
+        }
+    )
+
+    write_figures(
+        frame,
+        regime_table,
+        tmp_path,
+        transition_table=transition_table,
+        heldout_transition_table=transition_table,
+    )
+
+    assert (tmp_path / "transition_signal_quality.png").exists()
+    assert (tmp_path / "heldout_transition_signal_quality.png").exists()
