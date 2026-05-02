@@ -160,6 +160,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "figures/generalization_gap.png",
         "figures/regime_generalization_gap.png",
         "figures/transition_generalization_gap.png",
+        "figures/lcri_generalization_gap_delta.png",
     ]
 
     model.save(output / "lcri-model.json")
@@ -190,6 +191,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         generalization_gap=generalization_gap,
         regime_generalization_gap=regime_gap,
         transition_generalization_gap=transition_gap,
+        lcri_generalization_gap_delta=lcri_gap_delta,
     )
 
     heldout_rows = len(books) - len(train)

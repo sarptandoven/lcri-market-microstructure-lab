@@ -18,6 +18,7 @@ def write_figures(
     generalization_gap: pd.DataFrame | None = None,
     regime_generalization_gap: pd.DataFrame | None = None,
     transition_generalization_gap: pd.DataFrame | None = None,
+    lcri_generalization_gap_delta: pd.DataFrame | None = None,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     _scatter(frame, output_dir / "raw_vs_lcri_scatter.png")
@@ -55,6 +56,11 @@ def write_figures(
         _transition_generalization_gap_bars(
             transition_generalization_gap,
             output_dir / "transition_generalization_gap.png",
+        )
+    if lcri_generalization_gap_delta is not None:
+        _lcri_generalization_gap_delta_bars(
+            lcri_generalization_gap_delta,
+            output_dir / "lcri_generalization_gap_delta.png",
         )
 
 
@@ -158,6 +164,25 @@ def _transition_generalization_gap_bars(gap_table: pd.DataFrame, path: Path) -> 
     ax.set_xlabel("Segment")
     ax.set_ylabel("Full-sample minus heldout accuracy")
     ax.legend(title="Signal")
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+
+
+def _lcri_generalization_gap_delta_bars(gap_delta: pd.DataFrame, path: Path) -> None:
+    column = "raw_minus_lcri_directional_accuracy_gap"
+    if column not in gap_delta.columns:
+        return
+
+    table = gap_delta.copy()
+    table["label"] = table["scope"].astype(str) + ": " + table["context"].astype(str)
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.bar(table["label"], table[column])
+    ax.axhline(0.0, color="black", linewidth=0.8)
+    ax.set_title("Raw imbalance minus LCRI generalization gap")
+    ax.set_xlabel("Scope")
+    ax.set_ylabel("Positive means LCRI degraded less")
+    ax.tick_params(axis="x", rotation=30)
     fig.tight_layout()
     fig.savefig(path, dpi=160)
     plt.close(fig)
