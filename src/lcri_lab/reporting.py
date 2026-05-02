@@ -82,6 +82,7 @@ def write_research_summary(
     seed: int,
     train_frac: float,
     metrics: pd.DataFrame,
+    heldout_metrics: pd.DataFrame | None = None,
     transition_lift: pd.DataFrame,
     transition_robustness: dict[str, Any],
 ) -> None:
@@ -103,6 +104,10 @@ def write_research_summary(
                 "## Signal quality",
                 "",
                 _markdown_table(metrics),
+                "",
+                "## Heldout signal quality",
+                "",
+                _markdown_table(heldout_metrics) if heldout_metrics is not None else "_Not generated._",
                 "",
                 "## Transition lift",
                 "",

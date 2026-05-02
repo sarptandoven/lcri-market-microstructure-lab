@@ -111,6 +111,7 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
         seed=7,
         train_frac=0.7,
         metrics=metrics,
+        heldout_metrics=metrics,
         transition_lift=transition_lift,
         transition_robustness={"passes_transition_robustness": True},
     )
@@ -118,6 +119,7 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
     text = path.read_text()
     assert "# LCRI Research Summary" in text
     assert "- seed: 7" in text
+    assert "## Heldout signal quality" in text
     assert "| signal | directional_accuracy | brier_score | rank_correlation |" in text
     assert "| lcri | 0.610000 | 0.220000 | 0.180000 |" in text
     assert "- passes_transition_robustness: true" in text

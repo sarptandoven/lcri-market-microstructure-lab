@@ -101,10 +101,13 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
 
     books = simulate_order_books(SimulationConfig(rows=rows, seed=seed))
     train = books.sample(frac=train_frac, random_state=seed)
+    heldout = books.drop(index=train.index)
     model = LCRIModel().fit(train)
     scored = add_regime_transition_features(model.score_frame(books))
+    heldout_scored = add_regime_transition_features(model.score_frame(heldout))
 
     metrics = evaluate_signals(scored)
+    heldout_metrics = evaluate_signals(heldout_scored)
     by_regime = regime_metrics(scored)
     by_transition = transition_conditioned_metrics(scored)
     transition_lift = transition_signal_lift(scored)
@@ -114,6 +117,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "lcri-model.json",
         "sample_snapshots.csv",
         "metrics.csv",
+        "heldout_metrics.csv",
         "regime_metrics.csv",
         "transition_metrics.csv",
         "transition_lift.csv",
@@ -128,6 +132,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     model.save(output / "lcri-model.json")
     scored.head(500).to_csv(output / "sample_snapshots.csv", index=False)
     metrics.to_csv(output / "metrics.csv", index=False)
+    heldout_metrics.to_csv(output / "heldout_metrics.csv", index=False)
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
     by_transition.to_csv(output / "transition_metrics.csv", index=False)
     transition_lift.to_csv(output / "transition_lift.csv", index=False)
@@ -143,6 +148,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         seed=seed,
         train_frac=train_frac,
         metrics=metrics,
+        heldout_metrics=heldout_metrics,
         transition_lift=transition_lift,
         transition_robustness=transition_robustness,
     )
@@ -167,6 +173,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"train fraction: {train_frac:.2f}")
     print(f"model: {output / 'lcri-model.json'}")
     print(f"metrics: {output / 'metrics.csv'}")
+    print(f"heldout metrics: {output / 'heldout_metrics.csv'}")
     print(f"regime metrics: {output / 'regime_metrics.csv'}")
     print(f"transition metrics: {output / 'transition_metrics.csv'}")
     print(f"transition lift: {output / 'transition_lift.csv'}")

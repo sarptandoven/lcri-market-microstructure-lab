@@ -77,6 +77,7 @@ reports/
     transition_signal_quality.png
     calibration_curve.png
   metrics.csv
+  heldout_metrics.csv
   regime_metrics.csv
   transition_metrics.csv
   transition_lift.csv
