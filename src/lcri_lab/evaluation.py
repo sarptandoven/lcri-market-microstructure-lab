@@ -138,6 +138,35 @@ def lcri_generalization_gap_delta(
     ).reset_index(drop=True)
 
 
+def lcri_gap_delta_summary(gap_delta: pd.DataFrame) -> dict[str, float | int | str]:
+    """Summarize where LCRI generalizes better or worse than raw imbalance."""
+    column = "raw_minus_lcri_directional_accuracy_gap"
+    if gap_delta.empty:
+        return {
+            "rows": 0,
+            "lcri_more_stable_rows": 0,
+            "lcri_less_stable_rows": 0,
+            "max_lcri_stability_edge": 0.0,
+            "max_lcri_stability_edge_context": "none",
+            "max_lcri_instability_edge": 0.0,
+            "max_lcri_instability_edge_context": "none",
+        }
+    _require_columns(gap_delta, ["scope", "context", column])
+
+    values = gap_delta[column].astype(float)
+    best = gap_delta.loc[values.idxmax()]
+    worst = gap_delta.loc[values.idxmin()]
+    return {
+        "rows": len(gap_delta),
+        "lcri_more_stable_rows": int((values > 0.0).sum()),
+        "lcri_less_stable_rows": int((values < 0.0).sum()),
+        "max_lcri_stability_edge": float(values.max()),
+        "max_lcri_stability_edge_context": f"{best['scope']}:{best['context']}",
+        "max_lcri_instability_edge": float(values.min()),
+        "max_lcri_instability_edge_context": f"{worst['scope']}:{worst['context']}",
+    }
+
+
 def regime_generalization_gap(metrics: pd.DataFrame, heldout_metrics: pd.DataFrame) -> pd.DataFrame:
     """Compare full-sample and heldout metrics by regime and signal."""
     required = ["regime", "signal", "directional_accuracy", "brier_score", "rank_correlation"]
