@@ -64,4 +64,9 @@ Positive bars indicate the full-sample score is higher than the heldout score.
 Negative bars indicate heldout scoring matched or exceeded the full-sample result.
 Read it with `regime_generalization_gap.csv` for exact metric values.
 The summary also includes transition-level generalization gaps so stable and
-transition segments can be checked against heldout scoring.
+transition segments can be checked against heldout scoring. The transition gap
+chart highlights whether degradation concentrates around regime changes.
+Positive bars indicate stronger full-sample performance than heldout performance.
+Negative bars indicate heldout performance matched or exceeded the full-sample score.
+Use `transition_generalization_gap.csv` when exact metric values are needed.
+This keeps the visual artifact tied to auditable numeric output.

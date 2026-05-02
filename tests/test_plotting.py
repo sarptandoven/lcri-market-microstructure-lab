@@ -18,6 +18,7 @@ def test_write_figures_keeps_heldout_outputs_optional(tmp_path: Path) -> None:
     assert not (tmp_path / "heldout_transition_signal_quality.png").exists()
     assert not (tmp_path / "generalization_gap.png").exists()
     assert not (tmp_path / "regime_generalization_gap.png").exists()
+    assert not (tmp_path / "transition_generalization_gap.png").exists()
 
 
 def test_write_figures_writes_heldout_transition_plot(tmp_path: Path) -> None:
@@ -34,6 +35,7 @@ def test_write_figures_writes_heldout_transition_plot(tmp_path: Path) -> None:
         heldout_frame=frame,
         generalization_gap=_generalization_gap_table(),
         regime_generalization_gap=_regime_generalization_gap_table(),
+        transition_generalization_gap=_transition_generalization_gap_table(),
     )
 
     assert (tmp_path / "transition_signal_quality.png").exists()
@@ -41,6 +43,7 @@ def test_write_figures_writes_heldout_transition_plot(tmp_path: Path) -> None:
     assert (tmp_path / "heldout_calibration_curve.png").exists()
     assert (tmp_path / "generalization_gap.png").exists()
     assert (tmp_path / "regime_generalization_gap.png").exists()
+    assert (tmp_path / "transition_generalization_gap.png").exists()
 
 
 def _scored_frame() -> pd.DataFrame:
@@ -90,5 +93,15 @@ def _regime_generalization_gap_table() -> pd.DataFrame:
             "regime": ["thin", "thin", "thick", "thick"],
             "signal": ["raw_imbalance", "lcri", "raw_imbalance", "lcri"],
             "directional_accuracy_gap": [0.02, 0.08, -0.01, 0.03],
+        }
+    )
+
+
+def _transition_generalization_gap_table() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "segment": ["stable", "stable", "transition", "transition"],
+            "signal": ["raw_imbalance", "lcri", "raw_imbalance", "lcri"],
+            "directional_accuracy_gap": [0.01, 0.03, 0.02, 0.07],
         }
     )

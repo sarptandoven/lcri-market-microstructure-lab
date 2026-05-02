@@ -17,6 +17,7 @@ def write_figures(
     heldout_frame: pd.DataFrame | None = None,
     generalization_gap: pd.DataFrame | None = None,
     regime_generalization_gap: pd.DataFrame | None = None,
+    transition_generalization_gap: pd.DataFrame | None = None,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     _scatter(frame, output_dir / "raw_vs_lcri_scatter.png")
@@ -49,6 +50,11 @@ def write_figures(
         _regime_generalization_gap_bars(
             regime_generalization_gap,
             output_dir / "regime_generalization_gap.png",
+        )
+    if transition_generalization_gap is not None:
+        _transition_generalization_gap_bars(
+            transition_generalization_gap,
+            output_dir / "transition_generalization_gap.png",
         )
 
 
@@ -131,6 +137,25 @@ def _regime_generalization_gap_bars(gap_table: pd.DataFrame, path: Path) -> None
     ax.axhline(0.0, color="black", linewidth=0.8)
     ax.set_title("Directional accuracy generalization gap by regime")
     ax.set_xlabel("Regime")
+    ax.set_ylabel("Full-sample minus heldout accuracy")
+    ax.legend(title="Signal")
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+
+
+def _transition_generalization_gap_bars(gap_table: pd.DataFrame, path: Path) -> None:
+    if "directional_accuracy_gap" not in gap_table.columns:
+        return
+
+    pivot = gap_table.pivot(
+        index="segment", columns="signal", values="directional_accuracy_gap"
+    )
+    fig, ax = plt.subplots(figsize=(8, 5))
+    pivot.plot(kind="bar", ax=ax)
+    ax.axhline(0.0, color="black", linewidth=0.8)
+    ax.set_title("Directional accuracy generalization gap by transition segment")
+    ax.set_xlabel("Segment")
     ax.set_ylabel("Full-sample minus heldout accuracy")
     ax.legend(title="Signal")
     fig.tight_layout()
