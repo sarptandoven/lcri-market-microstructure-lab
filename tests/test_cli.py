@@ -92,11 +92,26 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
         "lcri_directional_accuracy_gap,raw_minus_lcri_directional_accuracy_gap\n"
         "signal,all,0.08,0.05,0.03\n"
     )
+    summary = tmp_path / "lcri_gap_delta_summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "rows": 3,
+                "lcri_more_stable_rows": 2,
+                "lcri_less_stable_rows": 1,
+                "max_lcri_stability_edge": 0.03,
+                "max_lcri_stability_edge_context": "signal:all",
+                "max_lcri_instability_edge": -0.04,
+                "max_lcri_instability_edge_context": "regime:thin",
+            }
+        )
+    )
     manifest = {
         "artifacts": [
             "metrics.csv",
             "generalization_overview.json",
             "lcri_generalization_gap_delta.csv",
+            "lcri_gap_delta_summary.json",
         ],
         "artifact_metadata": {},
     }

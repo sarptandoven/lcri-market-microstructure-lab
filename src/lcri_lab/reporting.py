@@ -114,6 +114,28 @@ def verify_lcri_generalization_gap_delta(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_gap_delta_summary(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI gap delta summary."""
+    path = output_dir / "lcri_gap_delta_summary.json"
+    if not path.exists():
+        return ["missing LCRI gap delta summary: lcri_gap_delta_summary.json"]
+
+    payload = json.loads(path.read_text())
+    required = {
+        "rows",
+        "lcri_more_stable_rows",
+        "lcri_less_stable_rows",
+        "max_lcri_stability_edge",
+        "max_lcri_stability_edge_context",
+        "max_lcri_instability_edge",
+        "max_lcri_instability_edge_context",
+    }
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete LCRI gap delta summary: {missing}"]
+    return []
+
+
 def write_research_summary(
     path: Path,
     *,

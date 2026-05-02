@@ -8,6 +8,7 @@ from lcri_lab.reporting import (
     missing_artifacts,
     verify_artifact_manifest,
     verify_generalization_overview,
+    verify_lcri_gap_delta_summary,
     verify_lcri_generalization_gap_delta,
     write_json,
     write_research_summary,
@@ -118,6 +119,36 @@ def test_verify_lcri_generalization_gap_delta_accepts_complete_csv(tmp_path) -> 
     ).to_csv(tmp_path / "lcri_generalization_gap_delta.csv", index=False)
 
     assert verify_lcri_generalization_gap_delta(tmp_path) == []
+
+
+def test_verify_lcri_gap_delta_summary_reports_missing_keys(tmp_path) -> None:
+    write_json(tmp_path / "lcri_gap_delta_summary.json", {"rows": 3})
+
+    errors = verify_lcri_gap_delta_summary(tmp_path)
+
+    assert errors == [
+        "incomplete LCRI gap delta summary: "
+        "['lcri_less_stable_rows', 'lcri_more_stable_rows', "
+        "'max_lcri_instability_edge', 'max_lcri_instability_edge_context', "
+        "'max_lcri_stability_edge', 'max_lcri_stability_edge_context']"
+    ]
+
+
+def test_verify_lcri_gap_delta_summary_accepts_complete_payload(tmp_path) -> None:
+    write_json(
+        tmp_path / "lcri_gap_delta_summary.json",
+        {
+            "rows": 3,
+            "lcri_more_stable_rows": 2,
+            "lcri_less_stable_rows": 1,
+            "max_lcri_stability_edge": 0.03,
+            "max_lcri_stability_edge_context": "signal:all",
+            "max_lcri_instability_edge": -0.04,
+            "max_lcri_instability_edge_context": "regime:thin",
+        },
+    )
+
+    assert verify_lcri_gap_delta_summary(tmp_path) == []
 
 
 def test_missing_artifacts_reports_absent_paths(tmp_path) -> None:
