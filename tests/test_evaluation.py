@@ -102,17 +102,18 @@ def test_lcri_generalization_gap_delta_compares_raw_gap_stability() -> None:
 def test_lcri_gap_delta_summary_identifies_stability_edges() -> None:
     gap_delta = pd.DataFrame(
         {
-            "scope": ["signal", "regime", "transition"],
-            "context": ["all", "thin", "transition"],
-            "raw_minus_lcri_directional_accuracy_gap": [0.03, -0.04, 0.01],
+            "scope": ["signal", "regime", "transition", "regime"],
+            "context": ["all", "thin", "transition", "stressed"],
+            "raw_minus_lcri_directional_accuracy_gap": [0.03, -0.04, 0.01, 0.0],
         }
     )
 
     output = lcri_gap_delta_summary(gap_delta)
 
-    assert output["rows"] == 3
+    assert output["rows"] == 4
     assert output["lcri_more_stable_rows"] == 2
     assert output["lcri_less_stable_rows"] == 1
+    assert output["lcri_equal_stability_rows"] == 1
     assert output["max_lcri_stability_edge"] == pytest.approx(0.03)
     assert output["max_lcri_stability_edge_context"] == "signal:all"
     assert output["max_lcri_instability_edge"] == pytest.approx(-0.04)

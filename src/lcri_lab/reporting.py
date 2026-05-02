@@ -125,6 +125,7 @@ def verify_lcri_gap_delta_summary(output_dir: Path) -> list[str]:
         "rows",
         "lcri_more_stable_rows",
         "lcri_less_stable_rows",
+        "lcri_equal_stability_rows",
         "max_lcri_stability_edge",
         "max_lcri_stability_edge_context",
         "max_lcri_instability_edge",

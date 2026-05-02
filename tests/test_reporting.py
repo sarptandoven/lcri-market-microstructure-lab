@@ -128,9 +128,10 @@ def test_verify_lcri_gap_delta_summary_reports_missing_keys(tmp_path) -> None:
 
     assert errors == [
         "incomplete LCRI gap delta summary: "
-        "['lcri_less_stable_rows', 'lcri_more_stable_rows', "
-        "'max_lcri_instability_edge', 'max_lcri_instability_edge_context', "
-        "'max_lcri_stability_edge', 'max_lcri_stability_edge_context']"
+        "['lcri_equal_stability_rows', 'lcri_less_stable_rows', "
+        "'lcri_more_stable_rows', 'max_lcri_instability_edge', "
+        "'max_lcri_instability_edge_context', 'max_lcri_stability_edge', "
+        "'max_lcri_stability_edge_context']"
     ]
 
 
@@ -141,6 +142,7 @@ def test_verify_lcri_gap_delta_summary_accepts_complete_payload(tmp_path) -> Non
             "rows": 3,
             "lcri_more_stable_rows": 2,
             "lcri_less_stable_rows": 1,
+            "lcri_equal_stability_rows": 0,
             "max_lcri_stability_edge": 0.03,
             "max_lcri_stability_edge_context": "signal:all",
             "max_lcri_instability_edge": -0.04,
@@ -399,6 +401,8 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
     lcri_gap_delta_summary = {
         "rows": 3,
         "lcri_more_stable_rows": 2,
+        "lcri_less_stable_rows": 1,
+        "lcri_equal_stability_rows": 0,
         "max_lcri_stability_edge_context": "signal:all",
     }
     transition_lift = pd.DataFrame(

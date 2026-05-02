@@ -99,6 +99,7 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
                 "rows": 3,
                 "lcri_more_stable_rows": 2,
                 "lcri_less_stable_rows": 1,
+                "lcri_equal_stability_rows": 0,
                 "max_lcri_stability_edge": 0.03,
                 "max_lcri_stability_edge_context": "signal:all",
                 "max_lcri_instability_edge": -0.04,
