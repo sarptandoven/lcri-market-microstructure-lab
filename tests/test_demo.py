@@ -85,6 +85,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## LCRI generalization gap leaderboard" in summary
     assert "## LCRI generalization scope summary" in summary
     assert "## LCRI generalization severity" in summary
+    assert "## LCRI generalization severity summary" in summary
     assert "## LCRI worst generalization context" in summary
     assert "## LCRI generalization gap delta" in summary
     assert "## LCRI gap delta flags" in summary

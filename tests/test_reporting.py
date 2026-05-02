@@ -506,6 +506,12 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
             }
         ]
     )
+    lcri_generalization_severity_summary = {
+        "rows": 1,
+        "stable_rows": 0,
+        "warning_rows": 1,
+        "critical_rows": 0,
+    }
     lcri_gap_delta_flags = pd.DataFrame(
         [
             {
@@ -548,6 +554,7 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
         generalization_gap_leaderboard=generalization_gap_leaderboard,
         lcri_generalization_gap_leaderboard=lcri_generalization_gap_leaderboard,
         lcri_generalization_severity=lcri_generalization_severity,
+        lcri_generalization_severity_summary=lcri_generalization_severity_summary,
         lcri_gap_delta_flags=lcri_gap_delta_flags,
         lcri_gap_delta_summary=lcri_gap_delta_summary,
         transition_lift=transition_lift,
@@ -577,6 +584,8 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
     assert "| signal | all | lcri | 0.030000 |" in text
     assert "## LCRI generalization severity" in text
     assert "| signal | all | 0.030000 | warning |" in text
+    assert "## LCRI generalization severity summary" in text
+    assert "- warning_rows: 1" in text
     assert "## LCRI gap delta flags" in text
     assert "| signal | all | lcri_more_stable |" in text
     assert "## LCRI gap delta summary" in text
