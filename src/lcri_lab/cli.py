@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -20,6 +21,7 @@ from lcri_lab.reporting import (
     build_artifact_manifest,
     collect_artifact_metadata,
     missing_artifacts,
+    verify_artifact_manifest,
     write_json,
     write_research_summary,
 )
@@ -59,6 +61,9 @@ def main() -> None:
     describe = subparsers.add_parser("describe-model", help="print fitted model artifact metadata")
     describe.add_argument("--model", type=Path, required=True)
 
+    verify = subparsers.add_parser("verify-report", help="verify generated report artifacts")
+    verify.add_argument("--report-dir", type=Path, default=Path("reports"))
+
     args = parser.parse_args()
     if args.command == "run-demo":
         run_demo(rows=args.rows, seed=args.seed, train_frac=args.train_frac, output=args.output)
@@ -83,6 +88,8 @@ def main() -> None:
         score_model(input_path=args.input, model_path=args.model, output_path=args.output, columns=columns)
     elif args.command == "describe-model":
         describe_model(model_path=args.model)
+    elif args.command == "verify-report":
+        verify_report(report_dir=args.report_dir)
 
 
 def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> None:
@@ -169,6 +176,17 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"figures: {output / 'figures'}")
     print()
     print(metrics.to_string(index=False))
+
+
+def verify_report(report_dir: Path) -> None:
+    manifest_path = report_dir / "artifact_manifest.json"
+    if not manifest_path.exists():
+        raise ValueError(f"missing artifact manifest: {manifest_path}")
+    manifest = json.loads(manifest_path.read_text())
+    errors = verify_artifact_manifest(report_dir, manifest)
+    if errors:
+        raise ValueError(f"report verification failed: {errors}")
+    print(f"Verified report artifacts: {report_dir}")
 
 
 def normalize_snapshots(

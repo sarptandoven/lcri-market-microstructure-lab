@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from lcri_lab.cli import describe_model, fit_model, normalize_snapshots, score_model
+from lcri_lab.cli import describe_model, fit_model, normalize_snapshots, score_model, verify_report
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
 
@@ -68,6 +68,41 @@ def test_score_model_writes_selected_columns(tmp_path: Path) -> None:
     score_model(snapshots, model_path, output_path, columns=["timestamp", "lcri", "lcri_probability"])
 
     assert list(pd.read_csv(output_path).columns) == ["timestamp", "lcri", "lcri_probability"]
+
+
+def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
+    artifact = tmp_path / "metrics.csv"
+    artifact.write_text("signal,value\n")
+    manifest = {
+        "artifacts": ["metrics.csv"],
+        "artifact_metadata": {
+            "metrics.csv": {
+                "size_bytes": artifact.stat().st_size,
+                "sha256": "48d81bac0e2bd3054a99e5fa3a1ebaac0d7e1d23e7903b11950ad14e8d5878c4",
+            }
+        },
+    }
+    (tmp_path / "artifact_manifest.json").write_text(json.dumps(manifest))
+
+    verify_report(tmp_path)
+
+
+def test_verify_report_rejects_changed_artifact(tmp_path: Path) -> None:
+    artifact = tmp_path / "metrics.csv"
+    artifact.write_text("signal,value\n")
+    manifest = {
+        "artifacts": ["metrics.csv"],
+        "artifact_metadata": {
+            "metrics.csv": {
+                "size_bytes": artifact.stat().st_size,
+                "sha256": "0" * 64,
+            }
+        },
+    }
+    (tmp_path / "artifact_manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ValueError, match="sha256 mismatch"):
+        verify_report(tmp_path)
 
 
 def test_score_model_rejects_unknown_columns(tmp_path: Path) -> None:

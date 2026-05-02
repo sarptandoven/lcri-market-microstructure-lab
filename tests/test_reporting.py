@@ -6,6 +6,7 @@ from lcri_lab.reporting import (
     build_artifact_manifest,
     collect_artifact_metadata,
     missing_artifacts,
+    verify_artifact_manifest,
     write_json,
     write_research_summary,
 )
@@ -43,6 +44,19 @@ def test_collect_artifact_metadata_records_size_and_digest(tmp_path) -> None:
     assert set(metadata) == {"metrics.csv"}
     assert metadata["metrics.csv"]["size_bytes"] == len("signal,value\n")
     assert len(metadata["metrics.csv"]["sha256"]) == 64
+
+
+def test_verify_artifact_manifest_reports_checksum_mismatch(tmp_path) -> None:
+    (tmp_path / "metrics.csv").write_text("signal,value\n")
+    manifest = {
+        "artifacts": ["metrics.csv"],
+        "artifact_metadata": {"metrics.csv": {"size_bytes": 1, "sha256": "0" * 64}},
+    }
+
+    errors = verify_artifact_manifest(tmp_path, manifest)
+
+    assert "size mismatch: metrics.csv" in errors
+    assert "sha256 mismatch: metrics.csv" in errors
 
 
 def test_missing_artifacts_reports_absent_paths(tmp_path) -> None:

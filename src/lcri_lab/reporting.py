@@ -55,6 +55,24 @@ def missing_artifacts(output_dir: Path, artifacts: list[str]) -> list[str]:
     return [artifact for artifact in artifacts if not (output_dir / artifact).exists()]
 
 
+def verify_artifact_manifest(output_dir: Path, manifest: dict[str, Any]) -> list[str]:
+    """Return manifest verification errors for missing or changed artifacts."""
+    artifacts = manifest.get("artifacts", [])
+    metadata = manifest.get("artifact_metadata", {})
+    errors = [f"missing artifact: {artifact}" for artifact in missing_artifacts(output_dir, artifacts)]
+
+    current_metadata = collect_artifact_metadata(output_dir, artifacts)
+    for artifact, expected in metadata.items():
+        current = current_metadata.get(artifact)
+        if current is None:
+            continue
+        if current.get("size_bytes") != expected.get("size_bytes"):
+            errors.append(f"size mismatch: {artifact}")
+        if current.get("sha256") != expected.get("sha256"):
+            errors.append(f"sha256 mismatch: {artifact}")
+    return errors
+
+
 def write_research_summary(
     path: Path,
     *,
