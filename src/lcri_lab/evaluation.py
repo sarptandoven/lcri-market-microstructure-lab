@@ -72,6 +72,22 @@ def absorption_regime_metrics(frame: pd.DataFrame) -> pd.DataFrame:
     ]
 
 
+def generalization_overview(
+    signal_gap: pd.DataFrame,
+    regime_gap: pd.DataFrame,
+    transition_gap: pd.DataFrame,
+) -> dict[str, float | int]:
+    """Summarize generated generalization gap tables for quick audit checks."""
+    return {
+        "signal_rows": len(signal_gap),
+        "regime_rows": len(regime_gap),
+        "transition_rows": len(transition_gap),
+        "max_signal_directional_accuracy_gap": _max_gap(signal_gap),
+        "max_regime_directional_accuracy_gap": _max_gap(regime_gap),
+        "max_transition_directional_accuracy_gap": _max_gap(transition_gap),
+    }
+
+
 def regime_generalization_gap(metrics: pd.DataFrame, heldout_metrics: pd.DataFrame) -> pd.DataFrame:
     """Compare full-sample and heldout metrics by regime and signal."""
     required = ["regime", "signal", "directional_accuracy", "brier_score", "rank_correlation"]
@@ -441,6 +457,12 @@ def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.Da
             }
         )
     return pd.DataFrame(rows)
+
+
+def _max_gap(frame: pd.DataFrame) -> float:
+    if frame.empty or "directional_accuracy_gap" not in frame.columns:
+        return 0.0
+    return float(frame["directional_accuracy_gap"].max())
 
 
 def _require_columns(frame: pd.DataFrame, columns: list[str]) -> None:

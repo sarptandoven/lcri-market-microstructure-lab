@@ -8,6 +8,7 @@ import pandas as pd
 
 from lcri_lab.evaluation import (
     evaluate_signals,
+    generalization_overview,
     regime_generalization_gap,
     regime_metrics,
     signal_generalization_gap,
@@ -118,6 +119,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     by_transition = transition_conditioned_metrics(scored)
     heldout_by_transition = transition_conditioned_metrics(heldout_scored)
     transition_gap = transition_generalization_gap(by_transition, heldout_by_transition)
+    overview = generalization_overview(generalization_gap, regime_gap, transition_gap)
     transition_lift = transition_signal_lift(scored)
     heldout_transition_lift = transition_signal_lift(heldout_scored)
     transition_robustness = transition_robustness_summary(scored)
@@ -135,6 +137,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "transition_metrics.csv",
         "heldout_transition_metrics.csv",
         "transition_generalization_gap.csv",
+        "generalization_overview.json",
         "transition_lift.csv",
         "heldout_transition_lift.csv",
         "transition_robustness.json",
@@ -162,6 +165,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     by_transition.to_csv(output / "transition_metrics.csv", index=False)
     heldout_by_transition.to_csv(output / "heldout_transition_metrics.csv", index=False)
     transition_gap.to_csv(output / "transition_generalization_gap.csv", index=False)
+    write_json(output / "generalization_overview.json", overview)
     transition_lift.to_csv(output / "transition_lift.csv", index=False)
     heldout_transition_lift.to_csv(output / "heldout_transition_lift.csv", index=False)
     write_json(output / "transition_robustness.json", transition_robustness)
@@ -225,6 +229,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"transition metrics: {output / 'transition_metrics.csv'}")
     print(f"heldout transition metrics: {output / 'heldout_transition_metrics.csv'}")
     print(f"transition generalization gap: {output / 'transition_generalization_gap.csv'}")
+    print(f"generalization overview: {output / 'generalization_overview.json'}")
     print(f"transition lift: {output / 'transition_lift.csv'}")
     print(f"heldout transition lift: {output / 'heldout_transition_lift.csv'}")
     print(f"transition robustness: {output / 'transition_robustness.json'}")

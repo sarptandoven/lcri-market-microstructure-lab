@@ -28,6 +28,11 @@ def test_public_api_exports_signal_generalization_gap() -> None:
     assert "signal_generalization_gap" in lcri_lab.__all__
 
 
+def test_public_api_exports_generalization_overview() -> None:
+    assert callable(lcri_lab.generalization_overview)
+    assert "generalization_overview" in lcri_lab.__all__
+
+
 def test_public_api_exports_regime_generalization_gap() -> None:
     assert callable(lcri_lab.regime_generalization_gap)
     assert "regime_generalization_gap" in lcri_lab.__all__

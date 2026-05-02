@@ -4,6 +4,7 @@ import pytest
 from lcri_lab.evaluation import (
     calibration_curve,
     evaluate_signals,
+    generalization_overview,
     regime_generalization_gap,
     regime_metrics,
     signal_generalization_gap,
@@ -25,6 +26,21 @@ def test_summarize_signal_lift_reports_metric_deltas() -> None:
         "rank_correlation_lift",
     }
     assert all(isinstance(value, float) for value in summary.values())
+
+
+def test_generalization_overview_summarizes_gap_tables() -> None:
+    signal_gap = pd.DataFrame({"directional_accuracy_gap": [0.02, 0.05]})
+    regime_gap = pd.DataFrame({"directional_accuracy_gap": [0.03, 0.08]})
+    transition_gap = pd.DataFrame({"directional_accuracy_gap": [0.01, 0.04]})
+
+    output = generalization_overview(signal_gap, regime_gap, transition_gap)
+
+    assert output["signal_rows"] == 2
+    assert output["regime_rows"] == 2
+    assert output["transition_rows"] == 2
+    assert output["max_signal_directional_accuracy_gap"] == pytest.approx(0.05)
+    assert output["max_regime_directional_accuracy_gap"] == pytest.approx(0.08)
+    assert output["max_transition_directional_accuracy_gap"] == pytest.approx(0.04)
 
 
 def test_regime_generalization_gap_compares_matching_regime_signals() -> None:
