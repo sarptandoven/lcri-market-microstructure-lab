@@ -111,6 +111,33 @@ def generalization_overview(
     }
 
 
+def lcri_generalization_gap_delta(
+    signal_gap: pd.DataFrame,
+    regime_gap: pd.DataFrame,
+    transition_gap: pd.DataFrame,
+) -> pd.DataFrame:
+    """Compare LCRI gap stability against raw imbalance across all gap tables."""
+    rows = [
+        *_gap_delta_rows(signal_gap, scope="signal", context_column=None),
+        *_gap_delta_rows(regime_gap, scope="regime", context_column="regime"),
+        *_gap_delta_rows(transition_gap, scope="transition", context_column="segment"),
+    ]
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "scope",
+                "context",
+                "raw_imbalance_directional_accuracy_gap",
+                "lcri_directional_accuracy_gap",
+                "raw_minus_lcri_directional_accuracy_gap",
+            ]
+        )
+    return pd.DataFrame(rows).sort_values(
+        "raw_minus_lcri_directional_accuracy_gap",
+        ascending=False,
+    ).reset_index(drop=True)
+
+
 def regime_generalization_gap(metrics: pd.DataFrame, heldout_metrics: pd.DataFrame) -> pd.DataFrame:
     """Compare full-sample and heldout metrics by regime and signal."""
     required = ["regime", "signal", "directional_accuracy", "brier_score", "rank_correlation"]
@@ -499,6 +526,39 @@ def _gap_rows(
                 "context": row[context_column] if context_column else "all",
                 "signal": row["signal"],
                 "directional_accuracy_gap": float(row["directional_accuracy_gap"]),
+            }
+        )
+    return rows
+
+
+def _gap_delta_rows(
+    frame: pd.DataFrame,
+    *,
+    scope: str,
+    context_column: str | None,
+) -> list[dict[str, float | str]]:
+    if frame.empty:
+        return []
+    _require_columns(frame, ["signal", "directional_accuracy_gap"])
+    index_columns = [context_column] if context_column else []
+    indexed = frame.set_index([*index_columns, "signal"])
+    contexts = sorted(set(indexed.index.get_level_values(0))) if context_column else ["all"]
+
+    rows = []
+    for context in contexts:
+        raw_key = (context, "raw_imbalance") if context_column else "raw_imbalance"
+        lcri_key = (context, "lcri") if context_column else "lcri"
+        if raw_key not in indexed.index or lcri_key not in indexed.index:
+            continue
+        raw_gap = float(indexed.loc[raw_key, "directional_accuracy_gap"])
+        lcri_gap = float(indexed.loc[lcri_key, "directional_accuracy_gap"])
+        rows.append(
+            {
+                "scope": scope,
+                "context": context,
+                "raw_imbalance_directional_accuracy_gap": raw_gap,
+                "lcri_directional_accuracy_gap": lcri_gap,
+                "raw_minus_lcri_directional_accuracy_gap": raw_gap - lcri_gap,
             }
         )
     return rows

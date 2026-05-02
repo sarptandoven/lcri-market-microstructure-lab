@@ -6,6 +6,7 @@ from lcri_lab.evaluation import (
     evaluate_signals,
     generalization_gap_leaderboard,
     generalization_overview,
+    lcri_generalization_gap_delta,
     regime_generalization_gap,
     regime_metrics,
     signal_generalization_gap,
@@ -64,6 +65,37 @@ def test_generalization_overview_summarizes_gap_tables() -> None:
     assert output["max_signal_directional_accuracy_gap"] == pytest.approx(0.05)
     assert output["max_regime_directional_accuracy_gap"] == pytest.approx(0.08)
     assert output["max_transition_directional_accuracy_gap"] == pytest.approx(0.04)
+
+
+def test_lcri_generalization_gap_delta_compares_raw_gap_stability() -> None:
+    signal_gap = pd.DataFrame(
+        {
+            "signal": ["raw_imbalance", "lcri"],
+            "directional_accuracy_gap": [0.08, 0.05],
+        }
+    )
+    regime_gap = pd.DataFrame(
+        {
+            "regime": ["thin", "thin"],
+            "signal": ["raw_imbalance", "lcri"],
+            "directional_accuracy_gap": [0.03, 0.07],
+        }
+    )
+    transition_gap = pd.DataFrame(
+        {
+            "segment": ["transition", "transition"],
+            "signal": ["raw_imbalance", "lcri"],
+            "directional_accuracy_gap": [0.06, 0.02],
+        }
+    )
+
+    output = lcri_generalization_gap_delta(signal_gap, regime_gap, transition_gap)
+
+    assert output.loc[0, "scope"] == "transition"
+    assert output.loc[0, "context"] == "transition"
+    assert output.loc[0, "raw_minus_lcri_directional_accuracy_gap"] == pytest.approx(0.04)
+    assert output.loc[2, "scope"] == "regime"
+    assert output.loc[2, "raw_minus_lcri_directional_accuracy_gap"] == pytest.approx(-0.04)
 
 
 def test_regime_generalization_gap_compares_matching_regime_signals() -> None:
