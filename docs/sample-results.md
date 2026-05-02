@@ -77,10 +77,11 @@ leaderboard so the largest heldout degradations are visible without opening CSVs
 to LCRI rows only, which makes the residual signal's weakest heldout contexts
 visible without scanning raw imbalance rows. `lcri_generalization_scope_summary.csv`
 rolls those LCRI rows up by signal, regime, and transition scope so reviewers can
-see whether degradation is broad or localized. `lcri_worst_generalization_context.json`
-stores the single largest LCRI directional accuracy gap for automated alerts or
-release checks. These tables are intended as the first triage view when reviewing
-a generated demo run.
+see whether degradation is broad or localized. `lcri_generalization_severity.csv`
+labels each LCRI gap as stable, warning, or critical using directional accuracy
+thresholds. `lcri_worst_generalization_context.json` stores the single largest
+LCRI directional accuracy gap for automated alerts or release checks. These
+tables are intended as the first triage view when reviewing a generated demo run.
 
 `lcri_generalization_gap_delta.csv` compares raw imbalance and LCRI degradation
 across signal, regime, and transition scopes. Positive `raw_minus_lcri` values
