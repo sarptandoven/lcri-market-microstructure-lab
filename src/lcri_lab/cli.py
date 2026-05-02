@@ -31,6 +31,7 @@ from lcri_lab.reporting import (
     missing_artifacts,
     verify_artifact_manifest,
     verify_generalization_overview,
+    verify_lcri_gap_delta_flags,
     verify_lcri_gap_delta_summary,
     verify_lcri_generalization_gap_delta,
     write_json,
@@ -279,6 +280,7 @@ def verify_report(report_dir: Path) -> None:
         *verify_artifact_manifest(report_dir, manifest),
         *verify_generalization_overview(report_dir),
         *verify_lcri_generalization_gap_delta(report_dir),
+        *verify_lcri_gap_delta_flags(report_dir),
         *verify_lcri_gap_delta_summary(report_dir),
     ]
     if errors:

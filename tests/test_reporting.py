@@ -8,6 +8,7 @@ from lcri_lab.reporting import (
     missing_artifacts,
     verify_artifact_manifest,
     verify_generalization_overview,
+    verify_lcri_gap_delta_flags,
     verify_lcri_gap_delta_summary,
     verify_lcri_generalization_gap_delta,
     write_json,
@@ -119,6 +120,21 @@ def test_verify_lcri_generalization_gap_delta_accepts_complete_csv(tmp_path) -> 
     ).to_csv(tmp_path / "lcri_generalization_gap_delta.csv", index=False)
 
     assert verify_lcri_generalization_gap_delta(tmp_path) == []
+
+
+def test_verify_lcri_gap_delta_flags_accepts_complete_csv(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "context": "all",
+                "raw_minus_lcri_directional_accuracy_gap": 0.03,
+                "stability_flag": "lcri_more_stable",
+            }
+        ]
+    ).to_csv(tmp_path / "lcri_gap_delta_flags.csv", index=False)
+
+    assert verify_lcri_gap_delta_flags(tmp_path) == []
 
 
 def test_verify_lcri_gap_delta_summary_reports_missing_keys(tmp_path) -> None:

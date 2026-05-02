@@ -114,6 +114,25 @@ def verify_lcri_generalization_gap_delta(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_gap_delta_flags(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI gap delta flags artifact."""
+    path = output_dir / "lcri_gap_delta_flags.csv"
+    if not path.exists():
+        return ["missing LCRI gap delta flags: lcri_gap_delta_flags.csv"]
+
+    columns = set(pd.read_csv(path, nrows=1).columns)
+    required = {
+        "scope",
+        "context",
+        "raw_minus_lcri_directional_accuracy_gap",
+        "stability_flag",
+    }
+    missing = sorted(required - columns)
+    if missing:
+        return [f"incomplete LCRI gap delta flags: {missing}"]
+    return []
+
+
 def verify_lcri_gap_delta_summary(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI gap delta summary."""
     path = output_dir / "lcri_gap_delta_summary.json"
