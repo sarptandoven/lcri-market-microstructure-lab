@@ -73,6 +73,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## Generalization overview" in summary
     assert "## Generalization gap leaderboard" in summary
     assert "## LCRI generalization gap delta" in summary
+    assert "## LCRI gap delta flags" in summary
     assert "## LCRI gap delta summary" in summary
     assert "## Transition robustness" in summary
     assert "## Heldout transition lift" in summary

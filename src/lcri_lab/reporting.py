@@ -172,6 +172,7 @@ def write_research_summary(
     generalization_overview: dict[str, Any] | None = None,
     generalization_gap_leaderboard: pd.DataFrame | None = None,
     lcri_generalization_gap_delta: pd.DataFrame | None = None,
+    lcri_gap_delta_flags: pd.DataFrame | None = None,
     lcri_gap_delta_summary: dict[str, Any] | None = None,
     transition_lift: pd.DataFrame,
     transition_robustness: dict[str, Any],
@@ -237,6 +238,12 @@ def write_research_summary(
                 "",
                 _markdown_table(lcri_generalization_gap_delta)
                 if lcri_generalization_gap_delta is not None
+                else "_Not generated._",
+                "",
+                "## LCRI gap delta flags",
+                "",
+                _markdown_table(lcri_gap_delta_flags)
+                if lcri_gap_delta_flags is not None
                 else "_Not generated._",
                 "",
                 "## LCRI gap delta summary",
