@@ -37,6 +37,7 @@ from lcri_lab.reporting import (
     verify_lcri_gap_delta_summary,
     verify_lcri_generalization_gap_delta,
     verify_lcri_generalization_gap_leaderboard,
+    verify_lcri_generalization_scope_summary,
     write_json,
     write_research_summary,
 )
@@ -298,6 +299,7 @@ def verify_report(report_dir: Path) -> None:
         *verify_artifact_manifest(report_dir, manifest),
         *verify_generalization_overview(report_dir),
         *verify_lcri_generalization_gap_leaderboard(report_dir),
+        *verify_lcri_generalization_scope_summary(report_dir),
         *verify_lcri_generalization_gap_delta(report_dir),
         *verify_lcri_gap_delta_flags(report_dir),
         *verify_lcri_gap_delta_summary(report_dir),

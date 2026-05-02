@@ -108,6 +108,25 @@ def verify_lcri_generalization_gap_leaderboard(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_generalization_scope_summary(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI scope summary artifact."""
+    path = output_dir / "lcri_generalization_scope_summary.csv"
+    if not path.exists():
+        return ["missing LCRI generalization scope summary: lcri_generalization_scope_summary.csv"]
+
+    columns = set(pd.read_csv(path, nrows=1).columns)
+    required = {
+        "scope",
+        "rows",
+        "mean_directional_accuracy_gap",
+        "max_directional_accuracy_gap",
+    }
+    missing = sorted(required - columns)
+    if missing:
+        return [f"incomplete LCRI generalization scope summary: {missing}"]
+    return []
+
+
 def verify_lcri_generalization_gap_delta(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI gap delta artifact."""
     path = output_dir / "lcri_generalization_gap_delta.csv"
