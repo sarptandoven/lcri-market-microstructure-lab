@@ -3,6 +3,7 @@ import pytest
 
 from lcri_lab.evaluation import (
     transition_conditioned_metrics,
+    transition_generalization_gap,
     transition_robustness_summary,
     transition_signal_lift,
 )
@@ -50,6 +51,33 @@ def test_transition_conditioned_metrics_rejects_missing_transition_column() -> N
 
     with pytest.raises(ValueError, match="regime_changed"):
         transition_conditioned_metrics(frame, signals=["lcri"])
+
+
+def test_transition_generalization_gap_compares_matching_segment_signals() -> None:
+    metrics = pd.DataFrame(
+        {
+            "segment": ["stable", "stable"],
+            "signal": ["raw_imbalance", "lcri"],
+            "directional_accuracy": [0.55, 0.74],
+            "brier_score": [0.31, 0.21],
+            "rank_correlation": [0.08, 0.29],
+        }
+    )
+    heldout = pd.DataFrame(
+        {
+            "segment": ["stable", "stable"],
+            "signal": ["raw_imbalance", "lcri"],
+            "directional_accuracy": [0.51, 0.66],
+            "brier_score": [0.33, 0.24],
+            "rank_correlation": [0.04, 0.20],
+        }
+    )
+
+    output = transition_generalization_gap(metrics, heldout).set_index(["segment", "signal"])
+
+    assert output.loc[("stable", "lcri"), "directional_accuracy_gap"] == pytest.approx(0.08)
+    assert output.loc[("stable", "lcri"), "brier_score_gap"] == pytest.approx(0.03)
+    assert output.loc[("stable", "lcri"), "rank_correlation_gap"] == pytest.approx(0.09)
 
 
 def test_transition_signal_lift_summarizes_lcri_against_raw_by_segment() -> None:

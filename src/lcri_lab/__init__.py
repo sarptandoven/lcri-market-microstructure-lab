@@ -15,6 +15,7 @@ from lcri_lab.evaluation import (
     signal_generalization_gap,
     summarize_signal_lift,
     transition_conditioned_metrics,
+    transition_generalization_gap,
     transition_robustness_summary,
     transition_signal_lift,
 )
@@ -62,6 +63,7 @@ __all__ = [
     "summarize_signal_lift",
     "tag_liquidity_regimes",
     "transition_conditioned_metrics",
+    "transition_generalization_gap",
     "transition_robustness_summary",
     "transition_signal_lift",
     "simulate_order_books",

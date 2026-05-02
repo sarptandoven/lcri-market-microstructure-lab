@@ -171,6 +171,40 @@ def summarize_signal_lift(frame: pd.DataFrame) -> dict[str, float]:
     }
 
 
+def transition_generalization_gap(
+    metrics: pd.DataFrame,
+    heldout_metrics: pd.DataFrame,
+) -> pd.DataFrame:
+    """Compare full-sample and heldout metrics by transition segment and signal."""
+    required = ["segment", "signal", "directional_accuracy", "brier_score", "rank_correlation"]
+    _require_columns(metrics, required)
+    _require_columns(heldout_metrics, required)
+
+    full = metrics.set_index(["segment", "signal"])
+    heldout = heldout_metrics.set_index(["segment", "signal"])
+    rows = []
+    for segment, signal in [key for key in full.index if key in heldout.index]:
+        rows.append(
+            {
+                "segment": segment,
+                "signal": signal,
+                "directional_accuracy_gap": float(
+                    full.loc[(segment, signal), "directional_accuracy"]
+                    - heldout.loc[(segment, signal), "directional_accuracy"]
+                ),
+                "brier_score_gap": float(
+                    heldout.loc[(segment, signal), "brier_score"]
+                    - full.loc[(segment, signal), "brier_score"]
+                ),
+                "rank_correlation_gap": float(
+                    full.loc[(segment, signal), "rank_correlation"]
+                    - heldout.loc[(segment, signal), "rank_correlation"]
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def transition_signal_lift(
     frame: pd.DataFrame,
     *,
