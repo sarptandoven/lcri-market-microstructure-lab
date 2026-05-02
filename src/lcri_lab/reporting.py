@@ -33,6 +33,11 @@ def build_artifact_manifest(
     }
 
 
+def missing_artifacts(output_dir: Path, artifacts: list[str]) -> list[str]:
+    """Return expected artifact paths that are absent from a report directory."""
+    return [artifact for artifact in artifacts if not (output_dir / artifact).exists()]
+
+
 def write_research_summary(
     path: Path,
     *,

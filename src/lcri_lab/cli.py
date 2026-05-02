@@ -16,7 +16,12 @@ from lcri_lab.features import add_regime_transition_features
 from lcri_lab.ingest import normalize_l2_snapshots
 from lcri_lab.model import ARTIFACT_VERSION, LCRIModel, ModelConfig
 from lcri_lab.plotting import write_figures
-from lcri_lab.reporting import build_artifact_manifest, write_json, write_research_summary
+from lcri_lab.reporting import (
+    build_artifact_manifest,
+    missing_artifacts,
+    write_json,
+    write_research_summary,
+)
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
 
@@ -143,6 +148,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         artifacts=artifact_paths,
     )
     write_json(output / "artifact_manifest.json", manifest)
+    missing = missing_artifacts(output, [*artifact_paths, "artifact_manifest.json"])
+    if missing:
+        raise RuntimeError(f"missing generated artifacts: {missing}")
+
     print("Wrote research artifacts")
     print(f"rows: {len(books)} total, {len(train)} train, {heldout_rows} held out")
     print(f"train fraction: {train_frac:.2f}")

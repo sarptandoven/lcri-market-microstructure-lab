@@ -2,7 +2,12 @@ import json
 
 import pandas as pd
 
-from lcri_lab.reporting import build_artifact_manifest, write_json, write_research_summary
+from lcri_lab.reporting import (
+    build_artifact_manifest,
+    missing_artifacts,
+    write_json,
+    write_research_summary,
+)
 
 
 def test_build_artifact_manifest_records_run_config_and_outputs() -> None:
@@ -25,6 +30,19 @@ def test_build_artifact_manifest_records_run_config_and_outputs() -> None:
     }
     assert manifest["model"] == {"artifact_version": 2}
     assert manifest["artifacts"] == ["metrics.csv"]
+
+
+def test_missing_artifacts_reports_absent_paths(tmp_path) -> None:
+    (tmp_path / "metrics.csv").write_text("signal\n")
+    (tmp_path / "figures").mkdir()
+    (tmp_path / "figures" / "plot.png").write_text("png")
+
+    missing = missing_artifacts(
+        tmp_path,
+        ["metrics.csv", "transition_lift.csv", "figures/plot.png"],
+    )
+
+    assert missing == ["transition_lift.csv"]
 
 
 def test_write_json_writes_sorted_pretty_payload(tmp_path) -> None:
