@@ -81,6 +81,7 @@ reports/
     generalization_gap.png
     regime_generalization_gap.png
     transition_generalization_gap.png
+    lcri_generalization_gap_delta.png
   metrics.csv
   heldout_metrics.csv
   generalization_gap.csv
@@ -93,6 +94,7 @@ reports/
   generalization_overview.json
   generalization_gap_leaderboard.csv
   lcri_generalization_gap_delta.csv
+  lcri_gap_delta_summary.json
   transition_lift.csv
   heldout_transition_lift.csv
   transition_robustness.json

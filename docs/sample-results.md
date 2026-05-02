@@ -79,4 +79,6 @@ This is intended as the first triage table when reviewing a generated demo run.
 across signal, regime, and transition scopes. Positive `raw_minus_lcri` values
 mean LCRI lost less directional accuracy than raw imbalance on heldout rows.
 Negative values mark scopes where LCRI degraded more and should be inspected
-before treating the residual signal as robust.
+before treating the residual signal as robust. The matching chart shows the same
+comparison visually, while `lcri_gap_delta_summary.json` records row counts and
+the strongest stability and instability contexts for automated report checks.
