@@ -170,6 +170,21 @@ def lcri_generalization_severity(
     return output
 
 
+def lcri_generalization_severity_summary(severity: pd.DataFrame) -> dict[str, int]:
+    """Count LCRI generalization severity labels for report gating."""
+    if severity.empty:
+        return {"rows": 0, "stable_rows": 0, "warning_rows": 0, "critical_rows": 0}
+    _require_columns(severity, ["severity"])
+
+    counts = severity["severity"].value_counts()
+    return {
+        "rows": len(severity),
+        "stable_rows": int(counts.get("stable", 0)),
+        "warning_rows": int(counts.get("warning", 0)),
+        "critical_rows": int(counts.get("critical", 0)),
+    }
+
+
 def generalization_overview(
     signal_gap: pd.DataFrame,
     regime_gap: pd.DataFrame,
