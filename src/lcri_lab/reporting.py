@@ -162,7 +162,13 @@ def verify_lcri_generalization_severity_summary(output_dir: Path) -> list[str]:
         return ["missing LCRI generalization severity summary: lcri_generalization_severity_summary.json"]
 
     payload = json.loads(path.read_text())
-    required = {"rows", "stable_rows", "warning_rows", "critical_rows"}
+    required = {
+        "rows",
+        "stable_rows",
+        "warning_rows",
+        "critical_rows",
+        "passes_lcri_generalization_gate",
+    }
     missing = sorted(required - set(payload))
     if missing:
         return [f"incomplete LCRI generalization severity summary: {missing}"]

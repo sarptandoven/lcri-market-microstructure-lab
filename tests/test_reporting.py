@@ -160,7 +160,13 @@ def test_verify_lcri_generalization_severity_accepts_complete_csv(tmp_path) -> N
 def test_verify_lcri_generalization_severity_summary_accepts_complete_payload(tmp_path) -> None:
     write_json(
         tmp_path / "lcri_generalization_severity_summary.json",
-        {"rows": 3, "stable_rows": 1, "warning_rows": 1, "critical_rows": 1},
+        {
+            "rows": 3,
+            "stable_rows": 1,
+            "warning_rows": 1,
+            "critical_rows": 1,
+            "passes_lcri_generalization_gate": False,
+        },
     )
 
     assert verify_lcri_generalization_severity_summary(tmp_path) == []
@@ -511,6 +517,7 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
         "stable_rows": 0,
         "warning_rows": 1,
         "critical_rows": 0,
+        "passes_lcri_generalization_gate": True,
     }
     lcri_gap_delta_flags = pd.DataFrame(
         [

@@ -155,7 +155,17 @@ def test_lcri_generalization_severity_summary_counts_labels() -> None:
         "stable_rows": 1,
         "warning_rows": 2,
         "critical_rows": 1,
+        "passes_lcri_generalization_gate": False,
     }
+
+
+def test_lcri_generalization_severity_summary_passes_without_critical_rows() -> None:
+    severity = pd.DataFrame({"severity": ["stable", "warning"]})
+
+    output = lcri_generalization_severity_summary(severity)
+
+    assert output["critical_rows"] == 0
+    assert output["passes_lcri_generalization_gate"] is True
 
 
 def test_generalization_overview_summarizes_gap_tables() -> None:

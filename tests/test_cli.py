@@ -103,7 +103,15 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
     )
     severity_summary = tmp_path / "lcri_generalization_severity_summary.json"
     severity_summary.write_text(
-        json.dumps({"rows": 1, "stable_rows": 0, "warning_rows": 0, "critical_rows": 1})
+        json.dumps(
+            {
+                "rows": 1,
+                "stable_rows": 0,
+                "warning_rows": 0,
+                "critical_rows": 1,
+                "passes_lcri_generalization_gate": False,
+            }
+        )
     )
     worst_context = tmp_path / "lcri_worst_generalization_context.json"
     worst_context.write_text(
