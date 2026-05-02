@@ -96,6 +96,7 @@ reports/
   lcri_generalization_gap_leaderboard.csv
   lcri_generalization_scope_summary.csv
   lcri_generalization_severity.csv
+  lcri_generalization_severity_summary.json
   lcri_worst_generalization_context.json
   lcri_generalization_gap_delta.csv
   lcri_gap_delta_flags.csv
