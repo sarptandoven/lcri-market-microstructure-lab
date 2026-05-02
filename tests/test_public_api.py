@@ -28,6 +28,11 @@ def test_public_api_exports_signal_generalization_gap() -> None:
     assert "signal_generalization_gap" in lcri_lab.__all__
 
 
+def test_public_api_exports_regime_generalization_gap() -> None:
+    assert callable(lcri_lab.regime_generalization_gap)
+    assert "regime_generalization_gap" in lcri_lab.__all__
+
+
 def test_public_api_exports_regime_tagger() -> None:
     assert callable(lcri_lab.tag_liquidity_regimes)
     assert "tag_liquidity_regimes" in lcri_lab.__all__

@@ -8,6 +8,7 @@ import pandas as pd
 
 from lcri_lab.evaluation import (
     evaluate_signals,
+    regime_generalization_gap,
     regime_metrics,
     signal_generalization_gap,
     transition_conditioned_metrics,
@@ -112,6 +113,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     generalization_gap = signal_generalization_gap(metrics, heldout_metrics)
     by_regime = regime_metrics(scored)
     heldout_by_regime = regime_metrics(heldout_scored)
+    regime_gap = regime_generalization_gap(by_regime, heldout_by_regime)
     by_transition = transition_conditioned_metrics(scored)
     heldout_by_transition = transition_conditioned_metrics(heldout_scored)
     transition_lift = transition_signal_lift(scored)
@@ -127,6 +129,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "generalization_gap.csv",
         "regime_metrics.csv",
         "heldout_regime_metrics.csv",
+        "regime_generalization_gap.csv",
         "transition_metrics.csv",
         "heldout_transition_metrics.csv",
         "transition_lift.csv",
@@ -150,6 +153,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     generalization_gap.to_csv(output / "generalization_gap.csv", index=False)
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
     heldout_by_regime.to_csv(output / "heldout_regime_metrics.csv", index=False)
+    regime_gap.to_csv(output / "regime_generalization_gap.csv", index=False)
     by_transition.to_csv(output / "transition_metrics.csv", index=False)
     heldout_by_transition.to_csv(output / "heldout_transition_metrics.csv", index=False)
     transition_lift.to_csv(output / "transition_lift.csv", index=False)
@@ -207,6 +211,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"generalization gap: {output / 'generalization_gap.csv'}")
     print(f"regime metrics: {output / 'regime_metrics.csv'}")
     print(f"heldout regime metrics: {output / 'heldout_regime_metrics.csv'}")
+    print(f"regime generalization gap: {output / 'regime_generalization_gap.csv'}")
     print(f"transition metrics: {output / 'transition_metrics.csv'}")
     print(f"heldout transition metrics: {output / 'heldout_transition_metrics.csv'}")
     print(f"transition lift: {output / 'transition_lift.csv'}")

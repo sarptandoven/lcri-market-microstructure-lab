@@ -4,6 +4,7 @@ import pytest
 from lcri_lab.evaluation import (
     calibration_curve,
     evaluate_signals,
+    regime_generalization_gap,
     regime_metrics,
     signal_generalization_gap,
     summarize_signal_lift,
@@ -24,6 +25,33 @@ def test_summarize_signal_lift_reports_metric_deltas() -> None:
         "rank_correlation_lift",
     }
     assert all(isinstance(value, float) for value in summary.values())
+
+
+def test_regime_generalization_gap_compares_matching_regime_signals() -> None:
+    metrics = pd.DataFrame(
+        {
+            "regime": ["thin", "thin"],
+            "signal": ["raw_imbalance", "lcri"],
+            "directional_accuracy": [0.50, 0.70],
+            "brier_score": [0.35, 0.22],
+            "rank_correlation": [0.05, 0.25],
+        }
+    )
+    heldout = pd.DataFrame(
+        {
+            "regime": ["thin", "thin"],
+            "signal": ["raw_imbalance", "lcri"],
+            "directional_accuracy": [0.48, 0.62],
+            "brier_score": [0.36, 0.27],
+            "rank_correlation": [0.04, 0.18],
+        }
+    )
+
+    output = regime_generalization_gap(metrics, heldout).set_index(["regime", "signal"])
+
+    assert output.loc[("thin", "lcri"), "directional_accuracy_gap"] == pytest.approx(0.08)
+    assert output.loc[("thin", "lcri"), "brier_score_gap"] == pytest.approx(0.05)
+    assert output.loc[("thin", "lcri"), "rank_correlation_gap"] == pytest.approx(0.07)
 
 
 def test_signal_generalization_gap_compares_full_and_heldout_metrics() -> None:

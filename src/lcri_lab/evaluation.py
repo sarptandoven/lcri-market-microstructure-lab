@@ -72,6 +72,38 @@ def absorption_regime_metrics(frame: pd.DataFrame) -> pd.DataFrame:
     ]
 
 
+def regime_generalization_gap(metrics: pd.DataFrame, heldout_metrics: pd.DataFrame) -> pd.DataFrame:
+    """Compare full-sample and heldout metrics by regime and signal."""
+    required = ["regime", "signal", "directional_accuracy", "brier_score", "rank_correlation"]
+    _require_columns(metrics, required)
+    _require_columns(heldout_metrics, required)
+
+    full = metrics.set_index(["regime", "signal"])
+    heldout = heldout_metrics.set_index(["regime", "signal"])
+    keys = [key for key in full.index if key in heldout.index]
+    rows = []
+    for regime, signal in keys:
+        rows.append(
+            {
+                "regime": regime,
+                "signal": signal,
+                "directional_accuracy_gap": float(
+                    full.loc[(regime, signal), "directional_accuracy"]
+                    - heldout.loc[(regime, signal), "directional_accuracy"]
+                ),
+                "brier_score_gap": float(
+                    heldout.loc[(regime, signal), "brier_score"]
+                    - full.loc[(regime, signal), "brier_score"]
+                ),
+                "rank_correlation_gap": float(
+                    full.loc[(regime, signal), "rank_correlation"]
+                    - heldout.loc[(regime, signal), "rank_correlation"]
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def regime_metrics(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty:
         raise ValueError("cannot evaluate an empty frame")

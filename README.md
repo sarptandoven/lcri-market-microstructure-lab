@@ -84,6 +84,7 @@ reports/
   generalization_gap.csv
   regime_metrics.csv
   heldout_regime_metrics.csv
+  regime_generalization_gap.csv
   transition_metrics.csv
   heldout_transition_metrics.csv
   transition_lift.csv
