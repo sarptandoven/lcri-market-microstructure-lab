@@ -71,4 +71,6 @@ Negative bars indicate heldout performance matched or exceeded the full-sample s
 Use `transition_generalization_gap.csv` when exact metric values are needed.
 This keeps the visual artifact tied to auditable numeric output.
 The markdown summary mirrors `generalization_overview.json` for a compact audit
-of the generated generalization gap artifacts.
+of the generated generalization gap artifacts. It also includes the ranked
+leaderboard so the largest heldout degradations are visible without opening CSVs.
+This is intended as the first triage table when reviewing a generated demo run.
