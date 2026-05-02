@@ -94,6 +94,20 @@ def verify_generalization_overview(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_generalization_gap_leaderboard(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI gap leaderboard artifact."""
+    path = output_dir / "lcri_generalization_gap_leaderboard.csv"
+    if not path.exists():
+        return ["missing LCRI generalization gap leaderboard: lcri_generalization_gap_leaderboard.csv"]
+
+    columns = set(pd.read_csv(path, nrows=1).columns)
+    required = {"scope", "context", "signal", "directional_accuracy_gap"}
+    missing = sorted(required - columns)
+    if missing:
+        return [f"incomplete LCRI generalization gap leaderboard: {missing}"]
+    return []
+
+
 def verify_lcri_generalization_gap_delta(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI gap delta artifact."""
     path = output_dir / "lcri_generalization_gap_delta.csv"

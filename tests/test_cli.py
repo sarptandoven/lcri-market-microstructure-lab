@@ -86,6 +86,11 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
             }
         )
     )
+    leaderboard = tmp_path / "lcri_generalization_gap_leaderboard.csv"
+    leaderboard.write_text(
+        "scope,context,signal,directional_accuracy_gap\n"
+        "signal,all,lcri,0.05\n"
+    )
     delta = tmp_path / "lcri_generalization_gap_delta.csv"
     delta.write_text(
         "scope,context,raw_imbalance_directional_accuracy_gap,"
@@ -116,6 +121,7 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
         "artifacts": [
             "metrics.csv",
             "generalization_overview.json",
+            "lcri_generalization_gap_leaderboard.csv",
             "lcri_generalization_gap_delta.csv",
             "lcri_gap_delta_flags.csv",
             "lcri_gap_delta_summary.json",

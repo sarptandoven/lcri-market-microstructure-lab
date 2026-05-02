@@ -11,6 +11,7 @@ from lcri_lab.reporting import (
     verify_lcri_gap_delta_flags,
     verify_lcri_gap_delta_summary,
     verify_lcri_generalization_gap_delta,
+    verify_lcri_generalization_gap_leaderboard,
     write_json,
     write_research_summary,
 )
@@ -92,6 +93,21 @@ def test_verify_generalization_overview_accepts_complete_payload(tmp_path) -> No
     )
 
     assert verify_generalization_overview(tmp_path) == []
+
+
+def test_verify_lcri_generalization_gap_leaderboard_accepts_complete_csv(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "context": "all",
+                "signal": "lcri",
+                "directional_accuracy_gap": 0.05,
+            }
+        ]
+    ).to_csv(tmp_path / "lcri_generalization_gap_leaderboard.csv", index=False)
+
+    assert verify_lcri_generalization_gap_leaderboard(tmp_path) == []
 
 
 def test_verify_lcri_generalization_gap_delta_reports_missing_columns(tmp_path) -> None:
