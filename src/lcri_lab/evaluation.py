@@ -95,6 +95,25 @@ def generalization_gap_leaderboard(
     )
 
 
+def lcri_generalization_gap_leaderboard(
+    signal_gap: pd.DataFrame,
+    regime_gap: pd.DataFrame,
+    transition_gap: pd.DataFrame,
+    *,
+    limit: int = 10,
+) -> pd.DataFrame:
+    """Rank LCRI-only directional accuracy gaps across generalization tables."""
+    leaderboard = generalization_gap_leaderboard(
+        signal_gap,
+        regime_gap,
+        transition_gap,
+        limit=max(limit * 3, limit),
+    )
+    if leaderboard.empty:
+        return leaderboard
+    return leaderboard.loc[leaderboard["signal"] == "lcri"].head(limit).reset_index(drop=True)
+
+
 def generalization_overview(
     signal_gap: pd.DataFrame,
     regime_gap: pd.DataFrame,

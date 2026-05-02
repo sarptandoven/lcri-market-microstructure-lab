@@ -9,6 +9,7 @@ from lcri_lab.evaluation import (
     lcri_gap_delta_flags,
     lcri_gap_delta_summary,
     lcri_generalization_gap_delta,
+    lcri_generalization_gap_leaderboard,
     regime_generalization_gap,
     regime_metrics,
     signal_generalization_gap,
@@ -52,6 +53,35 @@ def test_generalization_gap_leaderboard_ranks_all_scopes() -> None:
     assert output.loc[0, "scope"] == "regime"
     assert output.loc[0, "context"] == "thin"
     assert output.loc[0, "directional_accuracy_gap"] == pytest.approx(0.08)
+
+
+def test_lcri_generalization_gap_leaderboard_filters_other_signals() -> None:
+    signal_gap = pd.DataFrame(
+        {
+            "signal": ["raw_imbalance", "lcri"],
+            "directional_accuracy_gap": [0.09, 0.04],
+        }
+    )
+    regime_gap = pd.DataFrame(
+        {
+            "regime": ["thin", "thin"],
+            "signal": ["raw_imbalance", "lcri"],
+            "directional_accuracy_gap": [0.07, 0.08],
+        }
+    )
+    transition_gap = pd.DataFrame(
+        {
+            "segment": ["stable"],
+            "signal": ["raw_imbalance"],
+            "directional_accuracy_gap": [0.10],
+        }
+    )
+
+    output = lcri_generalization_gap_leaderboard(signal_gap, regime_gap, transition_gap)
+
+    assert list(output["signal"]) == ["lcri", "lcri"]
+    assert output.loc[0, "scope"] == "regime"
+    assert output.loc[0, "context"] == "thin"
 
 
 def test_generalization_overview_summarizes_gap_tables() -> None:
