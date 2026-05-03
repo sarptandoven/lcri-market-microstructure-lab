@@ -78,6 +78,11 @@ def test_public_api_exports_lcri_gap_delta_summary() -> None:
     assert "lcri_gap_delta_summary" in lcri_lab.__all__
 
 
+def test_public_api_exports_lcri_gap_delta_scorecard() -> None:
+    assert callable(lcri_lab.lcri_gap_delta_scorecard)
+    assert "lcri_gap_delta_scorecard" in lcri_lab.__all__
+
+
 def test_public_api_exports_lcri_gap_delta_flags() -> None:
     assert callable(lcri_lab.lcri_gap_delta_flags)
     assert "lcri_gap_delta_flags" in lcri_lab.__all__

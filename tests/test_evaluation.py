@@ -7,6 +7,7 @@ from lcri_lab.evaluation import (
     generalization_gap_leaderboard,
     generalization_overview,
     lcri_gap_delta_flags,
+    lcri_gap_delta_scorecard,
     lcri_gap_delta_summary,
     lcri_generalization_gate_decision,
     lcri_generalization_gap_delta,
@@ -278,6 +279,20 @@ def test_lcri_gap_delta_summary_identifies_stability_edges() -> None:
     assert output["max_lcri_stability_edge_context"] == "signal:all"
     assert output["max_lcri_instability_edge"] == pytest.approx(-0.04)
     assert output["max_lcri_instability_edge_context"] == "regime:thin"
+
+
+def test_lcri_gap_delta_scorecard_reports_relative_stability_shares() -> None:
+    gap_delta = pd.DataFrame(
+        {"raw_minus_lcri_directional_accuracy_gap": [0.03, -0.01, 0.0, 0.06]}
+    )
+
+    output = lcri_gap_delta_scorecard(gap_delta)
+
+    assert output["rows"] == 4
+    assert output["mean_raw_minus_lcri_directional_accuracy_gap"] == pytest.approx(0.02)
+    assert output["median_raw_minus_lcri_directional_accuracy_gap"] == pytest.approx(0.015)
+    assert output["lcri_more_stable_share"] == pytest.approx(0.5)
+    assert output["lcri_less_stable_share"] == pytest.approx(0.25)
 
 
 def test_lcri_gap_delta_flags_label_stability_direction() -> None:

@@ -329,6 +329,30 @@ def lcri_gap_delta_summary(gap_delta: pd.DataFrame) -> dict[str, float | int | s
     }
 
 
+def lcri_gap_delta_scorecard(gap_delta: pd.DataFrame) -> dict[str, float | int]:
+    """Score how often LCRI reduces generalization gaps versus raw imbalance."""
+    column = "raw_minus_lcri_directional_accuracy_gap"
+    if gap_delta.empty:
+        return {
+            "rows": 0,
+            "mean_raw_minus_lcri_directional_accuracy_gap": 0.0,
+            "median_raw_minus_lcri_directional_accuracy_gap": 0.0,
+            "lcri_more_stable_share": 0.0,
+            "lcri_less_stable_share": 0.0,
+        }
+    _require_columns(gap_delta, [column])
+
+    values = gap_delta[column].astype(float)
+    rows = len(values)
+    return {
+        "rows": rows,
+        "mean_raw_minus_lcri_directional_accuracy_gap": float(values.mean()),
+        "median_raw_minus_lcri_directional_accuracy_gap": float(values.median()),
+        "lcri_more_stable_share": float((values > 0.0).sum() / rows),
+        "lcri_less_stable_share": float((values < 0.0).sum() / rows),
+    }
+
+
 def lcri_gap_delta_flags(gap_delta: pd.DataFrame) -> pd.DataFrame:
     """Attach categorical stability flags to LCRI gap delta rows."""
     column = "raw_minus_lcri_directional_accuracy_gap"
