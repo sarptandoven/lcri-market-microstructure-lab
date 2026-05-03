@@ -171,6 +171,16 @@ def test_verify_report_accepts_intact_manifest(
         "lcri_directional_accuracy_gap,raw_minus_lcri_directional_accuracy_gap\n"
         "signal,all,0.08,0.05,0.03\n"
     )
+    (tmp_path / "lcri_gap_delta_dominant_scopes.json").write_text(
+        json.dumps(
+            {
+                "best_scope": "transition",
+                "best_mean_raw_minus_lcri_gap": 0.05,
+                "worst_scope": "regime",
+                "worst_mean_raw_minus_lcri_gap": -0.03,
+            }
+        )
+    )
     flags = tmp_path / "lcri_gap_delta_flags.csv"
     flags.write_text(
         "scope,context,raw_minus_lcri_directional_accuracy_gap,stability_flag\n"
@@ -234,6 +244,7 @@ def test_verify_report_accepts_intact_manifest(
             "lcri_worst_generalization_context.json",
             "lcri_generalization_gate_decision.json",
             "lcri_generalization_gap_delta.csv",
+            "lcri_gap_delta_dominant_scopes.json",
             "lcri_gap_delta_flags.csv",
             "lcri_gap_delta_improvements.csv",
             "lcri_gap_delta_regressions.csv",

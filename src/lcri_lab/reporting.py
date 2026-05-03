@@ -289,6 +289,25 @@ def verify_lcri_generalization_gap_delta(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_gap_delta_dominant_scopes(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI dominant scopes payload."""
+    path = output_dir / "lcri_gap_delta_dominant_scopes.json"
+    if not path.exists():
+        return ["missing LCRI gap delta dominant scopes: lcri_gap_delta_dominant_scopes.json"]
+
+    payload = json.loads(path.read_text())
+    required = {
+        "best_scope",
+        "best_mean_raw_minus_lcri_gap",
+        "worst_scope",
+        "worst_mean_raw_minus_lcri_gap",
+    }
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete LCRI gap delta dominant scopes: {missing}"]
+    return []
+
+
 def verify_lcri_gap_delta_flags(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI gap delta flags artifact."""
     path = output_dir / "lcri_gap_delta_flags.csv"

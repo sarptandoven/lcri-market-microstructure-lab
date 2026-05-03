@@ -35,6 +35,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "lcri_worst_generalization_context.json").exists()
     assert (tmp_path / "lcri_generalization_gate_decision.json").exists()
     assert (tmp_path / "lcri_generalization_gap_delta.csv").exists()
+    assert (tmp_path / "lcri_gap_delta_dominant_scopes.json").exists()
     assert (tmp_path / "lcri_gap_delta_flags.csv").exists()
     assert (tmp_path / "lcri_gap_delta_improvements.csv").exists()
     assert (tmp_path / "lcri_gap_delta_regressions.csv").exists()
@@ -96,6 +97,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["lcri_generalization_gap_delta.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["figures/lcri_generalization_severity_by_scope.png"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["figures/lcri_gap_delta_scope_summary.png"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["lcri_gap_delta_dominant_scopes.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_flags.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_improvements.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_regressions.csv"]["size_bytes"] > 0

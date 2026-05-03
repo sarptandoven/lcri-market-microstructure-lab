@@ -10,6 +10,7 @@ from lcri_lab.evaluation import (
     evaluate_signals,
     generalization_gap_leaderboard,
     generalization_overview,
+    lcri_gap_delta_dominant_scopes,
     lcri_gap_delta_flags,
     lcri_gap_delta_improvements,
     lcri_gap_delta_regressions,
@@ -49,6 +50,7 @@ from lcri_lab.reporting import (
     summarize_verification_errors,
     verify_artifact_manifest,
     verify_generalization_overview,
+    verify_lcri_gap_delta_dominant_scopes,
     verify_lcri_gap_delta_flags,
     verify_lcri_gap_delta_improvements,
     verify_lcri_gap_delta_regressions,
@@ -188,6 +190,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     lcri_gap_scorecard = lcri_gap_delta_scorecard(lcri_gap_delta)
     lcri_gap_scope_extremes = lcri_gap_delta_scope_extremes(lcri_gap_delta)
     lcri_gap_scope_summary = lcri_gap_delta_scope_summary(lcri_gap_delta)
+    lcri_gap_dominant_scopes = lcri_gap_delta_dominant_scopes(lcri_gap_scope_summary)
     lcri_gap_summary = lcri_gap_delta_summary(lcri_gap_delta)
     transition_lift = transition_signal_lift(scored)
     heldout_transition_lift = transition_signal_lift(heldout_scored)
@@ -220,6 +223,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "lcri_worst_generalization_context.json",
         "lcri_generalization_gate_decision.json",
         "lcri_generalization_gap_delta.csv",
+        "lcri_gap_delta_dominant_scopes.json",
         "lcri_gap_delta_flags.csv",
         "lcri_gap_delta_improvements.csv",
         "lcri_gap_delta_regressions.csv",
@@ -272,6 +276,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     write_json(output / "lcri_worst_generalization_context.json", lcri_worst_gap_context)
     write_json(output / "lcri_generalization_gate_decision.json", lcri_gate_decision)
     lcri_gap_delta.to_csv(output / "lcri_generalization_gap_delta.csv", index=False)
+    write_json(output / "lcri_gap_delta_dominant_scopes.json", lcri_gap_dominant_scopes)
     lcri_gap_flags.to_csv(output / "lcri_gap_delta_flags.csv", index=False)
     lcri_gap_improvements.to_csv(output / "lcri_gap_delta_improvements.csv", index=False)
     lcri_gap_regressions.to_csv(output / "lcri_gap_delta_regressions.csv", index=False)
@@ -376,6 +381,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"lcri worst generalization context: {output / 'lcri_worst_generalization_context.json'}")
     print(f"lcri generalization gate decision: {output / 'lcri_generalization_gate_decision.json'}")
     print(f"lcri generalization gap delta: {output / 'lcri_generalization_gap_delta.csv'}")
+    print(f"lcri gap delta dominant scopes: {output / 'lcri_gap_delta_dominant_scopes.json'}")
     print(f"lcri gap delta flags: {output / 'lcri_gap_delta_flags.csv'}")
     print(f"lcri gap delta scorecard: {output / 'lcri_gap_delta_scorecard.json'}")
     print(f"lcri gap delta summary: {output / 'lcri_gap_delta_summary.json'}")
@@ -410,6 +416,7 @@ def verify_report(report_dir: Path) -> None:
         *verify_lcri_generalization_gate_decision(report_dir),
         *verify_lcri_worst_generalization_context(report_dir),
         *verify_lcri_generalization_gap_delta(report_dir),
+        *verify_lcri_gap_delta_dominant_scopes(report_dir),
         *verify_lcri_gap_delta_flags(report_dir),
         *verify_lcri_gap_delta_improvements(report_dir),
         *verify_lcri_gap_delta_regressions(report_dir),

@@ -10,6 +10,7 @@ from lcri_lab.reporting import (
     missing_artifacts,
     verify_artifact_manifest,
     verify_generalization_overview,
+    verify_lcri_gap_delta_dominant_scopes,
     verify_lcri_gap_delta_flags,
     verify_lcri_gap_delta_improvements,
     verify_lcri_gap_delta_regressions,
@@ -337,6 +338,20 @@ def test_verify_lcri_generalization_gap_delta_accepts_complete_csv(tmp_path) -> 
     ).to_csv(tmp_path / "lcri_generalization_gap_delta.csv", index=False)
 
     assert verify_lcri_generalization_gap_delta(tmp_path) == []
+
+
+def test_verify_lcri_gap_delta_dominant_scopes_accepts_complete_payload(tmp_path) -> None:
+    write_json(
+        tmp_path / "lcri_gap_delta_dominant_scopes.json",
+        {
+            "best_scope": "transition",
+            "best_mean_raw_minus_lcri_gap": 0.05,
+            "worst_scope": "regime",
+            "worst_mean_raw_minus_lcri_gap": -0.03,
+        },
+    )
+
+    assert verify_lcri_gap_delta_dominant_scopes(tmp_path) == []
 
 
 def test_verify_lcri_gap_delta_flags_accepts_complete_csv(tmp_path) -> None:
