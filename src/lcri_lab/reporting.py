@@ -308,6 +308,20 @@ def verify_lcri_gap_delta_flags(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_gap_delta_improvements(output_dir: Path) -> list[str]:
+    """Return errors for a missing LCRI gap delta improvement artifact."""
+    path = output_dir / "lcri_gap_delta_improvements.csv"
+    if not path.exists():
+        return ["missing LCRI gap delta improvements: lcri_gap_delta_improvements.csv"]
+
+    columns = set(pd.read_csv(path, nrows=1).columns)
+    required = {"scope", "context", "raw_minus_lcri_directional_accuracy_gap"}
+    missing = sorted(required - columns)
+    if missing:
+        return [f"incomplete LCRI gap delta improvements: {missing}"]
+    return []
+
+
 def verify_lcri_gap_delta_regressions(output_dir: Path) -> list[str]:
     """Return errors for a missing LCRI gap delta regression artifact."""
     path = output_dir / "lcri_gap_delta_regressions.csv"

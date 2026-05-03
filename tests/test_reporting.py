@@ -11,6 +11,7 @@ from lcri_lab.reporting import (
     verify_artifact_manifest,
     verify_generalization_overview,
     verify_lcri_gap_delta_flags,
+    verify_lcri_gap_delta_improvements,
     verify_lcri_gap_delta_regressions,
     verify_lcri_gap_delta_scorecard,
     verify_lcri_gap_delta_scope_summary,
@@ -364,6 +365,15 @@ def test_verify_lcri_gap_delta_summary_reports_missing_keys(tmp_path) -> None:
         "'max_lcri_instability_edge_context', 'max_lcri_stability_edge', "
         "'max_lcri_stability_edge_context']"
     ]
+
+
+def test_verify_lcri_gap_delta_improvements_accepts_complete_csv(tmp_path) -> None:
+    (tmp_path / "lcri_gap_delta_improvements.csv").write_text(
+        "scope,context,raw_minus_lcri_directional_accuracy_gap\n"
+        "transition,transition,0.06\n"
+    )
+
+    assert verify_lcri_gap_delta_improvements(tmp_path) == []
 
 
 def test_verify_lcri_gap_delta_regressions_accepts_complete_csv(tmp_path) -> None:

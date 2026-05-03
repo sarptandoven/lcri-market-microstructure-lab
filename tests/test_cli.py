@@ -176,6 +176,9 @@ def test_verify_report_accepts_intact_manifest(
         "scope,context,raw_minus_lcri_directional_accuracy_gap,stability_flag\n"
         "signal,all,0.03,lcri_more_stable\n"
     )
+    (tmp_path / "lcri_gap_delta_improvements.csv").write_text(
+        "scope,context,raw_minus_lcri_directional_accuracy_gap\ntransition,transition,0.06\n"
+    )
     (tmp_path / "lcri_gap_delta_regressions.csv").write_text(
         "scope,context,raw_minus_lcri_directional_accuracy_gap\nregime,thin,-0.04\n"
     )
@@ -227,6 +230,7 @@ def test_verify_report_accepts_intact_manifest(
             "lcri_generalization_gate_decision.json",
             "lcri_generalization_gap_delta.csv",
             "lcri_gap_delta_flags.csv",
+            "lcri_gap_delta_improvements.csv",
             "lcri_gap_delta_regressions.csv",
             "lcri_gap_delta_scorecard.json",
             "lcri_gap_delta_scope_summary.csv",

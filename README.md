@@ -108,6 +108,7 @@ reports/
   lcri_generalization_gate_decision.json
   lcri_generalization_gap_delta.csv
   lcri_gap_delta_flags.csv
+  lcri_gap_delta_improvements.csv
   lcri_gap_delta_regressions.csv
   lcri_gap_delta_scorecard.json
   lcri_gap_delta_scope_summary.csv
