@@ -7,6 +7,7 @@ from lcri_lab.evaluation import (
     generalization_gap_leaderboard,
     generalization_overview,
     lcri_gap_delta_flags,
+    lcri_gap_delta_improvements,
     lcri_gap_delta_regressions,
     lcri_gap_delta_scorecard,
     lcri_gap_delta_scope_summary,
@@ -364,6 +365,29 @@ def test_lcri_gap_delta_summary_identifies_stability_edges() -> None:
     assert output["max_lcri_stability_edge_context"] == "signal:all"
     assert output["max_lcri_instability_edge"] == pytest.approx(-0.04)
     assert output["max_lcri_instability_edge_context"] == "regime:thin"
+
+
+def test_lcri_gap_delta_improvements_sorts_best_positive_edges() -> None:
+    gap_delta = pd.DataFrame(
+        {
+            "scope": ["signal", "regime", "transition"],
+            "context": ["all", "thin", "transition"],
+            "raw_minus_lcri_directional_accuracy_gap": [0.02, -0.04, 0.06],
+        }
+    )
+
+    output = lcri_gap_delta_improvements(gap_delta)
+
+    assert list(output["context"]) == ["transition", "all"]
+    assert list(output["raw_minus_lcri_directional_accuracy_gap"]) == [0.06, 0.02]
+
+
+def test_lcri_gap_delta_improvements_handles_no_positive_edges() -> None:
+    gap_delta = pd.DataFrame(
+        {"raw_minus_lcri_directional_accuracy_gap": [-0.02, 0.0]}
+    )
+
+    assert lcri_gap_delta_improvements(gap_delta).empty
 
 
 def test_lcri_gap_delta_regressions_sorts_worst_negative_edges() -> None:

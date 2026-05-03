@@ -405,6 +405,19 @@ def lcri_gap_delta_summary(gap_delta: pd.DataFrame) -> dict[str, float | int | s
     }
 
 
+def lcri_gap_delta_improvements(gap_delta: pd.DataFrame) -> pd.DataFrame:
+    """Return scopes where LCRI generalizes better than raw imbalance."""
+    column = "raw_minus_lcri_directional_accuracy_gap"
+    if gap_delta.empty:
+        return pd.DataFrame(columns=list(gap_delta.columns))
+    _require_columns(gap_delta, [column])
+
+    improvements = gap_delta.loc[gap_delta[column].astype(float) > 0.0].copy()
+    if improvements.empty:
+        return improvements.reset_index(drop=True)
+    return improvements.sort_values(column, ascending=False).reset_index(drop=True)
+
+
 def lcri_gap_delta_regressions(gap_delta: pd.DataFrame) -> pd.DataFrame:
     """Return scopes where LCRI generalizes worse than raw imbalance."""
     column = "raw_minus_lcri_directional_accuracy_gap"
