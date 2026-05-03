@@ -3,6 +3,7 @@ import json
 import pandas as pd
 
 from lcri_lab.reporting import (
+    summarize_verification_errors,
     build_artifact_manifest,
     collect_artifact_metadata,
     missing_artifacts,
@@ -88,6 +89,38 @@ def test_verify_generalization_overview_reports_missing_keys(tmp_path) -> None:
         "'max_signal_directional_accuracy_gap', "
         "'max_transition_directional_accuracy_gap', 'transition_rows']"
     ]
+
+
+def test_summarize_verification_errors_groups_artifact_families() -> None:
+    output = summarize_verification_errors(
+        [
+            "sha256 mismatch: metrics.csv",
+            "missing LCRI blocker summary: lcri_generalization_blocker_summary.json",
+            "missing generalization overview: generalization_overview.json",
+            "missing artifact: figures/lcri_generalization_gap_delta.png",
+            "missing metrics.csv",
+        ]
+    )
+
+    assert output["errors"] == 5
+    assert output["manifest"] == 1
+    assert output["lcri_gate"] == 1
+    assert output["generalization"] == 1
+    assert output["figures"] == 1
+    assert output["other"] == 1
+    assert output["passes_verification"] is False
+
+
+def test_summarize_verification_errors_passes_without_errors() -> None:
+    assert summarize_verification_errors([]) == {
+        "errors": 0,
+        "manifest": 0,
+        "generalization": 0,
+        "lcri_gate": 0,
+        "figures": 0,
+        "other": 0,
+        "passes_verification": True,
+    }
 
 
 def test_verify_generalization_overview_accepts_complete_payload(tmp_path) -> None:

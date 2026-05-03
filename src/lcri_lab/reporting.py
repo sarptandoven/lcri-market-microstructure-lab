@@ -351,6 +351,34 @@ def verify_lcri_gap_delta_summary(output_dir: Path) -> list[str]:
     return []
 
 
+def summarize_verification_errors(errors: list[str]) -> dict[str, Any]:
+    """Summarize report verification errors by broad artifact family."""
+    families = {
+        "manifest": 0,
+        "generalization": 0,
+        "lcri_gate": 0,
+        "figures": 0,
+        "other": 0,
+    }
+    for error in errors:
+        lower = error.lower()
+        if "manifest" in lower or "sha256" in lower or "size mismatch" in lower:
+            families["manifest"] += 1
+        elif "lcri" in lower and ("gate" in lower or "severity" in lower or "blocker" in lower):
+            families["lcri_gate"] += 1
+        elif "figure" in lower or ".png" in lower:
+            families["figures"] += 1
+        elif "generalization" in lower:
+            families["generalization"] += 1
+        else:
+            families["other"] += 1
+    return {
+        "errors": len(errors),
+        **families,
+        "passes_verification": len(errors) == 0,
+    }
+
+
 def write_research_summary(
     path: Path,
     *,
