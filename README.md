@@ -82,6 +82,7 @@ reports/
     regime_generalization_gap.png
     transition_generalization_gap.png
     lcri_generalization_gap_delta.png
+    lcri_generalization_severity_by_scope.png
   metrics.csv
   heldout_metrics.csv
   generalization_gap.csv
@@ -227,6 +228,10 @@ tests/
   test_model.py
   test_demo.py
 ```
+
+## Research notes
+
+- [LCRI generalization gates](docs/lcri-generalization-gates.md)
 
 ## Current limitations
 

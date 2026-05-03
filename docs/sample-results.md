@@ -84,7 +84,7 @@ sets `passes_lcri_generalization_gate` to false when any critical rows are
 present. `lcri_worst_generalization_context.json` stores the single largest LCRI
 directional accuracy gap. `lcri_generalization_gate_decision.json` combines those
 inputs into a pass/block decision with the worst affected scope, context, and a
-short reason string. These tables are intended as the first triage view when
+short reason string. The severity scope figure mirrors the scope rollup for quick visual release reviews. These tables are intended as the first triage view when
 reviewing a generated demo run.
 
 `lcri_generalization_gap_delta.csv` compares raw imbalance and LCRI degradation
