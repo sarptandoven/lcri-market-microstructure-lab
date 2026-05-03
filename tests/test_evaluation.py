@@ -10,6 +10,7 @@ from lcri_lab.evaluation import (
     lcri_gap_delta_improvements,
     lcri_gap_delta_regressions,
     lcri_gap_delta_scorecard,
+    lcri_gap_delta_scope_extremes,
     lcri_gap_delta_scope_summary,
     lcri_gap_delta_summary,
     lcri_generalization_blocker_summary,
@@ -429,6 +430,25 @@ def test_lcri_gap_delta_scope_summary_groups_relative_stability() -> None:
     assert output.loc["regime", "max_raw_minus_lcri_gap"] == pytest.approx(0.06)
     assert output.loc["regime", "lcri_more_stable_share"] == pytest.approx(0.5)
     assert output.loc["regime", "lcri_less_stable_share"] == pytest.approx(0.5)
+
+
+def test_lcri_gap_delta_scope_extremes_selects_best_and_worst_contexts() -> None:
+    gap_delta = pd.DataFrame(
+        {
+            "scope": ["regime", "regime", "signal", "signal"],
+            "context": ["thin", "deep", "all", "stress"],
+            "raw_minus_lcri_directional_accuracy_gap": [-0.04, 0.06, 0.01, -0.02],
+        }
+    )
+
+    output = lcri_gap_delta_scope_extremes(gap_delta).set_index("scope")
+
+    assert output.loc["regime", "best_context"] == "deep"
+    assert output.loc["regime", "best_raw_minus_lcri_gap"] == pytest.approx(0.06)
+    assert output.loc["regime", "worst_context"] == "thin"
+    assert output.loc["regime", "worst_raw_minus_lcri_gap"] == pytest.approx(-0.04)
+    assert output.loc["signal", "best_context"] == "all"
+    assert output.loc["signal", "worst_context"] == "stress"
 
 
 def test_lcri_gap_delta_scorecard_reports_relative_stability_shares() -> None:

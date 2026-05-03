@@ -369,6 +369,8 @@ def verify_lcri_gap_delta_scope_summary(output_dir: Path) -> list[str]:
         "mean_raw_minus_lcri_gap",
         "min_raw_minus_lcri_gap",
         "max_raw_minus_lcri_gap",
+        "lcri_more_stable_share",
+        "lcri_less_stable_share",
     }
     missing = sorted(required - columns)
     if missing:

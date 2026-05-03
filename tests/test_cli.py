@@ -195,8 +195,9 @@ def test_verify_report_accepts_intact_manifest(
         )
     )
     (tmp_path / "lcri_gap_delta_scope_summary.csv").write_text(
-        "scope,rows,mean_raw_minus_lcri_gap,min_raw_minus_lcri_gap,max_raw_minus_lcri_gap\n"
-        "regime,2,0.01,-0.04,0.06\n"
+        "scope,rows,mean_raw_minus_lcri_gap,min_raw_minus_lcri_gap,"
+        "max_raw_minus_lcri_gap,lcri_more_stable_share,lcri_less_stable_share\n"
+        "regime,2,0.01,-0.04,0.06,0.5,0.5\n"
     )
     summary = tmp_path / "lcri_gap_delta_summary.json"
     summary.write_text(

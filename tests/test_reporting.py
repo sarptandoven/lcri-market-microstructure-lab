@@ -402,11 +402,25 @@ def test_verify_lcri_gap_delta_scorecard_accepts_complete_payload(tmp_path) -> N
 
 def test_verify_lcri_gap_delta_scope_summary_accepts_complete_csv(tmp_path) -> None:
     (tmp_path / "lcri_gap_delta_scope_summary.csv").write_text(
+        "scope,rows,mean_raw_minus_lcri_gap,min_raw_minus_lcri_gap,"
+        "max_raw_minus_lcri_gap,lcri_more_stable_share,lcri_less_stable_share\n"
+        "regime,2,0.01,-0.04,0.06,0.5,0.5\n"
+    )
+
+    assert verify_lcri_gap_delta_scope_summary(tmp_path) == []
+
+
+def test_verify_lcri_gap_delta_scope_summary_rejects_missing_share_columns(tmp_path) -> None:
+    (tmp_path / "lcri_gap_delta_scope_summary.csv").write_text(
         "scope,rows,mean_raw_minus_lcri_gap,min_raw_minus_lcri_gap,max_raw_minus_lcri_gap\n"
         "regime,2,0.01,-0.04,0.06\n"
     )
 
-    assert verify_lcri_gap_delta_scope_summary(tmp_path) == []
+    errors = verify_lcri_gap_delta_scope_summary(tmp_path)
+
+    assert errors
+    assert "lcri_more_stable_share" in errors[0]
+    assert "lcri_less_stable_share" in errors[0]
 
 
 def test_verify_lcri_gap_delta_summary_accepts_complete_payload(tmp_path) -> None:
