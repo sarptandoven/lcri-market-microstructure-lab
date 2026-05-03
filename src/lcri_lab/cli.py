@@ -24,6 +24,7 @@ from lcri_lab.evaluation import (
     lcri_generalization_gap_delta,
     lcri_generalization_gap_leaderboard,
     lcri_generalization_scope_gate_decisions,
+    lcri_scope_gate_decision_summary,
     lcri_generalization_scope_risk,
     lcri_generalization_scope_summary,
     lcri_generalization_severity,
@@ -63,6 +64,7 @@ from lcri_lab.reporting import (
     verify_lcri_generalization_gate_decision,
     verify_lcri_generalization_gap_delta,
     verify_lcri_generalization_gap_leaderboard,
+    verify_lcri_generalization_scope_gate_decision_summary,
     verify_lcri_generalization_scope_gate_decisions,
     verify_lcri_generalization_scope_risk,
     verify_lcri_generalization_scope_summary,
@@ -176,6 +178,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     lcri_gap_severity_by_scope = lcri_generalization_severity_by_scope(lcri_gap_severity)
     lcri_scope_risk = lcri_generalization_scope_risk(lcri_gap_severity_by_scope)
     lcri_scope_gate_decisions = lcri_generalization_scope_gate_decisions(lcri_scope_risk)
+    lcri_scope_gate_summary = lcri_scope_gate_decision_summary(lcri_scope_gate_decisions)
     lcri_blocker_summary = lcri_generalization_blocker_summary(lcri_critical_contexts)
     lcri_gap_severity_summary = lcri_generalization_severity_summary(lcri_gap_severity)
     lcri_worst_gap_context = lcri_worst_generalization_context(lcri_gap_leaderboard)
@@ -217,6 +220,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "lcri_generalization_severity_by_scope.csv",
         "lcri_generalization_scope_risk.csv",
         "lcri_generalization_scope_gate_decisions.csv",
+        "lcri_generalization_scope_gate_decision_summary.json",
         "lcri_generalization_critical_contexts.csv",
         "lcri_generalization_blocker_summary.json",
         "lcri_generalization_severity_summary.json",
@@ -270,6 +274,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     lcri_gap_severity_by_scope.to_csv(output / "lcri_generalization_severity_by_scope.csv", index=False)
     lcri_scope_risk.to_csv(output / "lcri_generalization_scope_risk.csv", index=False)
     lcri_scope_gate_decisions.to_csv(output / "lcri_generalization_scope_gate_decisions.csv", index=False)
+    write_json(output / "lcri_generalization_scope_gate_decision_summary.json", lcri_scope_gate_summary)
     lcri_critical_contexts.to_csv(output / "lcri_generalization_critical_contexts.csv", index=False)
     write_json(output / "lcri_generalization_blocker_summary.json", lcri_blocker_summary)
     write_json(output / "lcri_generalization_severity_summary.json", lcri_gap_severity_summary)
@@ -410,6 +415,7 @@ def verify_report(report_dir: Path) -> None:
         *verify_lcri_generalization_severity_by_scope(report_dir),
         *verify_lcri_generalization_scope_risk(report_dir),
         *verify_lcri_generalization_scope_gate_decisions(report_dir),
+        *verify_lcri_generalization_scope_gate_decision_summary(report_dir),
         *verify_lcri_generalization_critical_contexts(report_dir),
         *verify_lcri_generalization_blocker_summary(report_dir),
         *verify_lcri_generalization_severity_summary(report_dir),

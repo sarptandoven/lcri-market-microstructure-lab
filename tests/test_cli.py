@@ -165,6 +165,18 @@ def test_verify_report_accepts_intact_manifest(
             }
         )
     )
+    (tmp_path / "lcri_generalization_scope_gate_decision_summary.json").write_text(
+        json.dumps(
+            {
+                "scopes": 3,
+                "pass_scopes": 1,
+                "warn_scopes": 1,
+                "block_scopes": 1,
+                "blocked_scope_names": "regime",
+                "warn_scope_names": "transition",
+            }
+        )
+    )
     delta = tmp_path / "lcri_generalization_gap_delta.csv"
     delta.write_text(
         "scope,context,raw_imbalance_directional_accuracy_gap,"
@@ -238,6 +250,7 @@ def test_verify_report_accepts_intact_manifest(
             "lcri_generalization_severity_by_scope.csv",
             "lcri_generalization_scope_risk.csv",
             "lcri_generalization_scope_gate_decisions.csv",
+            "lcri_generalization_scope_gate_decision_summary.json",
             "lcri_generalization_critical_contexts.csv",
             "lcri_generalization_blocker_summary.json",
             "lcri_generalization_severity_summary.json",

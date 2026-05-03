@@ -23,6 +23,7 @@ from lcri_lab.reporting import (
     verify_lcri_generalization_gate_decision,
     verify_lcri_generalization_gap_delta,
     verify_lcri_generalization_gap_leaderboard,
+    verify_lcri_generalization_scope_gate_decision_summary,
     verify_lcri_generalization_scope_gate_decisions,
     verify_lcri_generalization_scope_risk,
     verify_lcri_generalization_scope_summary,
@@ -244,6 +245,22 @@ def test_verify_lcri_generalization_scope_gate_decisions_accepts_complete_csv(tm
     )
 
     assert verify_lcri_generalization_scope_gate_decisions(tmp_path) == []
+
+
+def test_verify_lcri_generalization_scope_gate_decision_summary_accepts_payload(tmp_path) -> None:
+    write_json(
+        tmp_path / "lcri_generalization_scope_gate_decision_summary.json",
+        {
+            "scopes": 3,
+            "pass_scopes": 1,
+            "warn_scopes": 1,
+            "block_scopes": 1,
+            "blocked_scope_names": "regime",
+            "warn_scope_names": "transition",
+        },
+    )
+
+    assert verify_lcri_generalization_scope_gate_decision_summary(tmp_path) == []
 
 
 def test_verify_lcri_generalization_scope_risk_accepts_complete_csv(tmp_path) -> None:

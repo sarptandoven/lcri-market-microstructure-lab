@@ -29,6 +29,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "lcri_generalization_severity_by_scope.csv").exists()
     assert (tmp_path / "lcri_generalization_scope_risk.csv").exists()
     assert (tmp_path / "lcri_generalization_scope_gate_decisions.csv").exists()
+    assert (tmp_path / "lcri_generalization_scope_gate_decision_summary.json").exists()
     assert (tmp_path / "lcri_generalization_critical_contexts.csv").exists()
     assert (tmp_path / "lcri_generalization_blocker_summary.json").exists()
     assert (tmp_path / "lcri_generalization_severity_summary.json").exists()

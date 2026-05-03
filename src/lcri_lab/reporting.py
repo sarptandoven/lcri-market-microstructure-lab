@@ -197,6 +197,30 @@ def verify_lcri_generalization_scope_gate_decisions(output_dir: Path) -> list[st
     return []
 
 
+def verify_lcri_generalization_scope_gate_decision_summary(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI scope gate summary."""
+    path = output_dir / "lcri_generalization_scope_gate_decision_summary.json"
+    if not path.exists():
+        return [
+            "missing LCRI scope gate decision summary: "
+            "lcri_generalization_scope_gate_decision_summary.json"
+        ]
+
+    payload = json.loads(path.read_text())
+    required = {
+        "scopes",
+        "pass_scopes",
+        "warn_scopes",
+        "block_scopes",
+        "blocked_scope_names",
+        "warn_scope_names",
+    }
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete LCRI scope gate decision summary: {missing}"]
+    return []
+
+
 def verify_lcri_generalization_critical_contexts(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI critical contexts artifact."""
     path = output_dir / "lcri_generalization_critical_contexts.csv"
