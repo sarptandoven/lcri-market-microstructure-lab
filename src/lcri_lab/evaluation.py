@@ -405,6 +405,32 @@ def lcri_gap_delta_summary(gap_delta: pd.DataFrame) -> dict[str, float | int | s
     }
 
 
+def lcri_gap_delta_scope_summary(gap_delta: pd.DataFrame) -> pd.DataFrame:
+    """Summarize LCRI-vs-raw stability deltas by generalization scope."""
+    column = "raw_minus_lcri_directional_accuracy_gap"
+    columns = [
+        "scope",
+        "rows",
+        "mean_raw_minus_lcri_gap",
+        "min_raw_minus_lcri_gap",
+        "max_raw_minus_lcri_gap",
+    ]
+    if gap_delta.empty:
+        return pd.DataFrame(columns=columns)
+    _require_columns(gap_delta, ["scope", column])
+
+    return (
+        gap_delta.groupby("scope", sort=True)[column]
+        .agg(
+            rows="count",
+            mean_raw_minus_lcri_gap="mean",
+            min_raw_minus_lcri_gap="min",
+            max_raw_minus_lcri_gap="max",
+        )
+        .reset_index()[columns]
+    )
+
+
 def lcri_gap_delta_scorecard(gap_delta: pd.DataFrame) -> dict[str, float | int]:
     """Score how often LCRI reduces generalization gaps versus raw imbalance."""
     column = "raw_minus_lcri_directional_accuracy_gap"
