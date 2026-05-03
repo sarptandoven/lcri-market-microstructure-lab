@@ -17,6 +17,11 @@ This is intentionally lighter than a statistical acceptance test. It confirms
 that downstream reviewers and dashboards can read a run before they interpret the
 numbers.
 
+The scope gate decision summary is verified as JSON instead of CSV so automated
+checks can read the high-level release posture without loading the full decision
+table. Use the CSV when you need per-scope reasons, and the summary when you only
+need pass, warn, and block counts.
+
 ## Generalization artifacts
 
 The LCRI generalization gate artifacts are verified separately because they feed
@@ -25,6 +30,7 @@ release decisions:
 - severity rows must include scope, context, gap, and severity columns
 - scope rollups must include stable, warning, and critical row counts
 - scope risk tables must include warning-or-critical and critical shares
+- scope gate decision summaries must include pass, warn, and block counts
 - gate decision JSON must include the pass/block decision and reason
 - blocker summaries must include the affected scopes and worst blocker context
 
