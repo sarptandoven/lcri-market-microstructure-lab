@@ -111,6 +111,7 @@ reports/
   lcri_gap_delta_improvements.csv
   lcri_gap_delta_regressions.csv
   lcri_gap_delta_scorecard.json
+  lcri_gap_delta_scope_extremes.csv
   lcri_gap_delta_scope_summary.csv
   lcri_gap_delta_summary.json
   transition_lift.csv
