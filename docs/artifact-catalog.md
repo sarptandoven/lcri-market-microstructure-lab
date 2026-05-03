@@ -35,6 +35,8 @@ for reviewers who receive a report directory without the surrounding run logs.
 - `lcri_gap_delta_scorecard.json`: mean, median, and share-level stability edge.
 - `lcri_gap_delta_scope_summary.csv`: per-scope mean, min, and max stability deltas.
 - `lcri_gap_delta_flags.csv`: categorical row labels for relative stability.
+- `lcri_gap_delta_regressions.csv`: rows where LCRI degraded more than raw
+  imbalance, sorted worst first.
 - `lcri_gap_delta_summary.json`: strongest LCRI stability and instability
   contexts.
 
