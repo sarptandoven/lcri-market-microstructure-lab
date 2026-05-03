@@ -83,6 +83,7 @@ reports/
     transition_generalization_gap.png
     lcri_generalization_gap_delta.png
     lcri_generalization_severity_by_scope.png
+    lcri_gap_delta_scope_summary.png
   metrics.csv
   heldout_metrics.csv
   generalization_gap.csv

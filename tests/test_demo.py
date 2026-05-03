@@ -58,6 +58,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "figures" / "transition_generalization_gap.png").exists()
     assert (tmp_path / "figures" / "lcri_generalization_gap_delta.png").exists()
     assert (tmp_path / "figures" / "lcri_generalization_severity_by_scope.png").exists()
+    assert (tmp_path / "figures" / "lcri_gap_delta_scope_summary.png").exists()
 
     robustness = json.loads((tmp_path / "transition_robustness.json").read_text())
     assert "passes_transition_robustness" in robustness
@@ -91,6 +92,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["lcri_generalization_gate_decision.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_generalization_gap_delta.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["figures/lcri_generalization_severity_by_scope.png"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["figures/lcri_gap_delta_scope_summary.png"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_flags.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_scorecard.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_scope_summary.csv"]["size_bytes"] > 0

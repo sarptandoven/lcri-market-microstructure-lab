@@ -43,3 +43,12 @@ for reviewers who receive a report directory without the surrounding run logs.
 Figures mirror the most important CSV/JSON artifacts for visual review. Treat
 CSV and JSON outputs as source-of-truth for automation, and figures as reviewer
 aids.
+
+- `figures/lcri_generalization_gap_delta.png`: row-level raw-minus-LCRI gap
+  comparison across all scopes.
+- `figures/lcri_generalization_severity_by_scope.png`: stacked stable, warning,
+  and critical counts by scope.
+- `figures/lcri_gap_delta_scope_summary.png`: mean stability edge by scope.
+
+Use the figures to spot obvious concentration before opening the corresponding
+CSV files for exact values.
