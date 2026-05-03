@@ -440,12 +440,14 @@ def lcri_gap_delta_scope_summary(gap_delta: pd.DataFrame) -> pd.DataFrame:
         "mean_raw_minus_lcri_gap",
         "min_raw_minus_lcri_gap",
         "max_raw_minus_lcri_gap",
+        "lcri_more_stable_share",
+        "lcri_less_stable_share",
     ]
     if gap_delta.empty:
         return pd.DataFrame(columns=columns)
     _require_columns(gap_delta, ["scope", column])
 
-    return (
+    grouped = (
         gap_delta.groupby("scope", sort=True)[column]
         .agg(
             rows="count",
@@ -453,8 +455,24 @@ def lcri_gap_delta_scope_summary(gap_delta: pd.DataFrame) -> pd.DataFrame:
             min_raw_minus_lcri_gap="min",
             max_raw_minus_lcri_gap="max",
         )
-        .reset_index()[columns]
+        .reset_index()
     )
+    shares = (
+        gap_delta.assign(
+            lcri_more_stable=lambda frame: frame[column].astype(float) > 0.0,
+            lcri_less_stable=lambda frame: frame[column].astype(float) < 0.0,
+        )
+        .groupby("scope", sort=True)[["lcri_more_stable", "lcri_less_stable"]]
+        .mean()
+        .reset_index()
+        .rename(
+            columns={
+                "lcri_more_stable": "lcri_more_stable_share",
+                "lcri_less_stable": "lcri_less_stable_share",
+            }
+        )
+    )
+    return grouped.merge(shares, on="scope", how="left")[columns]
 
 
 def lcri_gap_delta_scorecard(gap_delta: pd.DataFrame) -> dict[str, float | int]:

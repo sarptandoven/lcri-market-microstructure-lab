@@ -427,6 +427,8 @@ def test_lcri_gap_delta_scope_summary_groups_relative_stability() -> None:
     assert output.loc["regime", "mean_raw_minus_lcri_gap"] == pytest.approx(0.01)
     assert output.loc["regime", "min_raw_minus_lcri_gap"] == pytest.approx(-0.04)
     assert output.loc["regime", "max_raw_minus_lcri_gap"] == pytest.approx(0.06)
+    assert output.loc["regime", "lcri_more_stable_share"] == pytest.approx(0.5)
+    assert output.loc["regime", "lcri_less_stable_share"] == pytest.approx(0.5)
 
 
 def test_lcri_gap_delta_scorecard_reports_relative_stability_shares() -> None:
