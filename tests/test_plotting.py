@@ -21,6 +21,20 @@ def test_write_figures_keeps_heldout_outputs_optional(tmp_path: Path) -> None:
     assert not (tmp_path / "transition_generalization_gap.png").exists()
 
 
+def test_write_figures_writes_lcri_severity_scope_plot(tmp_path: Path) -> None:
+    frame = _scored_frame()
+    regime_table = _regime_table()
+
+    write_figures(
+        frame,
+        regime_table,
+        tmp_path,
+        lcri_generalization_severity_by_scope=_severity_scope_table(),
+    )
+
+    assert (tmp_path / "lcri_generalization_severity_by_scope.png").exists()
+
+
 def test_write_figures_writes_heldout_transition_plot(tmp_path: Path) -> None:
     frame = _scored_frame()
     regime_table = _regime_table()
@@ -62,6 +76,17 @@ def _regime_table() -> pd.DataFrame:
             "regime": ["thick", "thick"],
             "signal": ["raw_imbalance", "lcri"],
             "directional_accuracy": [0.5, 0.75],
+        }
+    )
+
+
+def _severity_scope_table() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "scope": ["signal", "regime", "transition"],
+            "stable_rows": [1, 0, 0],
+            "warning_rows": [0, 1, 1],
+            "critical_rows": [0, 1, 0],
         }
     )
 

@@ -19,6 +19,7 @@ def write_figures(
     regime_generalization_gap: pd.DataFrame | None = None,
     transition_generalization_gap: pd.DataFrame | None = None,
     lcri_generalization_gap_delta: pd.DataFrame | None = None,
+    lcri_generalization_severity_by_scope: pd.DataFrame | None = None,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     _scatter(frame, output_dir / "raw_vs_lcri_scatter.png")
@@ -61,6 +62,11 @@ def write_figures(
         _lcri_generalization_gap_delta_bars(
             lcri_generalization_gap_delta,
             output_dir / "lcri_generalization_gap_delta.png",
+        )
+    if lcri_generalization_severity_by_scope is not None:
+        _lcri_generalization_severity_scope_bars(
+            lcri_generalization_severity_by_scope,
+            output_dir / "lcri_generalization_severity_by_scope.png",
         )
 
 
@@ -183,6 +189,23 @@ def _lcri_generalization_gap_delta_bars(gap_delta: pd.DataFrame, path: Path) -> 
     ax.set_xlabel("Scope")
     ax.set_ylabel("Positive means LCRI degraded less")
     ax.tick_params(axis="x", rotation=30)
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+
+
+def _lcri_generalization_severity_scope_bars(severity_scope: pd.DataFrame, path: Path) -> None:
+    columns = ["stable_rows", "warning_rows", "critical_rows"]
+    if "scope" not in severity_scope.columns or not set(columns).issubset(severity_scope.columns):
+        return
+
+    pivot = severity_scope.set_index("scope")[columns]
+    fig, ax = plt.subplots(figsize=(8, 5))
+    pivot.plot(kind="bar", stacked=True, ax=ax)
+    ax.set_title("LCRI generalization severity by scope")
+    ax.set_xlabel("Scope")
+    ax.set_ylabel("Rows")
+    ax.legend(title="Severity")
     fig.tight_layout()
     fig.savefig(path, dpi=160)
     plt.close(fig)
