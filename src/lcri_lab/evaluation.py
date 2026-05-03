@@ -234,6 +234,26 @@ def lcri_generalization_severity_by_scope(severity: pd.DataFrame) -> pd.DataFram
     )[columns]
 
 
+def lcri_generalization_scope_risk(severity_by_scope: pd.DataFrame) -> pd.DataFrame:
+    """Convert severity scope counts into warning and critical risk rates."""
+    columns = ["scope", "rows", "warning_or_critical_share", "critical_share"]
+    if severity_by_scope.empty:
+        return pd.DataFrame(columns=columns)
+    _require_columns(
+        severity_by_scope,
+        ["scope", "rows", "warning_rows", "critical_rows"],
+    )
+
+    output = severity_by_scope.copy()
+    rows = output["rows"].astype(float).replace(0.0, np.nan)
+    output["warning_or_critical_share"] = (
+        (output["warning_rows"].astype(float) + output["critical_rows"].astype(float))
+        / rows
+    ).fillna(0.0)
+    output["critical_share"] = (output["critical_rows"].astype(float) / rows).fillna(0.0)
+    return output[columns]
+
+
 def lcri_generalization_gate_decision(
     severity_summary: dict[str, bool | int],
     worst_context: dict[str, float | str],

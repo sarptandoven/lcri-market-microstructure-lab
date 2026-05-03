@@ -13,6 +13,7 @@ from lcri_lab.evaluation import (
     lcri_generalization_gate_decision,
     lcri_generalization_gap_delta,
     lcri_generalization_gap_leaderboard,
+    lcri_generalization_scope_risk,
     lcri_generalization_scope_summary,
     lcri_generalization_severity,
     lcri_generalization_severity_by_scope,
@@ -213,6 +214,24 @@ def test_lcri_generalization_severity_summary_passes_without_critical_rows() -> 
 
     assert output["critical_rows"] == 0
     assert output["passes_lcri_generalization_gate"] is True
+
+
+def test_lcri_generalization_scope_risk_reports_warning_and_critical_rates() -> None:
+    severity_by_scope = pd.DataFrame(
+        {
+            "scope": ["regime", "signal"],
+            "rows": [4, 2],
+            "stable_rows": [1, 2],
+            "warning_rows": [2, 0],
+            "critical_rows": [1, 0],
+        }
+    )
+
+    output = lcri_generalization_scope_risk(severity_by_scope).set_index("scope")
+
+    assert output.loc["regime", "warning_or_critical_share"] == pytest.approx(0.75)
+    assert output.loc["regime", "critical_share"] == pytest.approx(0.25)
+    assert output.loc["signal", "critical_share"] == pytest.approx(0.0)
 
 
 def test_lcri_generalization_gate_decision_blocks_critical_rows() -> None:

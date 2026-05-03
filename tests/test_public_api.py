@@ -48,6 +48,11 @@ def test_public_api_exports_lcri_generalization_gap_leaderboard() -> None:
     assert "lcri_generalization_gap_leaderboard" in lcri_lab.__all__
 
 
+def test_public_api_exports_lcri_generalization_scope_risk() -> None:
+    assert callable(lcri_lab.lcri_generalization_scope_risk)
+    assert "lcri_generalization_scope_risk" in lcri_lab.__all__
+
+
 def test_public_api_exports_lcri_generalization_scope_summary() -> None:
     assert callable(lcri_lab.lcri_generalization_scope_summary)
     assert "lcri_generalization_scope_summary" in lcri_lab.__all__
