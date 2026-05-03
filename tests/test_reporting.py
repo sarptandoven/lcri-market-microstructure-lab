@@ -14,6 +14,7 @@ from lcri_lab.reporting import (
     verify_lcri_gap_delta_improvements,
     verify_lcri_gap_delta_regressions,
     verify_lcri_gap_delta_scorecard,
+    verify_lcri_gap_delta_scope_extremes,
     verify_lcri_gap_delta_scope_summary,
     verify_lcri_gap_delta_summary,
     verify_lcri_generalization_blocker_summary,
@@ -398,6 +399,15 @@ def test_verify_lcri_gap_delta_scorecard_accepts_complete_payload(tmp_path) -> N
     )
 
     assert verify_lcri_gap_delta_scorecard(tmp_path) == []
+
+
+def test_verify_lcri_gap_delta_scope_extremes_accepts_complete_csv(tmp_path) -> None:
+    (tmp_path / "lcri_gap_delta_scope_extremes.csv").write_text(
+        "scope,best_context,best_raw_minus_lcri_gap,worst_context,worst_raw_minus_lcri_gap\n"
+        "regime,deep,0.06,thin,-0.04\n"
+    )
+
+    assert verify_lcri_gap_delta_scope_extremes(tmp_path) == []
 
 
 def test_verify_lcri_gap_delta_scope_summary_accepts_complete_csv(tmp_path) -> None:

@@ -194,6 +194,10 @@ def test_verify_report_accepts_intact_manifest(
             }
         )
     )
+    (tmp_path / "lcri_gap_delta_scope_extremes.csv").write_text(
+        "scope,best_context,best_raw_minus_lcri_gap,worst_context,worst_raw_minus_lcri_gap\n"
+        "regime,deep,0.06,thin,-0.04\n"
+    )
     (tmp_path / "lcri_gap_delta_scope_summary.csv").write_text(
         "scope,rows,mean_raw_minus_lcri_gap,min_raw_minus_lcri_gap,"
         "max_raw_minus_lcri_gap,lcri_more_stable_share,lcri_less_stable_share\n"
@@ -234,6 +238,7 @@ def test_verify_report_accepts_intact_manifest(
             "lcri_gap_delta_improvements.csv",
             "lcri_gap_delta_regressions.csv",
             "lcri_gap_delta_scorecard.json",
+            "lcri_gap_delta_scope_extremes.csv",
             "lcri_gap_delta_scope_summary.csv",
             "lcri_gap_delta_summary.json",
         ],
