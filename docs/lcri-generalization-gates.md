@@ -12,6 +12,8 @@ and easy to inspect in CI logs.
   `warning`, or `critical`.
 - `lcri_generalization_severity_by_scope.csv` rolls those labels up by scope so
   reviewers can see whether degradation is localized or broad.
+- `lcri_generalization_critical_contexts.csv` lists only blocking critical rows,
+  sorted by largest directional-accuracy gap first.
 - `lcri_worst_generalization_context.json` records the single largest LCRI gap.
 
 ## Gate outputs
@@ -27,7 +29,8 @@ and easy to inspect in CI logs.
 
 A blocked run means at least one LCRI generalization row crossed the critical
 directional-accuracy gap threshold. Start with the gate decision reason, then
-inspect the worst scope and context before changing model or feature code.
+inspect `lcri_generalization_critical_contexts.csv` and the worst scope/context
+before changing model or feature code.
 
 If the block is regime-localized, compare the regime gap table against feature
 stability. If the block is transition-localized, inspect transition robustness

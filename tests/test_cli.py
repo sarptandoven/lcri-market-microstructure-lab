@@ -104,6 +104,9 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
     (tmp_path / "lcri_generalization_severity_by_scope.csv").write_text(
         "scope,rows,stable_rows,warning_rows,critical_rows\nregime,1,0,0,1\n"
     )
+    (tmp_path / "lcri_generalization_critical_contexts.csv").write_text(
+        "scope,context,directional_accuracy_gap,severity\nregime,thin,0.08,critical\n"
+    )
     severity_summary = tmp_path / "lcri_generalization_severity_summary.json"
     severity_summary.write_text(
         json.dumps(
@@ -188,6 +191,7 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
             "lcri_generalization_scope_summary.csv",
             "lcri_generalization_severity.csv",
             "lcri_generalization_severity_by_scope.csv",
+            "lcri_generalization_critical_contexts.csv",
             "lcri_generalization_severity_summary.json",
             "lcri_worst_generalization_context.json",
             "lcri_generalization_gate_decision.json",

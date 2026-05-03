@@ -169,6 +169,20 @@ def verify_lcri_generalization_severity_by_scope(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_generalization_critical_contexts(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI critical contexts artifact."""
+    path = output_dir / "lcri_generalization_critical_contexts.csv"
+    if not path.exists():
+        return ["missing LCRI critical contexts: lcri_generalization_critical_contexts.csv"]
+
+    columns = set(pd.read_csv(path, nrows=1).columns)
+    required = {"scope", "context", "directional_accuracy_gap", "severity"}
+    missing = sorted(required - columns)
+    if missing:
+        return [f"incomplete LCRI critical contexts: {missing}"]
+    return []
+
+
 def verify_lcri_generalization_severity_summary(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI severity summary."""
     path = output_dir / "lcri_generalization_severity_summary.json"

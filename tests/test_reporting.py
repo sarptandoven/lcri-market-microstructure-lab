@@ -11,6 +11,7 @@ from lcri_lab.reporting import (
     verify_lcri_gap_delta_flags,
     verify_lcri_gap_delta_scorecard,
     verify_lcri_gap_delta_summary,
+    verify_lcri_generalization_critical_contexts,
     verify_lcri_generalization_gate_decision,
     verify_lcri_generalization_gap_delta,
     verify_lcri_generalization_gap_leaderboard,
@@ -167,6 +168,15 @@ def test_verify_lcri_generalization_severity_by_scope_accepts_complete_csv(tmp_p
     )
 
     assert verify_lcri_generalization_severity_by_scope(tmp_path) == []
+
+
+def test_verify_lcri_generalization_critical_contexts_accepts_complete_csv(tmp_path) -> None:
+    (tmp_path / "lcri_generalization_critical_contexts.csv").write_text(
+        "scope,context,directional_accuracy_gap,severity\n"
+        "regime,thin,0.08,critical\n"
+    )
+
+    assert verify_lcri_generalization_critical_contexts(tmp_path) == []
 
 
 def test_verify_lcri_generalization_severity_summary_accepts_complete_payload(tmp_path) -> None:
