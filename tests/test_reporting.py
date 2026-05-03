@@ -9,6 +9,7 @@ from lcri_lab.reporting import (
     verify_artifact_manifest,
     verify_generalization_overview,
     verify_lcri_gap_delta_flags,
+    verify_lcri_gap_delta_scorecard,
     verify_lcri_gap_delta_summary,
     verify_lcri_generalization_gate_decision,
     verify_lcri_generalization_gap_delta,
@@ -257,6 +258,21 @@ def test_verify_lcri_gap_delta_summary_reports_missing_keys(tmp_path) -> None:
         "'max_lcri_instability_edge_context', 'max_lcri_stability_edge', "
         "'max_lcri_stability_edge_context']"
     ]
+
+
+def test_verify_lcri_gap_delta_scorecard_accepts_complete_payload(tmp_path) -> None:
+    write_json(
+        tmp_path / "lcri_gap_delta_scorecard.json",
+        {
+            "rows": 3,
+            "mean_raw_minus_lcri_directional_accuracy_gap": 0.02,
+            "median_raw_minus_lcri_directional_accuracy_gap": 0.01,
+            "lcri_more_stable_share": 0.67,
+            "lcri_less_stable_share": 0.33,
+        },
+    )
+
+    assert verify_lcri_gap_delta_scorecard(tmp_path) == []
 
 
 def test_verify_lcri_gap_delta_summary_accepts_complete_payload(tmp_path) -> None:

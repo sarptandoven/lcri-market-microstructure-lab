@@ -32,6 +32,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "lcri_generalization_gate_decision.json").exists()
     assert (tmp_path / "lcri_generalization_gap_delta.csv").exists()
     assert (tmp_path / "lcri_gap_delta_flags.csv").exists()
+    assert (tmp_path / "lcri_gap_delta_scorecard.json").exists()
     assert (tmp_path / "lcri_gap_delta_summary.json").exists()
     assert (tmp_path / "transition_lift.csv").exists()
     assert (tmp_path / "heldout_transition_lift.csv").exists()
@@ -75,6 +76,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["lcri_generalization_gate_decision.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_generalization_gap_delta.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_flags.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["lcri_gap_delta_scorecard.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_transition_lift.csv"]["size_bytes"] > 0
     assert len(manifest["artifact_metadata"]["metrics.csv"]["sha256"]) == 64
@@ -95,6 +97,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## LCRI generalization gate decision" in summary
     assert "## LCRI generalization gap delta" in summary
     assert "## LCRI gap delta flags" in summary
+    assert "## LCRI gap delta scorecard" in summary
     assert "## LCRI gap delta summary" in summary
     assert "## Transition robustness" in summary
     assert "## Heldout transition lift" in summary

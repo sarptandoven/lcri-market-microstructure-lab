@@ -153,6 +153,18 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
         "scope,context,raw_minus_lcri_directional_accuracy_gap,stability_flag\n"
         "signal,all,0.03,lcri_more_stable\n"
     )
+    scorecard = tmp_path / "lcri_gap_delta_scorecard.json"
+    scorecard.write_text(
+        json.dumps(
+            {
+                "rows": 3,
+                "mean_raw_minus_lcri_directional_accuracy_gap": 0.02,
+                "median_raw_minus_lcri_directional_accuracy_gap": 0.01,
+                "lcri_more_stable_share": 0.67,
+                "lcri_less_stable_share": 0.33,
+            }
+        )
+    )
     summary = tmp_path / "lcri_gap_delta_summary.json"
     summary.write_text(
         json.dumps(
@@ -181,6 +193,7 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
             "lcri_generalization_gate_decision.json",
             "lcri_generalization_gap_delta.csv",
             "lcri_gap_delta_flags.csv",
+            "lcri_gap_delta_scorecard.json",
             "lcri_gap_delta_summary.json",
         ],
         "artifact_metadata": {},

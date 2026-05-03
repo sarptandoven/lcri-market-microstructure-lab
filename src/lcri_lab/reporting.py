@@ -252,6 +252,26 @@ def verify_lcri_gap_delta_flags(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_gap_delta_scorecard(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI gap delta scorecard."""
+    path = output_dir / "lcri_gap_delta_scorecard.json"
+    if not path.exists():
+        return ["missing LCRI gap delta scorecard: lcri_gap_delta_scorecard.json"]
+
+    payload = json.loads(path.read_text())
+    required = {
+        "rows",
+        "mean_raw_minus_lcri_directional_accuracy_gap",
+        "median_raw_minus_lcri_directional_accuracy_gap",
+        "lcri_more_stable_share",
+        "lcri_less_stable_share",
+    }
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete LCRI gap delta scorecard: {missing}"]
+    return []
+
+
 def verify_lcri_gap_delta_summary(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI gap delta summary."""
     path = output_dir / "lcri_gap_delta_summary.json"
@@ -299,6 +319,7 @@ def write_research_summary(
     lcri_generalization_gate_decision: dict[str, Any] | None = None,
     lcri_generalization_gap_delta: pd.DataFrame | None = None,
     lcri_gap_delta_flags: pd.DataFrame | None = None,
+    lcri_gap_delta_scorecard: dict[str, Any] | None = None,
     lcri_gap_delta_summary: dict[str, Any] | None = None,
     transition_lift: pd.DataFrame,
     transition_robustness: dict[str, Any],
@@ -419,6 +440,14 @@ def write_research_summary(
                 _markdown_table(lcri_gap_delta_flags)
                 if lcri_gap_delta_flags is not None
                 else "_Not generated._",
+                "",
+                "## LCRI gap delta scorecard",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (lcri_gap_delta_scorecard or {}).items()
+                ],
+                "" if lcri_gap_delta_scorecard else "_Not generated._",
                 "",
                 "## LCRI gap delta summary",
                 "",
