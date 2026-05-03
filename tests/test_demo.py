@@ -37,6 +37,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "lcri_generalization_gap_delta.csv").exists()
     assert (tmp_path / "lcri_gap_delta_flags.csv").exists()
     assert (tmp_path / "lcri_gap_delta_scorecard.json").exists()
+    assert (tmp_path / "lcri_gap_delta_scope_summary.csv").exists()
     assert (tmp_path / "lcri_gap_delta_summary.json").exists()
     assert (tmp_path / "transition_lift.csv").exists()
     assert (tmp_path / "heldout_transition_lift.csv").exists()
@@ -92,6 +93,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["figures/lcri_generalization_severity_by_scope.png"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_flags.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_scorecard.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["lcri_gap_delta_scope_summary.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["artifact_metadata_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_transition_lift.csv"]["size_bytes"] > 0

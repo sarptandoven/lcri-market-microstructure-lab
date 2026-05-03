@@ -12,6 +12,7 @@ from lcri_lab.evaluation import (
     generalization_overview,
     lcri_gap_delta_flags,
     lcri_gap_delta_scorecard,
+    lcri_gap_delta_scope_summary,
     lcri_gap_delta_summary,
     lcri_generalization_blocker_summary,
     lcri_generalization_critical_contexts,
@@ -47,6 +48,7 @@ from lcri_lab.reporting import (
     verify_generalization_overview,
     verify_lcri_gap_delta_flags,
     verify_lcri_gap_delta_scorecard,
+    verify_lcri_gap_delta_scope_summary,
     verify_lcri_gap_delta_summary,
     verify_lcri_generalization_blocker_summary,
     verify_lcri_generalization_critical_contexts,
@@ -176,6 +178,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     lcri_gap_delta = lcri_generalization_gap_delta(generalization_gap, regime_gap, transition_gap)
     lcri_gap_flags = lcri_gap_delta_flags(lcri_gap_delta)
     lcri_gap_scorecard = lcri_gap_delta_scorecard(lcri_gap_delta)
+    lcri_gap_scope_summary = lcri_gap_delta_scope_summary(lcri_gap_delta)
     lcri_gap_summary = lcri_gap_delta_summary(lcri_gap_delta)
     transition_lift = transition_signal_lift(scored)
     heldout_transition_lift = transition_signal_lift(heldout_scored)
@@ -210,6 +213,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "lcri_generalization_gap_delta.csv",
         "lcri_gap_delta_flags.csv",
         "lcri_gap_delta_scorecard.json",
+        "lcri_gap_delta_scope_summary.csv",
         "lcri_gap_delta_summary.json",
         "transition_lift.csv",
         "heldout_transition_lift.csv",
@@ -257,6 +261,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     lcri_gap_delta.to_csv(output / "lcri_generalization_gap_delta.csv", index=False)
     lcri_gap_flags.to_csv(output / "lcri_gap_delta_flags.csv", index=False)
     write_json(output / "lcri_gap_delta_scorecard.json", lcri_gap_scorecard)
+    lcri_gap_scope_summary.to_csv(output / "lcri_gap_delta_scope_summary.csv", index=False)
     write_json(output / "lcri_gap_delta_summary.json", lcri_gap_summary)
     transition_lift.to_csv(output / "transition_lift.csv", index=False)
     heldout_transition_lift.to_csv(output / "heldout_transition_lift.csv", index=False)
@@ -390,6 +395,7 @@ def verify_report(report_dir: Path) -> None:
         *verify_lcri_generalization_gap_delta(report_dir),
         *verify_lcri_gap_delta_flags(report_dir),
         *verify_lcri_gap_delta_scorecard(report_dir),
+        *verify_lcri_gap_delta_scope_summary(report_dir),
         *verify_lcri_gap_delta_summary(report_dir),
     ]
     summary = summarize_verification_errors(errors)

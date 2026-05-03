@@ -188,6 +188,10 @@ def test_verify_report_accepts_intact_manifest(
             }
         )
     )
+    (tmp_path / "lcri_gap_delta_scope_summary.csv").write_text(
+        "scope,rows,mean_raw_minus_lcri_gap,min_raw_minus_lcri_gap,max_raw_minus_lcri_gap\n"
+        "regime,2,0.01,-0.04,0.06\n"
+    )
     summary = tmp_path / "lcri_gap_delta_summary.json"
     summary.write_text(
         json.dumps(
@@ -221,6 +225,7 @@ def test_verify_report_accepts_intact_manifest(
             "lcri_generalization_gap_delta.csv",
             "lcri_gap_delta_flags.csv",
             "lcri_gap_delta_scorecard.json",
+            "lcri_gap_delta_scope_summary.csv",
             "lcri_gap_delta_summary.json",
         ],
         "artifact_metadata": {},

@@ -328,6 +328,26 @@ def verify_lcri_gap_delta_scorecard(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_gap_delta_scope_summary(output_dir: Path) -> list[str]:
+    """Return errors for a missing LCRI gap delta scope summary."""
+    path = output_dir / "lcri_gap_delta_scope_summary.csv"
+    if not path.exists():
+        return ["missing LCRI gap delta scope summary: lcri_gap_delta_scope_summary.csv"]
+
+    columns = set(pd.read_csv(path, nrows=1).columns)
+    required = {
+        "scope",
+        "rows",
+        "mean_raw_minus_lcri_gap",
+        "min_raw_minus_lcri_gap",
+        "max_raw_minus_lcri_gap",
+    }
+    missing = sorted(required - columns)
+    if missing:
+        return [f"incomplete LCRI gap delta scope summary: {missing}"]
+    return []
+
+
 def verify_lcri_gap_delta_summary(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI gap delta summary."""
     path = output_dir / "lcri_gap_delta_summary.json"
