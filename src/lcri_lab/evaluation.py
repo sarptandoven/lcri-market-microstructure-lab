@@ -295,6 +295,34 @@ def lcri_generalization_scope_gate_decisions(scope_risk: pd.DataFrame) -> pd.Dat
     return output[columns]
 
 
+
+
+def lcri_scope_gate_decision_summary(scope_decisions: pd.DataFrame) -> dict[str, int | str]:
+    """Summarize pass/warn/block decisions across LCRI generalization scopes."""
+    if scope_decisions.empty:
+        return {
+            "scopes": 0,
+            "pass_scopes": 0,
+            "warn_scopes": 0,
+            "block_scopes": 0,
+            "blocked_scope_names": "none",
+            "warn_scope_names": "none",
+        }
+    _require_columns(scope_decisions, ["scope", "decision"])
+
+    decisions = scope_decisions["decision"].astype(str)
+    blocked = sorted(scope_decisions.loc[decisions == "block", "scope"].astype(str))
+    warned = sorted(scope_decisions.loc[decisions == "warn", "scope"].astype(str))
+    return {
+        "scopes": len(scope_decisions),
+        "pass_scopes": int((decisions == "pass").sum()),
+        "warn_scopes": int((decisions == "warn").sum()),
+        "block_scopes": int((decisions == "block").sum()),
+        "blocked_scope_names": ",".join(blocked) if blocked else "none",
+        "warn_scope_names": ",".join(warned) if warned else "none",
+    }
+
+
 def lcri_generalization_gate_decision(
     severity_summary: dict[str, bool | int],
     worst_context: dict[str, float | str],

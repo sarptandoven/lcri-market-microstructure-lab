@@ -20,6 +20,7 @@ from lcri_lab.evaluation import (
     lcri_generalization_gap_delta,
     lcri_generalization_gap_leaderboard,
     lcri_generalization_scope_gate_decisions,
+    lcri_scope_gate_decision_summary,
     lcri_generalization_scope_risk,
     lcri_generalization_scope_summary,
     lcri_generalization_severity,
@@ -273,6 +274,32 @@ def test_lcri_generalization_scope_gate_decisions_assigns_scope_actions() -> Non
     assert output.loc["regime", "decision"] == "block"
     assert output.loc["signal", "decision"] == "pass"
     assert output.loc["transition", "decision"] == "warn"
+
+
+def test_lcri_scope_gate_decision_summary_lists_action_scopes() -> None:
+    decisions = pd.DataFrame(
+        {
+            "scope": ["signal", "regime", "transition"],
+            "decision": ["pass", "block", "warn"],
+        }
+    )
+
+    output = lcri_scope_gate_decision_summary(decisions)
+
+    assert output["scopes"] == 3
+    assert output["pass_scopes"] == 1
+    assert output["warn_scopes"] == 1
+    assert output["block_scopes"] == 1
+    assert output["blocked_scope_names"] == "regime"
+    assert output["warn_scope_names"] == "transition"
+
+
+def test_lcri_scope_gate_decision_summary_handles_empty_decisions() -> None:
+    output = lcri_scope_gate_decision_summary(pd.DataFrame())
+
+    assert output["scopes"] == 0
+    assert output["blocked_scope_names"] == "none"
+    assert output["warn_scope_names"] == "none"
 
 
 def test_lcri_generalization_gate_decision_blocks_critical_rows() -> None:
