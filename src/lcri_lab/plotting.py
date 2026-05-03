@@ -20,6 +20,7 @@ def write_figures(
     transition_generalization_gap: pd.DataFrame | None = None,
     lcri_generalization_gap_delta: pd.DataFrame | None = None,
     lcri_generalization_severity_by_scope: pd.DataFrame | None = None,
+    lcri_gap_delta_scope_summary: pd.DataFrame | None = None,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     _scatter(frame, output_dir / "raw_vs_lcri_scatter.png")
@@ -67,6 +68,11 @@ def write_figures(
         _lcri_generalization_severity_scope_bars(
             lcri_generalization_severity_by_scope,
             output_dir / "lcri_generalization_severity_by_scope.png",
+        )
+    if lcri_gap_delta_scope_summary is not None:
+        _lcri_gap_delta_scope_summary_bars(
+            lcri_gap_delta_scope_summary,
+            output_dir / "lcri_gap_delta_scope_summary.png",
         )
 
 
@@ -189,6 +195,22 @@ def _lcri_generalization_gap_delta_bars(gap_delta: pd.DataFrame, path: Path) -> 
     ax.set_xlabel("Scope")
     ax.set_ylabel("Positive means LCRI degraded less")
     ax.tick_params(axis="x", rotation=30)
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+
+
+def _lcri_gap_delta_scope_summary_bars(scope_summary: pd.DataFrame, path: Path) -> None:
+    column = "mean_raw_minus_lcri_gap"
+    if "scope" not in scope_summary.columns or column not in scope_summary.columns:
+        return
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.bar(scope_summary["scope"], scope_summary[column])
+    ax.axhline(0.0, color="black", linewidth=0.8)
+    ax.set_title("Mean LCRI stability edge by scope")
+    ax.set_xlabel("Scope")
+    ax.set_ylabel("Raw gap minus LCRI gap")
     fig.tight_layout()
     fig.savefig(path, dpi=160)
     plt.close(fig)
