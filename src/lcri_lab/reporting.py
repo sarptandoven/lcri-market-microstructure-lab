@@ -155,6 +155,20 @@ def verify_lcri_generalization_severity(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_generalization_severity_by_scope(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI severity scope artifact."""
+    path = output_dir / "lcri_generalization_severity_by_scope.csv"
+    if not path.exists():
+        return ["missing LCRI generalization severity by scope: lcri_generalization_severity_by_scope.csv"]
+
+    columns = set(pd.read_csv(path, nrows=1).columns)
+    required = {"scope", "rows", "stable_rows", "warning_rows", "critical_rows"}
+    missing = sorted(required - columns)
+    if missing:
+        return [f"incomplete LCRI generalization severity by scope: {missing}"]
+    return []
+
+
 def verify_lcri_generalization_severity_summary(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI severity summary."""
     path = output_dir / "lcri_generalization_severity_summary.json"
@@ -279,6 +293,7 @@ def write_research_summary(
     lcri_generalization_gap_leaderboard: pd.DataFrame | None = None,
     lcri_generalization_scope_summary: pd.DataFrame | None = None,
     lcri_generalization_severity: pd.DataFrame | None = None,
+    lcri_generalization_severity_by_scope: pd.DataFrame | None = None,
     lcri_generalization_severity_summary: dict[str, Any] | None = None,
     lcri_worst_generalization_context: dict[str, Any] | None = None,
     lcri_generalization_gate_decision: dict[str, Any] | None = None,
@@ -361,6 +376,12 @@ def write_research_summary(
                 "",
                 _markdown_table(lcri_generalization_severity)
                 if lcri_generalization_severity is not None
+                else "_Not generated._",
+                "",
+                "## LCRI generalization severity by scope",
+                "",
+                _markdown_table(lcri_generalization_severity_by_scope)
+                if lcri_generalization_severity_by_scope is not None
                 else "_Not generated._",
                 "",
                 "## LCRI generalization severity summary",

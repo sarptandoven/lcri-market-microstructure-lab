@@ -15,6 +15,7 @@ from lcri_lab.reporting import (
     verify_lcri_generalization_gap_leaderboard,
     verify_lcri_generalization_scope_summary,
     verify_lcri_generalization_severity,
+    verify_lcri_generalization_severity_by_scope,
     verify_lcri_generalization_severity_summary,
     verify_lcri_worst_generalization_context,
     write_json,
@@ -156,6 +157,15 @@ def test_verify_lcri_generalization_severity_accepts_complete_csv(tmp_path) -> N
     ).to_csv(tmp_path / "lcri_generalization_severity.csv", index=False)
 
     assert verify_lcri_generalization_severity(tmp_path) == []
+
+
+def test_verify_lcri_generalization_severity_by_scope_accepts_complete_csv(tmp_path) -> None:
+    (tmp_path / "lcri_generalization_severity_by_scope.csv").write_text(
+        "scope,rows,stable_rows,warning_rows,critical_rows\n"
+        "regime,2,0,1,1\n"
+    )
+
+    assert verify_lcri_generalization_severity_by_scope(tmp_path) == []
 
 
 def test_verify_lcri_generalization_severity_summary_accepts_complete_payload(tmp_path) -> None:
@@ -581,6 +591,9 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
         generalization_gap_leaderboard=generalization_gap_leaderboard,
         lcri_generalization_gap_leaderboard=lcri_generalization_gap_leaderboard,
         lcri_generalization_severity=lcri_generalization_severity,
+        lcri_generalization_severity_by_scope=pd.DataFrame(
+            {"scope": ["regime"], "rows": [2], "stable_rows": [0], "warning_rows": [1], "critical_rows": [1]}
+        ),
         lcri_generalization_severity_summary=lcri_generalization_severity_summary,
         lcri_gap_delta_flags=lcri_gap_delta_flags,
         lcri_gap_delta_summary=lcri_gap_delta_summary,

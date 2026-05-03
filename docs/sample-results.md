@@ -79,7 +79,7 @@ visible without scanning raw imbalance rows. `lcri_generalization_scope_summary.
 rolls those LCRI rows up by signal, regime, and transition scope so reviewers can
 see whether degradation is broad or localized. `lcri_generalization_severity.csv`
 labels each LCRI gap as stable, warning, or critical using directional accuracy
-thresholds. `lcri_generalization_severity_summary.json` counts those labels and
+thresholds. `lcri_generalization_severity_by_scope.csv` rolls the labels up by signal, regime, and transition scope. `lcri_generalization_severity_summary.json` counts those labels and
 sets `passes_lcri_generalization_gate` to false when any critical rows are
 present. `lcri_worst_generalization_context.json` stores the single largest LCRI
 directional accuracy gap. `lcri_generalization_gate_decision.json` combines those

@@ -17,6 +17,7 @@ from lcri_lab.evaluation import (
     lcri_generalization_gap_leaderboard,
     lcri_generalization_scope_summary,
     lcri_generalization_severity,
+    lcri_generalization_severity_by_scope,
     lcri_generalization_severity_summary,
     lcri_worst_generalization_context,
     regime_generalization_gap,
@@ -44,6 +45,7 @@ from lcri_lab.reporting import (
     verify_lcri_generalization_gap_leaderboard,
     verify_lcri_generalization_scope_summary,
     verify_lcri_generalization_severity,
+    verify_lcri_generalization_severity_by_scope,
     verify_lcri_generalization_severity_summary,
     verify_lcri_worst_generalization_context,
     write_json,
@@ -148,6 +150,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     )
     lcri_gap_scope_summary = lcri_generalization_scope_summary(lcri_gap_leaderboard)
     lcri_gap_severity = lcri_generalization_severity(lcri_gap_leaderboard)
+    lcri_gap_severity_by_scope = lcri_generalization_severity_by_scope(lcri_gap_severity)
     lcri_gap_severity_summary = lcri_generalization_severity_summary(lcri_gap_severity)
     lcri_worst_gap_context = lcri_worst_generalization_context(lcri_gap_leaderboard)
     lcri_gate_decision = lcri_generalization_gate_decision(
@@ -179,6 +182,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "lcri_generalization_gap_leaderboard.csv",
         "lcri_generalization_scope_summary.csv",
         "lcri_generalization_severity.csv",
+        "lcri_generalization_severity_by_scope.csv",
         "lcri_generalization_severity_summary.json",
         "lcri_worst_generalization_context.json",
         "lcri_generalization_gate_decision.json",
@@ -218,6 +222,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     lcri_gap_leaderboard.to_csv(output / "lcri_generalization_gap_leaderboard.csv", index=False)
     lcri_gap_scope_summary.to_csv(output / "lcri_generalization_scope_summary.csv", index=False)
     lcri_gap_severity.to_csv(output / "lcri_generalization_severity.csv", index=False)
+    lcri_gap_severity_by_scope.to_csv(output / "lcri_generalization_severity_by_scope.csv", index=False)
     write_json(output / "lcri_generalization_severity_summary.json", lcri_gap_severity_summary)
     write_json(output / "lcri_worst_generalization_context.json", lcri_worst_gap_context)
     write_json(output / "lcri_generalization_gate_decision.json", lcri_gate_decision)
@@ -259,6 +264,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         lcri_generalization_gap_leaderboard=lcri_gap_leaderboard,
         lcri_generalization_scope_summary=lcri_gap_scope_summary,
         lcri_generalization_severity=lcri_gap_severity,
+        lcri_generalization_severity_by_scope=lcri_gap_severity_by_scope,
         lcri_generalization_severity_summary=lcri_gap_severity_summary,
         lcri_worst_generalization_context=lcri_worst_gap_context,
         lcri_generalization_gate_decision=lcri_gate_decision,
@@ -304,6 +310,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"lcri generalization gap leaderboard: {output / 'lcri_generalization_gap_leaderboard.csv'}")
     print(f"lcri generalization scope summary: {output / 'lcri_generalization_scope_summary.csv'}")
     print(f"lcri generalization severity: {output / 'lcri_generalization_severity.csv'}")
+    print(f"lcri generalization severity by scope: {output / 'lcri_generalization_severity_by_scope.csv'}")
     print(f"lcri generalization severity summary: {output / 'lcri_generalization_severity_summary.json'}")
     print(f"lcri worst generalization context: {output / 'lcri_worst_generalization_context.json'}")
     print(f"lcri generalization gate decision: {output / 'lcri_generalization_gate_decision.json'}")
@@ -332,6 +339,7 @@ def verify_report(report_dir: Path) -> None:
         *verify_lcri_generalization_gap_leaderboard(report_dir),
         *verify_lcri_generalization_scope_summary(report_dir),
         *verify_lcri_generalization_severity(report_dir),
+        *verify_lcri_generalization_severity_by_scope(report_dir),
         *verify_lcri_generalization_severity_summary(report_dir),
         *verify_lcri_generalization_gate_decision(report_dir),
         *verify_lcri_worst_generalization_context(report_dir),
