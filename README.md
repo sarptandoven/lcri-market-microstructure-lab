@@ -236,6 +236,7 @@ tests/
 ## Research notes
 
 - [LCRI generalization gates](docs/lcri-generalization-gates.md)
+- [Report verification workflow](docs/report-verification.md)
 
 ## Current limitations
 
