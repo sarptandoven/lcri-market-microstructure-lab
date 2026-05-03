@@ -98,6 +98,7 @@ reports/
   lcri_generalization_scope_summary.csv
   lcri_generalization_severity.csv
   lcri_generalization_severity_by_scope.csv
+  lcri_generalization_scope_risk.csv
   lcri_generalization_critical_contexts.csv
   lcri_generalization_severity_summary.json
   lcri_worst_generalization_context.json

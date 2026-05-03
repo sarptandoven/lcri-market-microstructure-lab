@@ -169,6 +169,20 @@ def verify_lcri_generalization_severity_by_scope(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_generalization_scope_risk(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI scope risk artifact."""
+    path = output_dir / "lcri_generalization_scope_risk.csv"
+    if not path.exists():
+        return ["missing LCRI scope risk: lcri_generalization_scope_risk.csv"]
+
+    columns = set(pd.read_csv(path, nrows=1).columns)
+    required = {"scope", "rows", "warning_or_critical_share", "critical_share"}
+    missing = sorted(required - columns)
+    if missing:
+        return [f"incomplete LCRI scope risk: {missing}"]
+    return []
+
+
 def verify_lcri_generalization_critical_contexts(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI critical contexts artifact."""
     path = output_dir / "lcri_generalization_critical_contexts.csv"

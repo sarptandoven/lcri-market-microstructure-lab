@@ -12,6 +12,8 @@ and easy to inspect in CI logs.
   `warning`, or `critical`.
 - `lcri_generalization_severity_by_scope.csv` rolls those labels up by scope so
   reviewers can see whether degradation is localized or broad.
+- `lcri_generalization_scope_risk.csv` converts those scope counts into warning
+  and critical shares for quick risk ranking.
 - `lcri_generalization_critical_contexts.csv` lists only blocking critical rows,
   sorted by largest directional-accuracy gap first.
 - `lcri_worst_generalization_context.json` records the single largest LCRI gap.
@@ -34,7 +36,8 @@ before changing model or feature code.
 
 If the block is regime-localized, compare the regime gap table against feature
 stability. If the block is transition-localized, inspect transition robustness
-and the transition-conditioned heldout metrics.
+and the transition-conditioned heldout metrics. Use the scope risk table when
+multiple scopes have warnings and you need to prioritize follow-up work.
 
 ## Reading a warning-only pass
 
