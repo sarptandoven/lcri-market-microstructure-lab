@@ -13,6 +13,7 @@ from lcri_lab.evaluation import (
     lcri_generalization_gap_leaderboard,
     lcri_generalization_scope_summary,
     lcri_generalization_severity,
+    lcri_generalization_severity_by_scope,
     lcri_generalization_severity_summary,
     lcri_worst_generalization_context,
     regime_generalization_gap,
@@ -142,6 +143,22 @@ def test_lcri_generalization_severity_labels_gap_rows() -> None:
 def test_lcri_generalization_severity_rejects_bad_thresholds() -> None:
     with pytest.raises(ValueError, match="thresholds"):
         lcri_generalization_severity(pd.DataFrame(), warning_gap=0.05, critical_gap=0.02)
+
+
+def test_lcri_generalization_severity_by_scope_counts_labels() -> None:
+    severity = pd.DataFrame(
+        {
+            "scope": ["signal", "regime", "regime", "transition"],
+            "severity": ["stable", "warning", "critical", "warning"],
+        }
+    )
+
+    output = lcri_generalization_severity_by_scope(severity).set_index("scope")
+
+    assert output.loc["regime", "rows"] == 2
+    assert output.loc["regime", "warning_rows"] == 1
+    assert output.loc["regime", "critical_rows"] == 1
+    assert output.loc["signal", "stable_rows"] == 1
 
 
 def test_lcri_generalization_severity_summary_counts_labels() -> None:

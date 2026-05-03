@@ -53,6 +53,11 @@ def test_public_api_exports_lcri_generalization_severity() -> None:
     assert "lcri_generalization_severity" in lcri_lab.__all__
 
 
+def test_public_api_exports_lcri_generalization_severity_by_scope() -> None:
+    assert callable(lcri_lab.lcri_generalization_severity_by_scope)
+    assert "lcri_generalization_severity_by_scope" in lcri_lab.__all__
+
+
 def test_public_api_exports_lcri_generalization_severity_summary() -> None:
     assert callable(lcri_lab.lcri_generalization_severity_summary)
     assert "lcri_generalization_severity_summary" in lcri_lab.__all__

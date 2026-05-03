@@ -193,6 +193,32 @@ def lcri_generalization_severity_summary(severity: pd.DataFrame) -> dict[str, bo
     }
 
 
+def lcri_generalization_severity_by_scope(severity: pd.DataFrame) -> pd.DataFrame:
+    """Count LCRI severity labels within each generalization scope."""
+    columns = ["scope", "rows", "stable_rows", "warning_rows", "critical_rows"]
+    if severity.empty:
+        return pd.DataFrame(columns=columns)
+    _require_columns(severity, ["scope", "severity"])
+
+    counts = (
+        severity.groupby(["scope", "severity"], sort=True)
+        .size()
+        .unstack(fill_value=0)
+        .reset_index()
+    )
+    for label in ["stable", "warning", "critical"]:
+        if label not in counts.columns:
+            counts[label] = 0
+    counts["rows"] = counts[["stable", "warning", "critical"]].sum(axis=1)
+    return counts.rename(
+        columns={
+            "stable": "stable_rows",
+            "warning": "warning_rows",
+            "critical": "critical_rows",
+        }
+    )[columns]
+
+
 def lcri_generalization_gate_decision(
     severity_summary: dict[str, bool | int],
     worst_context: dict[str, float | str],
