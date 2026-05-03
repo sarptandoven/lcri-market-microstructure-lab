@@ -351,6 +351,29 @@ def verify_lcri_gap_delta_summary(output_dir: Path) -> list[str]:
     return []
 
 
+def summarize_artifact_metadata(metadata: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Summarize manifest artifact metadata for compact audit output."""
+    if not metadata:
+        return {
+            "artifacts_with_metadata": 0,
+            "total_size_bytes": 0,
+            "largest_artifact": "none",
+            "largest_artifact_size_bytes": 0,
+        }
+
+    sizes = {
+        artifact: int(values.get("size_bytes", 0))
+        for artifact, values in metadata.items()
+    }
+    largest_artifact = max(sizes, key=sizes.get)
+    return {
+        "artifacts_with_metadata": len(metadata),
+        "total_size_bytes": int(sum(sizes.values())),
+        "largest_artifact": largest_artifact,
+        "largest_artifact_size_bytes": sizes[largest_artifact],
+    }
+
+
 def summarize_verification_errors(errors: list[str]) -> dict[str, Any]:
     """Summarize report verification errors by broad artifact family."""
     families = {

@@ -3,6 +3,7 @@ import json
 import pandas as pd
 
 from lcri_lab.reporting import (
+    summarize_artifact_metadata,
     summarize_verification_errors,
     build_artifact_manifest,
     collect_artifact_metadata,
@@ -89,6 +90,31 @@ def test_verify_generalization_overview_reports_missing_keys(tmp_path) -> None:
         "'max_signal_directional_accuracy_gap', "
         "'max_transition_directional_accuracy_gap', 'transition_rows']"
     ]
+
+
+def test_summarize_artifact_metadata_reports_totals_and_largest_file() -> None:
+    output = summarize_artifact_metadata(
+        {
+            "metrics.csv": {"size_bytes": 12, "sha256": "abc"},
+            "figures/gap.png": {"size_bytes": 40, "sha256": "def"},
+        }
+    )
+
+    assert output == {
+        "artifacts_with_metadata": 2,
+        "total_size_bytes": 52,
+        "largest_artifact": "figures/gap.png",
+        "largest_artifact_size_bytes": 40,
+    }
+
+
+def test_summarize_artifact_metadata_handles_empty_metadata() -> None:
+    assert summarize_artifact_metadata({}) == {
+        "artifacts_with_metadata": 0,
+        "total_size_bytes": 0,
+        "largest_artifact": "none",
+        "largest_artifact_size_bytes": 0,
+    }
 
 
 def test_summarize_verification_errors_groups_artifact_families() -> None:
