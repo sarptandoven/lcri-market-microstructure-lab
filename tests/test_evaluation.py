@@ -9,6 +9,7 @@ from lcri_lab.evaluation import (
     lcri_gap_delta_flags,
     lcri_gap_delta_scorecard,
     lcri_gap_delta_summary,
+    lcri_generalization_blocker_summary,
     lcri_generalization_critical_contexts,
     lcri_generalization_gate_decision,
     lcri_generalization_gap_delta,
@@ -147,6 +148,23 @@ def test_lcri_generalization_severity_labels_gap_rows() -> None:
 def test_lcri_generalization_severity_rejects_bad_thresholds() -> None:
     with pytest.raises(ValueError, match="thresholds"):
         lcri_generalization_severity(pd.DataFrame(), warning_gap=0.05, critical_gap=0.02)
+
+
+def test_lcri_generalization_blocker_summary_reports_worst_blocker() -> None:
+    critical_contexts = pd.DataFrame(
+        {
+            "scope": ["regime", "transition"],
+            "context": ["thin", "transition"],
+            "directional_accuracy_gap": [0.08, 0.06],
+        }
+    )
+
+    output = lcri_generalization_blocker_summary(critical_contexts)
+
+    assert output["critical_rows"] == 2
+    assert output["critical_scopes"] == "regime,transition"
+    assert output["max_critical_gap"] == pytest.approx(0.08)
+    assert output["max_critical_context"] == "regime:thin"
 
 
 def test_lcri_generalization_critical_contexts_sorts_blocking_rows() -> None:

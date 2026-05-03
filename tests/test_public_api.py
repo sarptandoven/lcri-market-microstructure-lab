@@ -38,6 +38,11 @@ def test_public_api_exports_lcri_generalization_gap_delta() -> None:
     assert "lcri_generalization_gap_delta" in lcri_lab.__all__
 
 
+def test_public_api_exports_lcri_generalization_blocker_summary() -> None:
+    assert callable(lcri_lab.lcri_generalization_blocker_summary)
+    assert "lcri_generalization_blocker_summary" in lcri_lab.__all__
+
+
 def test_public_api_exports_lcri_generalization_critical_contexts() -> None:
     assert callable(lcri_lab.lcri_generalization_critical_contexts)
     assert "lcri_generalization_critical_contexts" in lcri_lab.__all__

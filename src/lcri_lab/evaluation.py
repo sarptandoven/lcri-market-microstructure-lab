@@ -254,6 +254,28 @@ def lcri_generalization_scope_risk(severity_by_scope: pd.DataFrame) -> pd.DataFr
     return output[columns]
 
 
+def lcri_generalization_blocker_summary(critical_contexts: pd.DataFrame) -> dict[str, float | int | str]:
+    """Summarize critical LCRI gate blockers for concise release notes."""
+    if critical_contexts.empty:
+        return {
+            "critical_rows": 0,
+            "critical_scopes": "none",
+            "max_critical_gap": 0.0,
+            "max_critical_context": "none",
+        }
+    _require_columns(critical_contexts, ["scope", "context", "directional_accuracy_gap"])
+
+    gaps = critical_contexts["directional_accuracy_gap"].astype(float)
+    worst = critical_contexts.loc[gaps.idxmax()]
+    scopes = sorted({str(scope) for scope in critical_contexts["scope"]})
+    return {
+        "critical_rows": len(critical_contexts),
+        "critical_scopes": ",".join(scopes),
+        "max_critical_gap": float(gaps.max()),
+        "max_critical_context": f"{worst['scope']}:{worst['context']}",
+    }
+
+
 def lcri_generalization_scope_gate_decisions(scope_risk: pd.DataFrame) -> pd.DataFrame:
     """Assign pass/warn/block decisions to each LCRI generalization scope."""
     columns = ["scope", "rows", "decision", "reason"]
