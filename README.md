@@ -98,6 +98,7 @@ reports/
   lcri_generalization_severity.csv
   lcri_generalization_severity_summary.json
   lcri_worst_generalization_context.json
+  lcri_generalization_gate_decision.json
   lcri_generalization_gap_delta.csv
   lcri_gap_delta_flags.csv
   lcri_gap_delta_summary.json

@@ -175,6 +175,30 @@ def verify_lcri_generalization_severity_summary(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_generalization_gate_decision(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI gate decision."""
+    path = output_dir / "lcri_generalization_gate_decision.json"
+    if not path.exists():
+        return ["missing LCRI generalization gate decision: lcri_generalization_gate_decision.json"]
+
+    payload = json.loads(path.read_text())
+    required = {
+        "passes",
+        "decision",
+        "rows_evaluated",
+        "warning_rows",
+        "critical_rows",
+        "worst_scope",
+        "worst_context",
+        "worst_directional_accuracy_gap",
+        "reason",
+    }
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete LCRI generalization gate decision: {missing}"]
+    return []
+
+
 def verify_lcri_generalization_gap_delta(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI gap delta artifact."""
     path = output_dir / "lcri_generalization_gap_delta.csv"
@@ -257,6 +281,7 @@ def write_research_summary(
     lcri_generalization_severity: pd.DataFrame | None = None,
     lcri_generalization_severity_summary: dict[str, Any] | None = None,
     lcri_worst_generalization_context: dict[str, Any] | None = None,
+    lcri_generalization_gate_decision: dict[str, Any] | None = None,
     lcri_generalization_gap_delta: pd.DataFrame | None = None,
     lcri_gap_delta_flags: pd.DataFrame | None = None,
     lcri_gap_delta_summary: dict[str, Any] | None = None,
@@ -353,6 +378,14 @@ def write_research_summary(
                     for key, value in (lcri_worst_generalization_context or {}).items()
                 ],
                 "" if lcri_worst_generalization_context else "_Not generated._",
+                "",
+                "## LCRI generalization gate decision",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (lcri_generalization_gate_decision or {}).items()
+                ],
+                "" if lcri_generalization_gate_decision else "_Not generated._",
                 "",
                 "## LCRI generalization gap delta",
                 "",

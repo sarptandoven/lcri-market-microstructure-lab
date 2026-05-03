@@ -12,6 +12,7 @@ from lcri_lab.evaluation import (
     generalization_overview,
     lcri_gap_delta_flags,
     lcri_gap_delta_summary,
+    lcri_generalization_gate_decision,
     lcri_generalization_gap_delta,
     lcri_generalization_gap_leaderboard,
     lcri_generalization_scope_summary,
@@ -38,6 +39,7 @@ from lcri_lab.reporting import (
     verify_generalization_overview,
     verify_lcri_gap_delta_flags,
     verify_lcri_gap_delta_summary,
+    verify_lcri_generalization_gate_decision,
     verify_lcri_generalization_gap_delta,
     verify_lcri_generalization_gap_leaderboard,
     verify_lcri_generalization_scope_summary,
@@ -148,6 +150,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     lcri_gap_severity = lcri_generalization_severity(lcri_gap_leaderboard)
     lcri_gap_severity_summary = lcri_generalization_severity_summary(lcri_gap_severity)
     lcri_worst_gap_context = lcri_worst_generalization_context(lcri_gap_leaderboard)
+    lcri_gate_decision = lcri_generalization_gate_decision(
+        lcri_gap_severity_summary,
+        lcri_worst_gap_context,
+    )
     lcri_gap_delta = lcri_generalization_gap_delta(generalization_gap, regime_gap, transition_gap)
     lcri_gap_flags = lcri_gap_delta_flags(lcri_gap_delta)
     lcri_gap_summary = lcri_gap_delta_summary(lcri_gap_delta)
@@ -175,6 +181,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "lcri_generalization_severity.csv",
         "lcri_generalization_severity_summary.json",
         "lcri_worst_generalization_context.json",
+        "lcri_generalization_gate_decision.json",
         "lcri_generalization_gap_delta.csv",
         "lcri_gap_delta_flags.csv",
         "lcri_gap_delta_summary.json",
@@ -213,6 +220,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     lcri_gap_severity.to_csv(output / "lcri_generalization_severity.csv", index=False)
     write_json(output / "lcri_generalization_severity_summary.json", lcri_gap_severity_summary)
     write_json(output / "lcri_worst_generalization_context.json", lcri_worst_gap_context)
+    write_json(output / "lcri_generalization_gate_decision.json", lcri_gate_decision)
     lcri_gap_delta.to_csv(output / "lcri_generalization_gap_delta.csv", index=False)
     lcri_gap_flags.to_csv(output / "lcri_gap_delta_flags.csv", index=False)
     write_json(output / "lcri_gap_delta_summary.json", lcri_gap_summary)
@@ -253,6 +261,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         lcri_generalization_severity=lcri_gap_severity,
         lcri_generalization_severity_summary=lcri_gap_severity_summary,
         lcri_worst_generalization_context=lcri_worst_gap_context,
+        lcri_generalization_gate_decision=lcri_gate_decision,
         lcri_generalization_gap_delta=lcri_gap_delta,
         lcri_gap_delta_flags=lcri_gap_flags,
         lcri_gap_delta_summary=lcri_gap_summary,
@@ -297,6 +306,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"lcri generalization severity: {output / 'lcri_generalization_severity.csv'}")
     print(f"lcri generalization severity summary: {output / 'lcri_generalization_severity_summary.json'}")
     print(f"lcri worst generalization context: {output / 'lcri_worst_generalization_context.json'}")
+    print(f"lcri generalization gate decision: {output / 'lcri_generalization_gate_decision.json'}")
     print(f"lcri generalization gap delta: {output / 'lcri_generalization_gap_delta.csv'}")
     print(f"lcri gap delta flags: {output / 'lcri_gap_delta_flags.csv'}")
     print(f"lcri gap delta summary: {output / 'lcri_gap_delta_summary.json'}")
@@ -323,6 +333,7 @@ def verify_report(report_dir: Path) -> None:
         *verify_lcri_generalization_scope_summary(report_dir),
         *verify_lcri_generalization_severity(report_dir),
         *verify_lcri_generalization_severity_summary(report_dir),
+        *verify_lcri_generalization_gate_decision(report_dir),
         *verify_lcri_worst_generalization_context(report_dir),
         *verify_lcri_generalization_gap_delta(report_dir),
         *verify_lcri_gap_delta_flags(report_dir),

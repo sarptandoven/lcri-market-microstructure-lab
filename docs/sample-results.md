@@ -79,11 +79,13 @@ visible without scanning raw imbalance rows. `lcri_generalization_scope_summary.
 rolls those LCRI rows up by signal, regime, and transition scope so reviewers can
 see whether degradation is broad or localized. `lcri_generalization_severity.csv`
 labels each LCRI gap as stable, warning, or critical using directional accuracy
-thresholds. `lcri_generalization_severity_summary.json` counts those labels so
-release checks can detect whether a run produced any critical LCRI degradation.
-`lcri_worst_generalization_context.json` stores the single largest LCRI
-directional accuracy gap for automated alerts or release checks. These tables are
-intended as the first triage view when reviewing a generated demo run.
+thresholds. `lcri_generalization_severity_summary.json` counts those labels and
+sets `passes_lcri_generalization_gate` to false when any critical rows are
+present. `lcri_worst_generalization_context.json` stores the single largest LCRI
+directional accuracy gap. `lcri_generalization_gate_decision.json` combines those
+inputs into a pass/block decision with the worst affected scope, context, and a
+short reason string. These tables are intended as the first triage view when
+reviewing a generated demo run.
 
 `lcri_generalization_gap_delta.csv` compares raw imbalance and LCRI degradation
 across signal, regime, and transition scopes. Positive `raw_minus_lcri` values

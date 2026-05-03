@@ -123,6 +123,22 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
             }
         )
     )
+    gate_decision = tmp_path / "lcri_generalization_gate_decision.json"
+    gate_decision.write_text(
+        json.dumps(
+            {
+                "passes": False,
+                "decision": "block",
+                "rows_evaluated": 1,
+                "warning_rows": 0,
+                "critical_rows": 1,
+                "worst_scope": "signal",
+                "worst_context": "all",
+                "worst_directional_accuracy_gap": 0.05,
+                "reason": "blocked by 1 critical LCRI generalization rows",
+            }
+        )
+    )
     delta = tmp_path / "lcri_generalization_gap_delta.csv"
     delta.write_text(
         "scope,context,raw_imbalance_directional_accuracy_gap,"
@@ -158,6 +174,7 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
             "lcri_generalization_severity.csv",
             "lcri_generalization_severity_summary.json",
             "lcri_worst_generalization_context.json",
+            "lcri_generalization_gate_decision.json",
             "lcri_generalization_gap_delta.csv",
             "lcri_gap_delta_flags.csv",
             "lcri_gap_delta_summary.json",

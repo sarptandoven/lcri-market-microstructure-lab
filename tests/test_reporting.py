@@ -10,6 +10,7 @@ from lcri_lab.reporting import (
     verify_generalization_overview,
     verify_lcri_gap_delta_flags,
     verify_lcri_gap_delta_summary,
+    verify_lcri_generalization_gate_decision,
     verify_lcri_generalization_gap_delta,
     verify_lcri_generalization_gap_leaderboard,
     verify_lcri_generalization_scope_summary,
@@ -170,6 +171,25 @@ def test_verify_lcri_generalization_severity_summary_accepts_complete_payload(tm
     )
 
     assert verify_lcri_generalization_severity_summary(tmp_path) == []
+
+
+def test_verify_lcri_generalization_gate_decision_accepts_complete_payload(tmp_path) -> None:
+    write_json(
+        tmp_path / "lcri_generalization_gate_decision.json",
+        {
+            "passes": False,
+            "decision": "block",
+            "rows_evaluated": 3,
+            "warning_rows": 1,
+            "critical_rows": 1,
+            "worst_scope": "regime",
+            "worst_context": "thin",
+            "worst_directional_accuracy_gap": 0.07,
+            "reason": "blocked by 1 critical LCRI generalization rows",
+        },
+    )
+
+    assert verify_lcri_generalization_gate_decision(tmp_path) == []
 
 
 def test_verify_lcri_generalization_gap_delta_reports_missing_columns(tmp_path) -> None:
