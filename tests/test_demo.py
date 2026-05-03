@@ -44,6 +44,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_transition_robustness.json").exists()
     assert (tmp_path / "research_summary.md").exists()
     assert (tmp_path / "artifact_manifest.json").exists()
+    assert (tmp_path / "artifact_metadata_summary.json").exists()
     assert (tmp_path / "sample_snapshots.csv").exists()
     assert (tmp_path / "figures" / "raw_vs_lcri_scatter.png").exists()
     assert (tmp_path / "figures" / "regime_signal_quality.png").exists()
@@ -59,6 +60,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
 
     robustness = json.loads((tmp_path / "transition_robustness.json").read_text())
     assert "passes_transition_robustness" in robustness
+    metadata_summary = json.loads((tmp_path / "artifact_metadata_summary.json").read_text())
+    assert metadata_summary["artifacts_with_metadata"] > 0
+    assert metadata_summary["total_size_bytes"] > 0
+    assert metadata_summary["largest_artifact"] != "none"
     manifest = json.loads((tmp_path / "artifact_manifest.json").read_text())
     assert manifest["run"]["seed"] == 3
     assert manifest["model"]["artifact_version"] == 2
@@ -87,6 +92,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["figures/lcri_generalization_severity_by_scope.png"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_flags.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_scorecard.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["artifact_metadata_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_transition_lift.csv"]["size_bytes"] > 0
     assert len(manifest["artifact_metadata"]["metrics.csv"]["sha256"]) == 64

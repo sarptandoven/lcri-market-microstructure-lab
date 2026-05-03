@@ -41,6 +41,7 @@ from lcri_lab.reporting import (
     build_artifact_manifest,
     collect_artifact_metadata,
     missing_artifacts,
+    summarize_artifact_metadata,
     summarize_verification_errors,
     verify_artifact_manifest,
     verify_generalization_overview,
@@ -215,6 +216,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "transition_robustness.json",
         "heldout_transition_robustness.json",
         "research_summary.md",
+        "artifact_metadata_summary.json",
         "figures/raw_vs_lcri_scatter.png",
         "figures/regime_signal_quality.png",
         "figures/transition_signal_quality.png",
@@ -304,6 +306,14 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         transition_robustness=transition_robustness,
         heldout_transition_lift=heldout_transition_lift,
         heldout_transition_robustness=heldout_transition_robustness,
+    )
+    preliminary_metadata = collect_artifact_metadata(
+        output,
+        [path for path in artifact_paths if path != "artifact_metadata_summary.json"],
+    )
+    write_json(
+        output / "artifact_metadata_summary.json",
+        summarize_artifact_metadata(preliminary_metadata),
     )
     artifact_metadata = collect_artifact_metadata(output, artifact_paths)
     manifest = build_artifact_manifest(

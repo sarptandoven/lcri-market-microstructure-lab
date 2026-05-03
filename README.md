@@ -115,6 +115,7 @@ reports/
   heldout_transition_robustness.json
   research_summary.md
   artifact_manifest.json
+  artifact_metadata_summary.json
   sample_snapshots.csv
 ```
 

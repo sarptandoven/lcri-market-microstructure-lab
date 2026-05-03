@@ -54,3 +54,10 @@ logs readable when several artifacts are missing at once.
 
 A clean run prints the same summary with `passes_verification: True`, which is
 useful when storing command output next to generated reports.
+
+## Metadata footprint
+
+Demo runs also write `artifact_metadata_summary.json`. This file reports how
+many artifacts have manifest metadata, their total byte footprint, and the
+largest generated artifact. It is meant for lightweight audit logs, not for
+statistical interpretation.
