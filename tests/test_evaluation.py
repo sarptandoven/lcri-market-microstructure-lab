@@ -9,6 +9,7 @@ from lcri_lab.evaluation import (
     lcri_gap_delta_flags,
     lcri_gap_delta_scorecard,
     lcri_gap_delta_summary,
+    lcri_generalization_critical_contexts,
     lcri_generalization_gate_decision,
     lcri_generalization_gap_delta,
     lcri_generalization_gap_leaderboard,
@@ -144,6 +145,33 @@ def test_lcri_generalization_severity_labels_gap_rows() -> None:
 def test_lcri_generalization_severity_rejects_bad_thresholds() -> None:
     with pytest.raises(ValueError, match="thresholds"):
         lcri_generalization_severity(pd.DataFrame(), warning_gap=0.05, critical_gap=0.02)
+
+
+def test_lcri_generalization_critical_contexts_sorts_blocking_rows() -> None:
+    severity = pd.DataFrame(
+        {
+            "scope": ["signal", "regime", "transition"],
+            "context": ["all", "thin", "transition"],
+            "directional_accuracy_gap": [0.03, 0.08, 0.06],
+            "severity": ["warning", "critical", "critical"],
+        }
+    )
+
+    output = lcri_generalization_critical_contexts(severity)
+
+    assert list(output["context"]) == ["thin", "transition"]
+    assert list(output["severity"]) == ["critical", "critical"]
+
+
+def test_lcri_generalization_critical_contexts_handles_no_critical_rows() -> None:
+    severity = pd.DataFrame(
+        {"directional_accuracy_gap": [0.01], "severity": ["stable"]}
+    )
+
+    output = lcri_generalization_critical_contexts(severity)
+
+    assert output.empty
+    assert "severity" in output.columns
 
 
 def test_lcri_generalization_severity_by_scope_counts_labels() -> None:

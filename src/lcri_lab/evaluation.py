@@ -193,6 +193,21 @@ def lcri_generalization_severity_summary(severity: pd.DataFrame) -> dict[str, bo
     }
 
 
+def lcri_generalization_critical_contexts(severity: pd.DataFrame) -> pd.DataFrame:
+    """Return critical LCRI generalization rows ordered by largest gap."""
+    if severity.empty:
+        return pd.DataFrame(columns=list(severity.columns))
+    _require_columns(severity, ["severity", "directional_accuracy_gap"])
+
+    critical = severity.loc[severity["severity"] == "critical"].copy()
+    if critical.empty:
+        return critical.reset_index(drop=True)
+    return critical.sort_values(
+        "directional_accuracy_gap",
+        ascending=False,
+    ).reset_index(drop=True)
+
+
 def lcri_generalization_severity_by_scope(severity: pd.DataFrame) -> pd.DataFrame:
     """Count LCRI severity labels within each generalization scope."""
     columns = ["scope", "rows", "stable_rows", "warning_rows", "critical_rows"]
