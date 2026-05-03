@@ -16,6 +16,8 @@ and easy to inspect in CI logs.
   and critical shares for quick risk ranking.
 - `lcri_generalization_scope_gate_decisions.csv` assigns each scope a `pass`,
   `warn`, or `block` decision with a compact reason.
+- `lcri_generalization_scope_gate_decision_summary.json` counts pass, warn, and
+  block scopes and lists the scope names requiring follow-up.
 - `lcri_generalization_critical_contexts.csv` lists only blocking critical rows,
   sorted by largest directional-accuracy gap first.
 - `lcri_generalization_blocker_summary.json` compresses critical rows into row
@@ -28,6 +30,8 @@ and easy to inspect in CI logs.
   exposes `passes_lcri_generalization_gate`.
 - `lcri_generalization_gate_decision.json` turns the severity summary and worst
   context into a compact `pass` or `block` decision with a reason string.
+- `lcri_generalization_scope_gate_decision_summary.json` is the quickest payload
+  for dashboards that need counts before loading the full decision table.
 - `figures/lcri_generalization_severity_by_scope.png` mirrors the scope rollup
   for visual review.
 
@@ -40,8 +44,12 @@ before changing model or feature code.
 
 If the block is regime-localized, compare the regime gap table against feature
 stability. If the block is transition-localized, inspect transition robustness
-and the transition-conditioned heldout metrics. Use the scope risk and scope decision tables when multiple scopes have warnings
-and you need to prioritize follow-up work.
+and the transition-conditioned heldout metrics.
+
+Use the scope risk, scope decision table, and scope decision summary when
+multiple scopes have warnings and you need to prioritize follow-up work. The
+summary is intentionally redundant with the CSV so that automated release checks
+can fail fast without parsing table rows.
 
 ## Reading a warning-only pass
 

@@ -25,6 +25,8 @@ for reviewers who receive a report directory without the surrounding run logs.
 - `lcri_generalization_severity.csv`: stable/warning/critical labels per LCRI
   gap row.
 - `lcri_generalization_scope_risk.csv`: warning and critical shares by scope.
+- `lcri_generalization_scope_gate_decision_summary.json`: pass, warn, and block
+  counts across scopes for dashboard checks.
 - `lcri_generalization_gate_decision.json`: compact pass/block result.
 - `lcri_generalization_blocker_summary.json`: affected scopes and worst blocker
   context when critical rows exist.
