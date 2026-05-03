@@ -254,6 +254,25 @@ def lcri_generalization_scope_risk(severity_by_scope: pd.DataFrame) -> pd.DataFr
     return output[columns]
 
 
+def lcri_generalization_scope_gate_decisions(scope_risk: pd.DataFrame) -> pd.DataFrame:
+    """Assign pass/warn/block decisions to each LCRI generalization scope."""
+    columns = ["scope", "rows", "decision", "reason"]
+    if scope_risk.empty:
+        return pd.DataFrame(columns=columns)
+    _require_columns(scope_risk, ["scope", "rows", "warning_or_critical_share", "critical_share"])
+
+    output = scope_risk.copy()
+    output["decision"] = np.select(
+        [output["critical_share"].astype(float) > 0.0, output["warning_or_critical_share"].astype(float) > 0.0],
+        ["block", "warn"],
+        default="pass",
+    )
+    output["reason"] = [
+        _lcri_scope_gate_reason(row) for row in output.to_dict("records")
+    ]
+    return output[columns]
+
+
 def lcri_generalization_gate_decision(
     severity_summary: dict[str, bool | int],
     worst_context: dict[str, float | str],
@@ -841,6 +860,17 @@ def _require_mapping_keys(payload: dict[str, object], keys: list[str], *, label:
     missing = sorted(set(keys) - set(payload))
     if missing:
         raise ValueError(f"incomplete {label}: {missing}")
+
+
+def _lcri_scope_gate_reason(row: dict[str, object]) -> str:
+    scope = row["scope"]
+    critical_share = float(row["critical_share"])
+    warning_share = float(row["warning_or_critical_share"])
+    if critical_share > 0.0:
+        return f"{scope} blocked with {critical_share:.2%} critical LCRI rows"
+    if warning_share > 0.0:
+        return f"{scope} warned with {warning_share:.2%} warning-or-critical LCRI rows"
+    return f"{scope} passed with no warning or critical LCRI rows"
 
 
 def _lcri_gate_reason(
