@@ -8,6 +8,7 @@ from lcri_lab.evaluation import (
     generalization_overview,
     lcri_gap_delta_flags,
     lcri_gap_delta_summary,
+    lcri_generalization_gate_decision,
     lcri_generalization_gap_delta,
     lcri_generalization_gap_leaderboard,
     lcri_generalization_scope_summary,
@@ -166,6 +167,33 @@ def test_lcri_generalization_severity_summary_passes_without_critical_rows() -> 
 
     assert output["critical_rows"] == 0
     assert output["passes_lcri_generalization_gate"] is True
+
+
+def test_lcri_generalization_gate_decision_blocks_critical_rows() -> None:
+    severity_summary = {
+        "rows": 3,
+        "stable_rows": 1,
+        "warning_rows": 1,
+        "critical_rows": 1,
+        "passes_lcri_generalization_gate": False,
+    }
+    worst_context = {
+        "scope": "regime",
+        "context": "thin",
+        "directional_accuracy_gap": 0.07,
+    }
+
+    output = lcri_generalization_gate_decision(severity_summary, worst_context)
+
+    assert output["passes"] is False
+    assert output["decision"] == "block"
+    assert output["worst_context"] == "thin"
+    assert "critical" in str(output["reason"])
+
+
+def test_lcri_generalization_gate_decision_rejects_incomplete_inputs() -> None:
+    with pytest.raises(ValueError, match="severity summary"):
+        lcri_generalization_gate_decision({}, {"scope": "signal"})
 
 
 def test_generalization_overview_summarizes_gap_tables() -> None:

@@ -193,6 +193,42 @@ def lcri_generalization_severity_summary(severity: pd.DataFrame) -> dict[str, bo
     }
 
 
+def lcri_generalization_gate_decision(
+    severity_summary: dict[str, bool | int],
+    worst_context: dict[str, float | str],
+) -> dict[str, bool | float | int | str]:
+    """Build a compact LCRI generalization gate decision payload."""
+    required_summary = {
+        "rows",
+        "warning_rows",
+        "critical_rows",
+        "passes_lcri_generalization_gate",
+    }
+    missing_summary = sorted(required_summary - set(severity_summary))
+    if missing_summary:
+        raise ValueError(f"incomplete severity summary: {missing_summary}")
+    _require_mapping_keys(
+        worst_context,
+        ["scope", "context", "directional_accuracy_gap"],
+        label="worst context",
+    )
+
+    passes = bool(severity_summary["passes_lcri_generalization_gate"])
+    critical_rows = int(severity_summary["critical_rows"])
+    warning_rows = int(severity_summary["warning_rows"])
+    return {
+        "passes": passes,
+        "decision": "pass" if passes else "block",
+        "rows_evaluated": int(severity_summary["rows"]),
+        "warning_rows": warning_rows,
+        "critical_rows": critical_rows,
+        "worst_scope": str(worst_context["scope"]),
+        "worst_context": str(worst_context["context"]),
+        "worst_directional_accuracy_gap": float(worst_context["directional_accuracy_gap"]),
+        "reason": _lcri_gate_reason(passes, warning_rows, critical_rows, worst_context),
+    }
+
+
 def generalization_overview(
     signal_gap: pd.DataFrame,
     regime_gap: pd.DataFrame,
@@ -714,6 +750,34 @@ def _max_gap(frame: pd.DataFrame) -> float:
     if frame.empty or "directional_accuracy_gap" not in frame.columns:
         return 0.0
     return float(frame["directional_accuracy_gap"].max())
+
+
+def _require_mapping_keys(payload: dict[str, object], keys: list[str], *, label: str) -> None:
+    missing = sorted(set(keys) - set(payload))
+    if missing:
+        raise ValueError(f"incomplete {label}: {missing}")
+
+
+def _lcri_gate_reason(
+    passes: bool,
+    warning_rows: int,
+    critical_rows: int,
+    worst_context: dict[str, float | str],
+) -> str:
+    scope = worst_context["scope"]
+    context = worst_context["context"]
+    gap = float(worst_context["directional_accuracy_gap"])
+    if not passes:
+        return (
+            f"blocked by {critical_rows} critical LCRI generalization rows; "
+            f"worst gap is {gap:.4f} in {scope}:{context}"
+        )
+    if warning_rows:
+        return (
+            f"passed with {warning_rows} warning LCRI generalization rows; "
+            f"worst gap is {gap:.4f} in {scope}:{context}"
+        )
+    return f"passed with no warning or critical LCRI generalization rows; worst gap is {gap:.4f}"
 
 
 def _require_columns(frame: pd.DataFrame, columns: list[str]) -> None:
