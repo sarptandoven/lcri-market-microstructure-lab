@@ -70,7 +70,10 @@ def test_score_model_writes_selected_columns(tmp_path: Path) -> None:
     assert list(pd.read_csv(output_path).columns) == ["timestamp", "lcri", "lcri_probability"]
 
 
-def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
+def test_verify_report_accepts_intact_manifest(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     artifact = tmp_path / "metrics.csv"
     artifact.write_text("signal,value\n")
     overview = tmp_path / "generalization_overview.json"
@@ -225,6 +228,18 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
     (tmp_path / "artifact_manifest.json").write_text(json.dumps(manifest))
 
     verify_report(tmp_path)
+
+    captured = capsys.readouterr()
+    assert "Verified report artifacts" in captured.out
+    assert "verification summary" in captured.out
+    assert "passes_verification" in captured.out
+
+
+def test_verify_report_error_includes_summary(tmp_path: Path) -> None:
+    (tmp_path / "artifact_manifest.json").write_text(json.dumps({"artifacts": []}))
+
+    with pytest.raises(ValueError, match="passes_verification"):
+        verify_report(tmp_path)
 
 
 def test_verify_report_rejects_changed_artifact(tmp_path: Path) -> None:

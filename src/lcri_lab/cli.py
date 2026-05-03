@@ -41,6 +41,7 @@ from lcri_lab.reporting import (
     build_artifact_manifest,
     collect_artifact_metadata,
     missing_artifacts,
+    summarize_verification_errors,
     verify_artifact_manifest,
     verify_generalization_overview,
     verify_lcri_gap_delta_flags,
@@ -381,9 +382,11 @@ def verify_report(report_dir: Path) -> None:
         *verify_lcri_gap_delta_scorecard(report_dir),
         *verify_lcri_gap_delta_summary(report_dir),
     ]
+    summary = summarize_verification_errors(errors)
     if errors:
-        raise ValueError(f"report verification failed: {errors}")
+        raise ValueError(f"report verification failed: {summary}: {errors}")
     print(f"Verified report artifacts: {report_dir}")
+    print(f"verification summary: {summary}")
 
 
 def normalize_snapshots(

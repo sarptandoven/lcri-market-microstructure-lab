@@ -44,3 +44,13 @@ lcri-lab verify-report reports
 
 For CI, run verification after tests so structural report failures stay visible
 even when unit coverage passes.
+
+## Failure summaries
+
+When verification fails, the CLI includes a compact error-family summary in the
+exception text. The summary separates manifest mismatches, generalization table
+issues, LCRI gate artifacts, figures, and uncategorized errors. This keeps CI
+logs readable when several artifacts are missing at once.
+
+A clean run prints the same summary with `passes_verification: True`, which is
+useful when storing command output next to generated reports.
