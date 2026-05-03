@@ -107,6 +107,9 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
     (tmp_path / "lcri_generalization_scope_risk.csv").write_text(
         "scope,rows,warning_or_critical_share,critical_share\nregime,1,1.0,1.0\n"
     )
+    (tmp_path / "lcri_generalization_scope_gate_decisions.csv").write_text(
+        "scope,rows,decision,reason\nregime,1,block,regime blocked\n"
+    )
     (tmp_path / "lcri_generalization_critical_contexts.csv").write_text(
         "scope,context,directional_accuracy_gap,severity\nregime,thin,0.08,critical\n"
     )
@@ -195,6 +198,7 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
             "lcri_generalization_severity.csv",
             "lcri_generalization_severity_by_scope.csv",
             "lcri_generalization_scope_risk.csv",
+            "lcri_generalization_scope_gate_decisions.csv",
             "lcri_generalization_critical_contexts.csv",
             "lcri_generalization_severity_summary.json",
             "lcri_worst_generalization_context.json",

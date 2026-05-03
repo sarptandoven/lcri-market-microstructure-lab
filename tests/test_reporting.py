@@ -15,6 +15,7 @@ from lcri_lab.reporting import (
     verify_lcri_generalization_gate_decision,
     verify_lcri_generalization_gap_delta,
     verify_lcri_generalization_gap_leaderboard,
+    verify_lcri_generalization_scope_gate_decisions,
     verify_lcri_generalization_scope_risk,
     verify_lcri_generalization_scope_summary,
     verify_lcri_generalization_severity,
@@ -169,6 +170,15 @@ def test_verify_lcri_generalization_severity_by_scope_accepts_complete_csv(tmp_p
     )
 
     assert verify_lcri_generalization_severity_by_scope(tmp_path) == []
+
+
+def test_verify_lcri_generalization_scope_gate_decisions_accepts_complete_csv(tmp_path) -> None:
+    (tmp_path / "lcri_generalization_scope_gate_decisions.csv").write_text(
+        "scope,rows,decision,reason\n"
+        "regime,2,block,regime blocked\n"
+    )
+
+    assert verify_lcri_generalization_scope_gate_decisions(tmp_path) == []
 
 
 def test_verify_lcri_generalization_scope_risk_accepts_complete_csv(tmp_path) -> None:

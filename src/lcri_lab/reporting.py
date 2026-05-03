@@ -183,6 +183,20 @@ def verify_lcri_generalization_scope_risk(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_generalization_scope_gate_decisions(output_dir: Path) -> list[str]:
+    """Return errors for missing LCRI scope gate decisions."""
+    path = output_dir / "lcri_generalization_scope_gate_decisions.csv"
+    if not path.exists():
+        return ["missing LCRI scope gate decisions: lcri_generalization_scope_gate_decisions.csv"]
+
+    columns = set(pd.read_csv(path, nrows=1).columns)
+    required = {"scope", "rows", "decision", "reason"}
+    missing = sorted(required - columns)
+    if missing:
+        return [f"incomplete LCRI scope gate decisions: {missing}"]
+    return []
+
+
 def verify_lcri_generalization_critical_contexts(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI critical contexts artifact."""
     path = output_dir / "lcri_generalization_critical_contexts.csv"
