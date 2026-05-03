@@ -6,6 +6,7 @@ from lcri_lab.evaluation import (
     evaluate_signals,
     generalization_gap_leaderboard,
     generalization_overview,
+    lcri_gap_delta_dominant_scopes,
     lcri_gap_delta_flags,
     lcri_gap_delta_improvements,
     lcri_gap_delta_regressions,
@@ -430,6 +431,33 @@ def test_lcri_gap_delta_scope_summary_groups_relative_stability() -> None:
     assert output.loc["regime", "max_raw_minus_lcri_gap"] == pytest.approx(0.06)
     assert output.loc["regime", "lcri_more_stable_share"] == pytest.approx(0.5)
     assert output.loc["regime", "lcri_less_stable_share"] == pytest.approx(0.5)
+
+
+def test_lcri_gap_delta_dominant_scopes_identifies_edge_and_drag() -> None:
+    scope_summary = pd.DataFrame(
+        {
+            "scope": ["signal", "regime", "transition"],
+            "mean_raw_minus_lcri_gap": [0.01, -0.03, 0.05],
+        }
+    )
+
+    output = lcri_gap_delta_dominant_scopes(scope_summary)
+
+    assert output["best_scope"] == "transition"
+    assert output["best_mean_raw_minus_lcri_gap"] == pytest.approx(0.05)
+    assert output["worst_scope"] == "regime"
+    assert output["worst_mean_raw_minus_lcri_gap"] == pytest.approx(-0.03)
+
+
+def test_lcri_gap_delta_dominant_scopes_handles_empty_summary() -> None:
+    output = lcri_gap_delta_dominant_scopes(pd.DataFrame())
+
+    assert output == {
+        "best_scope": "none",
+        "best_mean_raw_minus_lcri_gap": 0.0,
+        "worst_scope": "none",
+        "worst_mean_raw_minus_lcri_gap": 0.0,
+    }
 
 
 def test_lcri_gap_delta_scope_extremes_selects_best_and_worst_contexts() -> None:

@@ -21,6 +21,7 @@ def write_figures(
     lcri_generalization_gap_delta: pd.DataFrame | None = None,
     lcri_generalization_severity_by_scope: pd.DataFrame | None = None,
     lcri_gap_delta_scope_summary: pd.DataFrame | None = None,
+    lcri_gap_delta_scope_extremes: pd.DataFrame | None = None,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     _scatter(frame, output_dir / "raw_vs_lcri_scatter.png")
@@ -73,6 +74,11 @@ def write_figures(
         _lcri_gap_delta_scope_summary_bars(
             lcri_gap_delta_scope_summary,
             output_dir / "lcri_gap_delta_scope_summary.png",
+        )
+    if lcri_gap_delta_scope_extremes is not None:
+        _lcri_gap_delta_scope_extremes_bars(
+            lcri_gap_delta_scope_extremes,
+            output_dir / "lcri_gap_delta_scope_extremes.png",
         )
 
 
@@ -195,6 +201,24 @@ def _lcri_generalization_gap_delta_bars(gap_delta: pd.DataFrame, path: Path) -> 
     ax.set_xlabel("Scope")
     ax.set_ylabel("Positive means LCRI degraded less")
     ax.tick_params(axis="x", rotation=30)
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+
+
+def _lcri_gap_delta_scope_extremes_bars(scope_extremes: pd.DataFrame, path: Path) -> None:
+    columns = ["best_raw_minus_lcri_gap", "worst_raw_minus_lcri_gap"]
+    if "scope" not in scope_extremes.columns or not set(columns).issubset(scope_extremes.columns):
+        return
+
+    plot = scope_extremes.set_index("scope")[columns]
+    fig, ax = plt.subplots(figsize=(8, 5))
+    plot.plot(kind="bar", ax=ax)
+    ax.axhline(0.0, color="black", linewidth=0.8)
+    ax.set_title("Best and worst LCRI stability edge by scope")
+    ax.set_xlabel("Scope")
+    ax.set_ylabel("Raw gap minus LCRI gap")
+    ax.legend(title="Context edge")
     fig.tight_layout()
     fig.savefig(path, dpi=160)
     plt.close(fig)

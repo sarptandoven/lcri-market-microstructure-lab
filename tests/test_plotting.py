@@ -21,6 +21,20 @@ def test_write_figures_keeps_heldout_outputs_optional(tmp_path: Path) -> None:
     assert not (tmp_path / "transition_generalization_gap.png").exists()
 
 
+def test_write_figures_writes_lcri_gap_delta_scope_extremes_plot(tmp_path: Path) -> None:
+    frame = _scored_frame()
+    regime_table = _regime_table()
+
+    write_figures(
+        frame,
+        regime_table,
+        tmp_path,
+        lcri_gap_delta_scope_extremes=_gap_delta_scope_extremes(),
+    )
+
+    assert (tmp_path / "lcri_gap_delta_scope_extremes.png").exists()
+
+
 def test_write_figures_writes_lcri_gap_delta_scope_plot(tmp_path: Path) -> None:
     frame = _scored_frame()
     regime_table = _regime_table()
@@ -90,6 +104,16 @@ def _regime_table() -> pd.DataFrame:
             "regime": ["thick", "thick"],
             "signal": ["raw_imbalance", "lcri"],
             "directional_accuracy": [0.5, 0.75],
+        }
+    )
+
+
+def _gap_delta_scope_extremes() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "scope": ["signal", "regime"],
+            "best_raw_minus_lcri_gap": [0.03, 0.06],
+            "worst_raw_minus_lcri_gap": [-0.01, -0.04],
         }
     )
 

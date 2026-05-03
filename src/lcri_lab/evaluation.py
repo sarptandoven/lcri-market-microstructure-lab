@@ -475,6 +475,28 @@ def lcri_gap_delta_scope_summary(gap_delta: pd.DataFrame) -> pd.DataFrame:
     return grouped.merge(shares, on="scope", how="left")[columns]
 
 
+def lcri_gap_delta_dominant_scopes(scope_summary: pd.DataFrame) -> dict[str, float | str]:
+    """Identify the scopes where LCRI has the strongest relative edge and drag."""
+    if scope_summary.empty:
+        return {
+            "best_scope": "none",
+            "best_mean_raw_minus_lcri_gap": 0.0,
+            "worst_scope": "none",
+            "worst_mean_raw_minus_lcri_gap": 0.0,
+        }
+    _require_columns(scope_summary, ["scope", "mean_raw_minus_lcri_gap"])
+
+    values = scope_summary["mean_raw_minus_lcri_gap"].astype(float)
+    best = scope_summary.loc[values.idxmax()]
+    worst = scope_summary.loc[values.idxmin()]
+    return {
+        "best_scope": str(best["scope"]),
+        "best_mean_raw_minus_lcri_gap": float(best["mean_raw_minus_lcri_gap"]),
+        "worst_scope": str(worst["scope"]),
+        "worst_mean_raw_minus_lcri_gap": float(worst["mean_raw_minus_lcri_gap"]),
+    }
+
+
 def lcri_gap_delta_scope_extremes(gap_delta: pd.DataFrame) -> pd.DataFrame:
     """Return the strongest LCRI stability and instability edge per scope."""
     column = "raw_minus_lcri_directional_accuracy_gap"
