@@ -11,6 +11,7 @@ from lcri_lab.reporting import (
     verify_lcri_gap_delta_flags,
     verify_lcri_gap_delta_scorecard,
     verify_lcri_gap_delta_summary,
+    verify_lcri_generalization_blocker_summary,
     verify_lcri_generalization_critical_contexts,
     verify_lcri_generalization_gate_decision,
     verify_lcri_generalization_gap_delta,
@@ -197,6 +198,20 @@ def test_verify_lcri_generalization_critical_contexts_accepts_complete_csv(tmp_p
     )
 
     assert verify_lcri_generalization_critical_contexts(tmp_path) == []
+
+
+def test_verify_lcri_generalization_blocker_summary_accepts_complete_payload(tmp_path) -> None:
+    write_json(
+        tmp_path / "lcri_generalization_blocker_summary.json",
+        {
+            "critical_rows": 2,
+            "critical_scopes": "regime,transition",
+            "max_critical_gap": 0.08,
+            "max_critical_context": "regime:thin",
+        },
+    )
+
+    assert verify_lcri_generalization_blocker_summary(tmp_path) == []
 
 
 def test_verify_lcri_generalization_severity_summary_accepts_complete_payload(tmp_path) -> None:

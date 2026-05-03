@@ -101,6 +101,7 @@ reports/
   lcri_generalization_scope_risk.csv
   lcri_generalization_scope_gate_decisions.csv
   lcri_generalization_critical_contexts.csv
+  lcri_generalization_blocker_summary.json
   lcri_generalization_severity_summary.json
   lcri_worst_generalization_context.json
   lcri_generalization_gate_decision.json

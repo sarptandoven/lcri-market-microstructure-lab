@@ -211,6 +211,20 @@ def verify_lcri_generalization_critical_contexts(output_dir: Path) -> list[str]:
     return []
 
 
+def verify_lcri_generalization_blocker_summary(output_dir: Path) -> list[str]:
+    """Return errors for a missing or incomplete LCRI blocker summary."""
+    path = output_dir / "lcri_generalization_blocker_summary.json"
+    if not path.exists():
+        return ["missing LCRI blocker summary: lcri_generalization_blocker_summary.json"]
+
+    payload = json.loads(path.read_text())
+    required = {"critical_rows", "critical_scopes", "max_critical_gap", "max_critical_context"}
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete LCRI blocker summary: {missing}"]
+    return []
+
+
 def verify_lcri_generalization_severity_summary(output_dir: Path) -> list[str]:
     """Return errors for a missing or incomplete LCRI severity summary."""
     path = output_dir / "lcri_generalization_severity_summary.json"

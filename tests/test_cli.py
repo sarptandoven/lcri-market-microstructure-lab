@@ -113,6 +113,17 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
     (tmp_path / "lcri_generalization_critical_contexts.csv").write_text(
         "scope,context,directional_accuracy_gap,severity\nregime,thin,0.08,critical\n"
     )
+    blocker_summary = tmp_path / "lcri_generalization_blocker_summary.json"
+    blocker_summary.write_text(
+        json.dumps(
+            {
+                "critical_rows": 1,
+                "critical_scopes": "regime",
+                "max_critical_gap": 0.08,
+                "max_critical_context": "regime:thin",
+            }
+        )
+    )
     severity_summary = tmp_path / "lcri_generalization_severity_summary.json"
     severity_summary.write_text(
         json.dumps(
@@ -200,6 +211,7 @@ def test_verify_report_accepts_intact_manifest(tmp_path: Path) -> None:
             "lcri_generalization_scope_risk.csv",
             "lcri_generalization_scope_gate_decisions.csv",
             "lcri_generalization_critical_contexts.csv",
+            "lcri_generalization_blocker_summary.json",
             "lcri_generalization_severity_summary.json",
             "lcri_worst_generalization_context.json",
             "lcri_generalization_gate_decision.json",

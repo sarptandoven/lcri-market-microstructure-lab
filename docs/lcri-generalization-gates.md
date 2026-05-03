@@ -18,6 +18,8 @@ and easy to inspect in CI logs.
   `warn`, or `block` decision with a compact reason.
 - `lcri_generalization_critical_contexts.csv` lists only blocking critical rows,
   sorted by largest directional-accuracy gap first.
+- `lcri_generalization_blocker_summary.json` compresses critical rows into row
+  count, affected scopes, and worst blocker context.
 - `lcri_worst_generalization_context.json` records the single largest LCRI gap.
 
 ## Gate outputs
