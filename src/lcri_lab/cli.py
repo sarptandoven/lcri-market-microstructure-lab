@@ -825,6 +825,99 @@ def verify_report(report_dir: Path) -> None:
         *verify_lcri_gap_delta_scope_extremes(report_dir),
         *verify_lcri_gap_delta_scope_summary(report_dir),
         *verify_lcri_gap_delta_summary(report_dir),
+        *verify_lcri_gap_delta_consistency(report_dir),
+        *verify_lcri_scope_stability_contradictions(report_dir),
+        *verify_lcri_scope_stability_contradiction_summary(report_dir),
+        *verify_lcri_scope_stability_contradictions_consistency(report_dir),
+        *verify_lcri_contradiction_review_packet(report_dir),
+        *verify_lcri_contradiction_review_packet_summary(report_dir),
+        *verify_lcri_uncertainty_weighted_review_priority(report_dir),
+        *verify_lcri_uncertainty_weighted_review_priority_summary(report_dir),
+        *verify_lcri_uncertainty_weighted_review_priority_consistency(report_dir),
+        *(
+            verify_lcri_cross_artifact_evidence_index(report_dir)
+            if "lcri_cross_artifact_evidence_index.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_lcri_cross_artifact_evidence_index_summary(report_dir)
+            if "lcri_cross_artifact_evidence_index_summary.json" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_lcri_cross_artifact_evidence_index_consistency(report_dir)
+            if {
+                "lcri_cross_artifact_evidence_index.csv",
+                "lcri_cross_artifact_evidence_index_summary.json",
+            }.issubset(manifest_artifacts)
+            else []
+        ),
+        *(
+            verify_lcri_evidence_release_checklist(report_dir)
+            if "lcri_evidence_release_checklist.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_lcri_evidence_release_checklist_summary(report_dir)
+            if "lcri_evidence_release_checklist_summary.json" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_lcri_evidence_release_checklist_consistency(report_dir)
+            if {
+                "lcri_cross_artifact_evidence_index.csv",
+                "lcri_evidence_release_checklist.csv",
+                "lcri_evidence_release_checklist_summary.json",
+            }.issubset(manifest_artifacts)
+            else []
+        ),
+        *(
+            verify_lcri_owner_handoff_packet(report_dir)
+            if "lcri_owner_handoff_packet.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_lcri_owner_handoff_packet_summary(report_dir)
+            if "lcri_owner_handoff_packet_summary.json" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_lcri_owner_handoff_packet_consistency(report_dir)
+            if {
+                "lcri_cross_artifact_evidence_index.csv",
+                "lcri_evidence_release_checklist.csv",
+                "lcri_owner_handoff_packet.csv",
+                "lcri_owner_handoff_packet_summary.json",
+            }.issubset(manifest_artifacts)
+            else []
+        ),
+        *(
+            verify_lcri_owner_handoff_markdown_packet(report_dir)
+            if "lcri_owner_handoff_packet.md" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_lcri_evidence_lineage_map(report_dir)
+            if "lcri_evidence_lineage_map.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_lcri_evidence_lineage_map_summary(report_dir)
+            if "lcri_evidence_lineage_map_summary.json" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_lcri_evidence_lineage_map_consistency(report_dir)
+            if {
+                "lcri_cross_artifact_evidence_index.csv",
+                "lcri_evidence_release_checklist.csv",
+                "lcri_owner_handoff_packet.csv",
+                "lcri_evidence_lineage_map.csv",
+                "lcri_evidence_lineage_map_summary.json",
+            }.issubset(manifest_artifacts)
+            else []
+        ),
+        *research_summary_errors,
     ]
     summary = summarize_verification_errors(errors)
     if errors:
