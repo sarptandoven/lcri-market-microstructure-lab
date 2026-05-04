@@ -89,6 +89,44 @@ def test_verify_report_accepts_intact_manifest(
             }
         )
     )
+    (tmp_path / "generalization_fragility_diagnostics.csv").write_text(
+        "scope,context,signal,full_rows,heldout_rows,full_directional_accuracy,"
+        "heldout_directional_accuracy,directional_accuracy_gap,"
+        "heldout_directional_accuracy_se,abs_gap_to_se_ratio,fragility_label\n"
+        "signal,all,lcri,100,20,0.65,0.55,0.10,0.11,0.9090909090909092,stable\n"
+    )
+    (tmp_path / "generalization_fragility_summary.json").write_text(
+        json.dumps(
+            {
+                "rows": 1,
+                "stable_rows": 1,
+                "watch_rows": 0,
+                "fragile_rows": 0,
+                "max_abs_gap_to_se_ratio": 0.9090909090909092,
+                "most_fragile_context": "signal:all:lcri",
+            }
+        )
+    )
+    (tmp_path / "generalization_stability_confidence_intervals.csv").write_text(
+        "scope,context,signal,heldout_rows,heldout_directional_accuracy,"
+        "heldout_directional_accuracy_se,confidence_level,"
+        "heldout_directional_accuracy_ci_lower,heldout_directional_accuracy_ci_upper,"
+        "heldout_directional_accuracy_ci_width,directional_accuracy_gap,"
+        "gap_exceeds_ci_half_width\n"
+        "signal,all,lcri,20,0.55,0.11,0.950004209703559,"
+        "0.3344,0.7656000000000001,0.43120000000000014,0.10,False\n"
+    )
+    (tmp_path / "generalization_stability_confidence_summary.json").write_text(
+        json.dumps(
+            {
+                "rows": 1,
+                "gap_exceeds_ci_half_width_rows": 0,
+                "mean_ci_width": 0.43120000000000014,
+                "max_ci_width": 0.43120000000000014,
+                "widest_interval_context": "signal:all:lcri",
+            }
+        )
+    )
     leaderboard = tmp_path / "lcri_generalization_gap_leaderboard.csv"
     leaderboard.write_text(
         "scope,context,signal,directional_accuracy_gap\n"
@@ -104,26 +142,49 @@ def test_verify_report_accepts_intact_manifest(
         "scope,context,directional_accuracy_gap,severity\n"
         "signal,all,0.05,critical\n"
     )
+    (tmp_path / "lcri_fragility_gate_alignment.csv").write_text(
+        "scope,context,directional_accuracy_gap,severity,heldout_rows,"
+        "heldout_directional_accuracy_se,abs_gap_to_se_ratio,fragility_label,"
+        "alignment_label,review_note\n"
+        "signal,all,0.05,critical,20,0.11,0.9090909090909092,stable,"
+        "gate_blocks_stable_slice,critical gate blocker exceeds deterministic threshold\n"
+    )
+    (tmp_path / "lcri_fragility_gate_scorecard.json").write_text(
+        json.dumps(
+            {
+                "rows": 1,
+                "aligned_rows": 0,
+                "review_required_rows": 1,
+                "gate_blocks_stable_slice_rows": 1,
+                "uncertainty_fragile_noncritical_rows": 0,
+                "uncertainty_watch_stable_gap_rows": 0,
+                "critical_rows": 1,
+                "critical_stable_slice_share": 1.0,
+                "max_abs_gap_to_se_ratio": 0.9090909090909092,
+                "worst_review_context": "signal:all:gate_blocks_stable_slice",
+            }
+        )
+    )
     (tmp_path / "lcri_generalization_severity_by_scope.csv").write_text(
-        "scope,rows,stable_rows,warning_rows,critical_rows\nregime,1,0,0,1\n"
+        "scope,rows,stable_rows,warning_rows,critical_rows\nsignal,1,0,0,1\n"
     )
     (tmp_path / "lcri_generalization_scope_risk.csv").write_text(
-        "scope,rows,warning_or_critical_share,critical_share\nregime,1,1.0,1.0\n"
+        "scope,rows,warning_or_critical_share,critical_share\nsignal,1,1.0,1.0\n"
     )
     (tmp_path / "lcri_generalization_scope_gate_decisions.csv").write_text(
-        "scope,rows,decision,reason\nregime,1,block,regime blocked\n"
+        "scope,rows,decision,reason\nsignal,1,block,signal blocked\n"
     )
     (tmp_path / "lcri_generalization_critical_contexts.csv").write_text(
-        "scope,context,directional_accuracy_gap,severity\nregime,thin,0.08,critical\n"
+        "scope,context,directional_accuracy_gap,severity\nsignal,all,0.05,critical\n"
     )
     blocker_summary = tmp_path / "lcri_generalization_blocker_summary.json"
     blocker_summary.write_text(
         json.dumps(
             {
                 "critical_rows": 1,
-                "critical_scopes": "regime",
-                "max_critical_gap": 0.08,
-                "max_critical_context": "regime:thin",
+                "critical_scopes": "signal",
+                "max_critical_gap": 0.05,
+                "max_critical_context": "signal:all",
             }
         )
     )
