@@ -8,6 +8,13 @@ for reviewers who receive a report directory without the surrounding run logs.
 - `sample_snapshots.csv`: first scored snapshots for quick schema inspection.
 - `metrics.csv`: full-sample signal quality for raw imbalance and LCRI.
 - `heldout_metrics.csv`: heldout signal quality for the same signals.
+- `regime_metrics.csv`: full-sample signal quality split by liquidity regime.
+- `heldout_regime_metrics.csv`: heldout signal quality split by liquidity
+  regime.
+- `transition_metrics.csv`: full-sample signal quality split by transition
+  segment.
+- `heldout_transition_metrics.csv`: heldout signal quality split by transition
+  segment.
 - `lcri-model.json`: transparent fitted baseline and model configuration.
 
 ## Generalization files
@@ -15,6 +22,10 @@ for reviewers who receive a report directory without the surrounding run logs.
 - `generalization_gap.csv`: signal-level full-sample minus heldout gaps.
 - `regime_generalization_gap.csv`: gap table split by liquidity regime.
 - `transition_generalization_gap.csv`: gap table split by transition segment.
+- `generalization_fragility_diagnostics.csv`: uncertainty-scaled full-sample vs
+  heldout degradation rows across signal, regime, and transition scopes.
+- `generalization_fragility_summary.json`: compact fragility label counts,
+  worst-fragility pointer, and review-row totals.
 - `generalization_overview.json`: row counts and max gap values for quick audit.
 - `generalization_gap_leaderboard.csv`: largest directional-accuracy gaps across
   all scopes and signals.
@@ -26,14 +37,30 @@ for reviewers who receive a report directory without the surrounding run logs.
 ## LCRI gate files
 
 - `lcri_generalization_gap_leaderboard.csv`: LCRI-only gap leaderboard.
+- `lcri_generalization_scope_summary.csv`: scope-level LCRI gap rollup for
+  quick signal/regime/transition comparison.
 - `lcri_generalization_severity.csv`: stable/warning/critical labels per LCRI
   gap row.
+- `lcri_fragility_gate_alignment.csv`: LCRI-only fragility rows joined to
+  deterministic gate severity so uncertainty/gate disagreements are explicit.
+- `lcri_fragility_gate_scorecard.json`: compact counts of aligned,
+  review-required, deterministic-block, and uncertainty-fragile rows.
 - `lcri_generalization_scope_risk.csv`: warning and critical shares by scope.
+- `lcri_generalization_severity_summary.json`: severity counts plus the boolean
+  LCRI generalization gate pass/fail checkpoint.
 - `lcri_generalization_scope_gate_decision_summary.json`: pass, warn, and block
   counts across scopes for dashboard checks.
+- `lcri_generalization_scope_gate_decisions.csv`: per-scope pass, warn, or block
+  release gate decisions with compact reasons.
+- `lcri_generalization_severity_by_scope.csv`: scope-level severity label counts
+  for visual and dashboard rollups.
 - `lcri_generalization_gate_decision.json`: compact pass/block result.
 - `lcri_generalization_blocker_summary.json`: affected scopes and worst blocker
   context when critical rows exist.
+- `lcri_generalization_critical_contexts.csv`: blocking critical LCRI rows sorted
+  by largest directional-accuracy gap.
+- `lcri_worst_generalization_context.json`: single worst LCRI gap row for quick
+  release-review pointers.
 - `lcri_ci_gate_contradiction_diagnostics.csv`: LCRI-only severity rows joined to
   heldout confidence intervals, with labels for blockers or warnings that sit
   inside the CI half-width and stable rows that exceed it.
@@ -112,6 +139,29 @@ for reviewers who receive a report directory without the surrounding run logs.
 - `figures/lcri_evidence_lineage_map.png`: visual lineage health map ranked by
   stale source references, missing owner surfaces, and evidence score.
 
+## Transition robustness files
+
+- `transition_lift.csv`: transition-conditioned raw-vs-LCRI lift on the full
+  sample.
+- `heldout_transition_lift.csv`: transition-conditioned raw-vs-LCRI lift on the
+  heldout sample.
+- `transition_robustness.json`: compact full-sample transition robustness
+  summary.
+- `heldout_transition_robustness.json`: compact heldout transition robustness
+  summary.
+
+## Report audit files
+
+- `research_summary.md`: human-readable run summary with the key LCRI review
+  tables embedded.
+- `artifact_coverage_matrix.csv`: generated-artifact coverage matrix with
+  family, manifest-metadata, and figure-pair status.
+- `artifact_coverage_summary.json`: compact counts derived from the artifact
+  coverage matrix.
+- `artifact_manifest.json`: checksummed generated-artifact manifest for
+  `lcri-lab verify-report`.
+- `artifact_metadata_summary.json`: compact manifest metadata coverage summary.
+
 ## Figures
 
 Figures mirror the most important CSV/JSON artifacts for visual review. Treat
@@ -120,6 +170,23 @@ aids.
 
 - `figures/generalization_stability_confidence_intervals.png`: heldout
   directional-accuracy intervals ranked by gap-vs-interval and interval width.
+- `figures/raw_vs_lcri_scatter.png`: raw imbalance versus LCRI score scatter for
+  quick residual-shape inspection.
+- `figures/regime_signal_quality.png`: regime-split signal quality comparison.
+- `figures/transition_signal_quality.png`: transition-split signal quality
+  comparison.
+- `figures/heldout_transition_signal_quality.png`: heldout transition-split
+  signal quality comparison.
+- `figures/calibration_curve.png`: full-sample calibration curve.
+- `figures/heldout_calibration_curve.png`: heldout calibration curve.
+- `figures/generalization_gap.png`: signal-level full-sample to heldout gap
+  chart.
+- `figures/regime_generalization_gap.png`: regime-split generalization gap
+  chart.
+- `figures/transition_generalization_gap.png`: transition-split generalization
+  gap chart.
+- `figures/generalization_fragility_diagnostics.png`: fragility diagnostics
+  ranked by uncertainty-scaled degradation.
 - `figures/lcri_generalization_gap_delta.png`: row-level raw-minus-LCRI gap
   comparison across all scopes.
 - `figures/lcri_generalization_severity_by_scope.png`: stacked stable, warning,
