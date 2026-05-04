@@ -135,7 +135,10 @@ explicit release-owner actions and a `release_ready` boolean; verification
 recomputes both CSV and JSON checklist artifacts from the evidence index so stale
 sign-off status cannot survive partial regeneration. The final owner handoff
 markdown packet is checked against the CSV/JSON handoff queue so copied report
-bundles cannot retain stale owner-facing bullets or top queue rows.
+bundles cannot retain stale owner-facing bullets or top queue rows. The evidence
+lineage map then verifies the evidence-index to checklist to handoff chain, its
+summary, and its manifest/PNG-verified lineage plot so missing or stale owner
+surfaces remain visible before release sign-off.
 
 ## Gap-delta artifacts
 

@@ -73,8 +73,8 @@ crossed a severity threshold even though the gap sits inside the heldout CI
 half-width. `stable_gap_outside_ci` means a stable deterministic gate still
 exceeds the CI half-width, so treat dismissal as a review decision rather than a
 purely thresholded pass.
-Use `lcri_fragility_gate_scorecard.json` for the compact audit count of those
-review-required rows and the worst review context. Use
+Use `lcri_ci_gate_contradiction_summary.json` for the compact audit count of
+those CI/gate review-required rows and the worst review context. Use
 `lcri_ci_confidence_coverage_scorecard.csv` when you need scope-level triage: it
 combines wide heldout interval counts, gap-outside-CI counts, CI/gate
 contradiction rows, and high-priority gate disagreements into a single review
