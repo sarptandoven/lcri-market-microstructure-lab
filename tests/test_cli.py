@@ -296,18 +296,89 @@ def test_verify_report_accepts_intact_manifest(
                 "lcri_equal_stability_rows": 0,
                 "max_lcri_stability_edge": 0.03,
                 "max_lcri_stability_edge_context": "signal:all",
-                "max_lcri_instability_edge": -0.04,
-                "max_lcri_instability_edge_context": "regime:thin",
+                "max_lcri_instability_edge": 0.03,
+                "max_lcri_instability_edge_context": "signal:all",
+            }
+        )
+    )
+    (tmp_path / "lcri_scope_stability_contradictions.csv").write_text(
+        "scope,decision,rows,lcri_more_stable_share,lcri_less_stable_share,"
+        "fragility_review_required_rows,contradiction_label,review_note\n"
+        "signal,block,1,1.0,0.0,1,gate_blocks_despite_relative_stability,"
+        "absolute LCRI gate blocks while LCRI is usually more stable than raw imbalance in this scope\n"
+    )
+    (tmp_path / "lcri_scope_stability_contradiction_summary.json").write_text(
+        json.dumps(
+            {
+                "scopes": 1,
+                "aligned_scopes": 0,
+                "contradiction_scopes": 1,
+                "gate_blocks_despite_relative_stability_scopes": 1,
+                "pass_scope_with_relative_regressions_scopes": 0,
+                "warning_scope_with_broad_relative_regression_scopes": 0,
+                "fragility_review_required_rows": 1,
+                "worst_contradiction_scope": "signal:gate_blocks_despite_relative_stability",
+            }
+        )
+    )
+    (tmp_path / "lcri_contradiction_review_packet.csv").write_text(
+        "scope,contradiction_label,decision,scope_rows,lcri_less_stable_share,"
+        "fragility_review_required_rows,worst_gate_context,worst_gate_severity,"
+        "worst_gate_directional_accuracy_gap,worst_delta_context,"
+        "worst_raw_minus_lcri_directional_accuracy_gap,worst_fragility_context,"
+        "worst_fragility_alignment_label,worst_fragility_abs_gap_to_se_ratio,review_priority\n"
+        "signal,gate_blocks_despite_relative_stability,block,1,0.0,1,all,critical,"
+        "0.05,all,0.03,all,gate_blocks_stable_slice,0.9090909090909092,3\n"
+    )
+    (tmp_path / "lcri_contradiction_review_packet_summary.json").write_text(
+        json.dumps(
+            {
+                "scopes": 1,
+                "high_priority_scopes": 1,
+                "medium_priority_scopes": 0,
+                "low_priority_scopes": 0,
+                "fragility_review_required_rows": 1,
+                "max_review_priority": 3,
+                "worst_review_scope": "signal:gate_blocks_despite_relative_stability",
+                "worst_fragility_scope": "signal:0.909091",
+            }
+        )
+    )
+    (tmp_path / "lcri_uncertainty_weighted_review_priority.csv").write_text(
+        "scope,contradiction_label,base_review_priority,fragility_review_required_rows,"
+        "worst_fragility_abs_gap_to_se_ratio,coverage_label,mean_ci_width,max_ci_width,"
+        "wide_ci_share,ci_gate_contradiction_rows,high_priority_ci_gate_rows,"
+        "uncertainty_weighted_priority,priority_label,review_note\n"
+        "signal,gate_blocks_despite_relative_stability,3,1,0.9090909090909092,"
+        "missing_ci_coverage,0.0,0.0,0.0,0,0,3.4545454545454546,medium,"
+        "schedule review after critical/high scopes; missing_ci_coverage uncertainty evidence is non-trivial\n"
+    )
+    (tmp_path / "lcri_uncertainty_weighted_review_priority_summary.json").write_text(
+        json.dumps(
+            {
+                "scopes": 1,
+                "critical_priority_scopes": 0,
+                "high_priority_scopes": 0,
+                "medium_priority_scopes": 1,
+                "low_priority_scopes": 0,
+                "max_uncertainty_weighted_priority": 3.4545454545454546,
+                "worst_uncertainty_weighted_scope": "signal:medium",
             }
         )
     )
     manifest = {
         "artifacts": [
             "metrics.csv",
+            "generalization_fragility_diagnostics.csv",
+            "generalization_fragility_summary.json",
+            "generalization_stability_confidence_intervals.csv",
+            "generalization_stability_confidence_summary.json",
             "generalization_overview.json",
             "lcri_generalization_gap_leaderboard.csv",
             "lcri_generalization_scope_summary.csv",
             "lcri_generalization_severity.csv",
+            "lcri_fragility_gate_alignment.csv",
+            "lcri_fragility_gate_scorecard.json",
             "lcri_generalization_severity_by_scope.csv",
             "lcri_generalization_scope_risk.csv",
             "lcri_generalization_scope_gate_decisions.csv",
