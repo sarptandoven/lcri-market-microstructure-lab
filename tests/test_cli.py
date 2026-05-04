@@ -229,12 +229,12 @@ def test_verify_report_accepts_intact_manifest(
     (tmp_path / "lcri_generalization_scope_gate_decision_summary.json").write_text(
         json.dumps(
             {
-                "scopes": 3,
-                "pass_scopes": 1,
-                "warn_scopes": 1,
+                "scopes": 1,
+                "pass_scopes": 0,
+                "warn_scopes": 0,
                 "block_scopes": 1,
-                "blocked_scope_names": "regime",
-                "warn_scope_names": "transition",
+                "blocked_scope_names": "signal",
+                "warn_scope_names": "none",
             }
         )
     )
@@ -247,10 +247,10 @@ def test_verify_report_accepts_intact_manifest(
     (tmp_path / "lcri_gap_delta_dominant_scopes.json").write_text(
         json.dumps(
             {
-                "best_scope": "transition",
-                "best_mean_raw_minus_lcri_gap": 0.05,
-                "worst_scope": "regime",
-                "worst_mean_raw_minus_lcri_gap": -0.03,
+                "best_scope": "signal",
+                "best_mean_raw_minus_lcri_gap": 0.03,
+                "worst_scope": "signal",
+                "worst_mean_raw_minus_lcri_gap": 0.03,
             }
         )
     )
@@ -260,39 +260,39 @@ def test_verify_report_accepts_intact_manifest(
         "signal,all,0.03,lcri_more_stable\n"
     )
     (tmp_path / "lcri_gap_delta_improvements.csv").write_text(
-        "scope,context,raw_minus_lcri_directional_accuracy_gap\ntransition,transition,0.06\n"
+        "scope,context,raw_minus_lcri_directional_accuracy_gap\nsignal,all,0.03\n"
     )
     (tmp_path / "lcri_gap_delta_regressions.csv").write_text(
-        "scope,context,raw_minus_lcri_directional_accuracy_gap\nregime,thin,-0.04\n"
+        "scope,context,raw_minus_lcri_directional_accuracy_gap\n"
     )
     scorecard = tmp_path / "lcri_gap_delta_scorecard.json"
     scorecard.write_text(
         json.dumps(
             {
-                "rows": 3,
-                "mean_raw_minus_lcri_directional_accuracy_gap": 0.02,
-                "median_raw_minus_lcri_directional_accuracy_gap": 0.01,
-                "lcri_more_stable_share": 0.67,
-                "lcri_less_stable_share": 0.33,
+                "rows": 1,
+                "mean_raw_minus_lcri_directional_accuracy_gap": 0.03,
+                "median_raw_minus_lcri_directional_accuracy_gap": 0.03,
+                "lcri_more_stable_share": 1.0,
+                "lcri_less_stable_share": 0.0,
             }
         )
     )
     (tmp_path / "lcri_gap_delta_scope_extremes.csv").write_text(
         "scope,best_context,best_raw_minus_lcri_gap,worst_context,worst_raw_minus_lcri_gap\n"
-        "regime,deep,0.06,thin,-0.04\n"
+        "signal,all,0.03,all,0.03\n"
     )
     (tmp_path / "lcri_gap_delta_scope_summary.csv").write_text(
         "scope,rows,mean_raw_minus_lcri_gap,min_raw_minus_lcri_gap,"
         "max_raw_minus_lcri_gap,lcri_more_stable_share,lcri_less_stable_share\n"
-        "regime,2,0.01,-0.04,0.06,0.5,0.5\n"
+        "signal,1,0.03,0.03,0.03,1.0,0.0\n"
     )
     summary = tmp_path / "lcri_gap_delta_summary.json"
     summary.write_text(
         json.dumps(
             {
-                "rows": 3,
-                "lcri_more_stable_rows": 2,
-                "lcri_less_stable_rows": 1,
+                "rows": 1,
+                "lcri_more_stable_rows": 1,
+                "lcri_less_stable_rows": 0,
                 "lcri_equal_stability_rows": 0,
                 "max_lcri_stability_edge": 0.03,
                 "max_lcri_stability_edge_context": "signal:all",
