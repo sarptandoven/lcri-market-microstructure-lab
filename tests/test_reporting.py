@@ -2301,6 +2301,88 @@ def _write_matching_gap_delta_artifacts(tmp_path) -> None:
     )
 
 
+def _write_matching_ci_gate_contradiction_artifacts(tmp_path) -> None:
+    pd.DataFrame(
+        {
+            "scope": ["signal", "regime", "transition", "regime"],
+            "context": ["all", "thin", "open", "deep"],
+            "signal": ["lcri", "lcri", "lcri", "raw_imbalance"],
+            "directional_accuracy_gap": [0.07, 0.03, 0.01, 0.20],
+            "severity": ["critical", "warning", "stable", "critical"],
+        }
+    ).to_csv(tmp_path / "lcri_generalization_severity.csv", index=False)
+    pd.DataFrame(
+        {
+            "scope": ["signal", "regime", "transition", "regime"],
+            "context": ["all", "thin", "open", "deep"],
+            "signal": ["lcri", "lcri", "lcri", "raw_imbalance"],
+            "heldout_rows": [100, 40, 80, 50],
+            "confidence_level": [0.95, 0.95, 0.95, 0.95],
+            "heldout_directional_accuracy_ci_width": [0.20, 0.22, 0.01, 0.10],
+            "gap_exceeds_ci_half_width": [False, False, True, True],
+        }
+    ).to_csv(tmp_path / "generalization_stability_confidence_intervals.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "context": "all",
+                "severity": "critical",
+                "directional_accuracy_gap": 0.07,
+                "heldout_rows": 100,
+                "confidence_level": 0.95,
+                "heldout_directional_accuracy_ci_width": 0.20,
+                "ci_half_width": 0.10,
+                "gap_exceeds_ci_half_width": False,
+                "ci_gate_label": "gate_blocks_inside_ci",
+                "review_priority": 3,
+                "review_note": "critical gate blocker is inside heldout CI half-width; inspect sample uncertainty before release block",
+            },
+            {
+                "scope": "regime",
+                "context": "thin",
+                "severity": "warning",
+                "directional_accuracy_gap": 0.03,
+                "heldout_rows": 40,
+                "confidence_level": 0.95,
+                "heldout_directional_accuracy_ci_width": 0.22,
+                "ci_half_width": 0.11,
+                "gap_exceeds_ci_half_width": False,
+                "ci_gate_label": "gate_warns_inside_ci",
+                "review_priority": 2,
+                "review_note": "warning gate row is inside heldout CI half-width; treat as uncertainty-qualified warning",
+            },
+            {
+                "scope": "transition",
+                "context": "open",
+                "severity": "stable",
+                "directional_accuracy_gap": 0.01,
+                "heldout_rows": 80,
+                "confidence_level": 0.95,
+                "heldout_directional_accuracy_ci_width": 0.01,
+                "ci_half_width": 0.005,
+                "gap_exceeds_ci_half_width": True,
+                "ci_gate_label": "stable_gap_outside_ci",
+                "review_priority": 2,
+                "review_note": "stable deterministic row still exceeds heldout CI half-width; review threshold margin",
+            },
+        ]
+    ).to_csv(tmp_path / "lcri_ci_gate_contradiction_diagnostics.csv", index=False)
+    write_json(
+        tmp_path / "lcri_ci_gate_contradiction_summary.json",
+        {
+            "rows": 3,
+            "aligned_rows": 0,
+            "contradiction_rows": 3,
+            "gate_blocks_inside_ci_rows": 1,
+            "gate_warns_inside_ci_rows": 1,
+            "stable_gap_outside_ci_rows": 1,
+            "max_review_priority": 3,
+            "worst_ci_gate_context": "signal:all:gate_blocks_inside_ci",
+        },
+    )
+
+
 def _write_matching_scope_stability_contradiction_artifacts(tmp_path) -> None:
     pd.DataFrame(
         [
