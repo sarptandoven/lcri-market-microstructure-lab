@@ -253,8 +253,22 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         regime_gap,
         transition_gap,
     )
-    lcri_gap_scope_summary = lcri_generalization_scope_summary(lcri_gap_leaderboard)
+    lcri_generalization_scope_summary_table = lcri_generalization_scope_summary(lcri_gap_leaderboard)
     lcri_gap_severity = lcri_generalization_severity(lcri_gap_leaderboard)
+    lcri_fragility_alignment = lcri_fragility_gate_alignment(fragility_diagnostics, lcri_gap_severity)
+    lcri_fragility_scorecard = lcri_fragility_gate_scorecard(lcri_fragility_alignment)
+    lcri_ci_gate_diagnostics = lcri_ci_gate_contradiction_diagnostics(
+        lcri_gap_severity,
+        stability_confidence,
+    )
+    lcri_ci_gate_summary = lcri_ci_gate_contradiction_summary(lcri_ci_gate_diagnostics)
+    lcri_ci_confidence_scorecard = lcri_ci_confidence_coverage_scorecard(
+        stability_confidence,
+        lcri_ci_gate_diagnostics,
+    )
+    lcri_ci_confidence_summary = lcri_ci_confidence_coverage_summary(
+        lcri_ci_confidence_scorecard
+    )
     lcri_critical_contexts = lcri_generalization_critical_contexts(lcri_gap_severity)
     lcri_gap_severity_by_scope = lcri_generalization_severity_by_scope(lcri_gap_severity)
     lcri_scope_risk = lcri_generalization_scope_risk(lcri_gap_severity_by_scope)
@@ -273,9 +287,54 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     lcri_gap_regressions = lcri_gap_delta_regressions(lcri_gap_delta)
     lcri_gap_scorecard = lcri_gap_delta_scorecard(lcri_gap_delta)
     lcri_gap_scope_extremes = lcri_gap_delta_scope_extremes(lcri_gap_delta)
-    lcri_gap_scope_summary = lcri_gap_delta_scope_summary(lcri_gap_delta)
-    lcri_gap_dominant_scopes = lcri_gap_delta_dominant_scopes(lcri_gap_scope_summary)
+    lcri_gap_delta_scope_summary_table = lcri_gap_delta_scope_summary(lcri_gap_delta)
+    lcri_gap_dominant_scopes = lcri_gap_delta_dominant_scopes(lcri_gap_delta_scope_summary_table)
     lcri_gap_summary = lcri_gap_delta_summary(lcri_gap_delta)
+    lcri_scope_contradictions = lcri_scope_stability_contradictions(
+        lcri_scope_gate_decisions,
+        lcri_gap_delta_scope_summary_table,
+        lcri_fragility_alignment,
+    )
+    lcri_scope_contradiction_summary = lcri_scope_stability_contradiction_summary(
+        lcri_scope_contradictions
+    )
+    lcri_review_packet = lcri_contradiction_review_packet(
+        lcri_scope_contradictions,
+        lcri_gap_severity,
+        lcri_gap_delta,
+        lcri_fragility_alignment,
+    )
+    lcri_review_packet_summary = lcri_contradiction_review_packet_summary(lcri_review_packet)
+    lcri_uncertainty_priority = lcri_uncertainty_weighted_review_priority(
+        lcri_review_packet,
+        lcri_ci_confidence_scorecard,
+    )
+    lcri_uncertainty_priority_summary = lcri_uncertainty_weighted_review_priority_summary(
+        lcri_uncertainty_priority
+    )
+    lcri_evidence_index = lcri_cross_artifact_evidence_index(
+        lcri_gap_severity_by_scope,
+        lcri_scope_gate_decisions,
+        lcri_gap_delta_scope_summary_table,
+        lcri_scope_contradictions,
+        lcri_ci_confidence_scorecard,
+        lcri_uncertainty_priority,
+    )
+    lcri_evidence_index_summary = lcri_cross_artifact_evidence_index_summary(
+        lcri_evidence_index
+    )
+    lcri_release_checklist = lcri_evidence_release_checklist(lcri_evidence_index)
+    lcri_release_checklist_summary = lcri_evidence_release_checklist_summary(
+        lcri_release_checklist
+    )
+    lcri_owner_handoff = lcri_owner_handoff_packet(lcri_evidence_index, lcri_release_checklist)
+    lcri_owner_handoff_summary = lcri_owner_handoff_packet_summary(lcri_owner_handoff)
+    lcri_lineage_map = lcri_evidence_lineage_map(
+        lcri_evidence_index,
+        lcri_release_checklist,
+        lcri_owner_handoff,
+    )
+    lcri_lineage_map_summary = lcri_evidence_lineage_map_summary(lcri_lineage_map)
     transition_lift = transition_signal_lift(scored)
     heldout_transition_lift = transition_signal_lift(heldout_scored)
     transition_robustness = transition_robustness_summary(scored)
