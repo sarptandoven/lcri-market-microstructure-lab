@@ -145,6 +145,9 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["lcri_gap_delta_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_transition_lift.csv"]["size_bytes"] > 0
     assert len(manifest["artifact_metadata"]["metrics.csv"]["sha256"]) == 64
+    manifest_artifacts = set(manifest["artifacts"]) | {"artifact_manifest.json"}
+    assert manifest_artifacts == _readme_generated_artifacts()
+    assert manifest_artifacts == _artifact_catalog_entries()
     summary = (tmp_path / "research_summary.md").read_text()
     assert "# LCRI Research Summary" in summary
     assert "## Heldout signal quality" in summary
