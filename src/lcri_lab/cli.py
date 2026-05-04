@@ -484,8 +484,41 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     lcri_gap_regressions.to_csv(output / "lcri_gap_delta_regressions.csv", index=False)
     write_json(output / "lcri_gap_delta_scorecard.json", lcri_gap_scorecard)
     lcri_gap_scope_extremes.to_csv(output / "lcri_gap_delta_scope_extremes.csv", index=False)
-    lcri_gap_scope_summary.to_csv(output / "lcri_gap_delta_scope_summary.csv", index=False)
+    lcri_gap_delta_scope_summary_table.to_csv(output / "lcri_gap_delta_scope_summary.csv", index=False)
     write_json(output / "lcri_gap_delta_summary.json", lcri_gap_summary)
+    lcri_scope_contradictions.to_csv(output / "lcri_scope_stability_contradictions.csv", index=False)
+    write_json(
+        output / "lcri_scope_stability_contradiction_summary.json",
+        lcri_scope_contradiction_summary,
+    )
+    lcri_review_packet.to_csv(output / "lcri_contradiction_review_packet.csv", index=False)
+    write_json(output / "lcri_contradiction_review_packet_summary.json", lcri_review_packet_summary)
+    lcri_uncertainty_priority.to_csv(
+        output / "lcri_uncertainty_weighted_review_priority.csv", index=False
+    )
+    write_json(
+        output / "lcri_uncertainty_weighted_review_priority_summary.json",
+        lcri_uncertainty_priority_summary,
+    )
+    lcri_evidence_index.to_csv(output / "lcri_cross_artifact_evidence_index.csv", index=False)
+    write_json(
+        output / "lcri_cross_artifact_evidence_index_summary.json",
+        lcri_evidence_index_summary,
+    )
+    lcri_release_checklist.to_csv(output / "lcri_evidence_release_checklist.csv", index=False)
+    write_json(
+        output / "lcri_evidence_release_checklist_summary.json",
+        lcri_release_checklist_summary,
+    )
+    lcri_owner_handoff.to_csv(output / "lcri_owner_handoff_packet.csv", index=False)
+    write_json(output / "lcri_owner_handoff_packet_summary.json", lcri_owner_handoff_summary)
+    write_lcri_owner_handoff_markdown_packet(
+        output / "lcri_owner_handoff_packet.md",
+        packet=lcri_owner_handoff,
+        summary=lcri_owner_handoff_summary,
+    )
+    lcri_lineage_map.to_csv(output / "lcri_evidence_lineage_map.csv", index=False)
+    write_json(output / "lcri_evidence_lineage_map_summary.json", lcri_lineage_map_summary)
     transition_lift.to_csv(output / "transition_lift.csv", index=False)
     heldout_transition_lift.to_csv(output / "heldout_transition_lift.csv", index=False)
     write_json(output / "transition_robustness.json", transition_robustness)
@@ -500,9 +533,19 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         generalization_gap=generalization_gap,
         regime_generalization_gap=regime_gap,
         transition_generalization_gap=transition_gap,
+        generalization_fragility_diagnostics=fragility_diagnostics,
+        generalization_stability_confidence_intervals=stability_confidence,
         lcri_generalization_gap_delta=lcri_gap_delta,
         lcri_generalization_severity_by_scope=lcri_gap_severity_by_scope,
-        lcri_gap_delta_scope_summary=lcri_gap_scope_summary,
+        lcri_ci_gate_contradiction_diagnostics=lcri_ci_gate_diagnostics,
+        lcri_ci_confidence_coverage_scorecard=lcri_ci_confidence_scorecard,
+        lcri_gap_delta_scope_summary=lcri_gap_delta_scope_summary_table,
+        lcri_contradiction_review_packet=lcri_review_packet,
+        lcri_uncertainty_weighted_review_priority=lcri_uncertainty_priority,
+        lcri_cross_artifact_evidence_index=lcri_evidence_index,
+        lcri_evidence_release_checklist=lcri_release_checklist,
+        lcri_owner_handoff_packet=lcri_owner_handoff,
+        lcri_evidence_lineage_map=lcri_lineage_map,
     )
 
     heldout_rows = len(books) - len(train)
@@ -518,11 +561,19 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         generalization_gap=generalization_gap,
         regime_generalization_gap=regime_gap,
         transition_generalization_gap=transition_gap,
+        generalization_fragility_diagnostics=fragility_diagnostics,
+        generalization_fragility_summary=fragility_summary,
         generalization_overview=overview,
         generalization_gap_leaderboard=gap_leaderboard,
         lcri_generalization_gap_leaderboard=lcri_gap_leaderboard,
-        lcri_generalization_scope_summary=lcri_gap_scope_summary,
+        lcri_generalization_scope_summary=lcri_generalization_scope_summary_table,
         lcri_generalization_severity=lcri_gap_severity,
+        lcri_fragility_gate_alignment=lcri_fragility_alignment,
+        lcri_fragility_gate_scorecard=lcri_fragility_scorecard,
+        lcri_ci_gate_contradiction_diagnostics=lcri_ci_gate_diagnostics,
+        lcri_ci_gate_contradiction_summary=lcri_ci_gate_summary,
+        lcri_ci_confidence_coverage_scorecard=lcri_ci_confidence_scorecard,
+        lcri_ci_confidence_coverage_summary=lcri_ci_confidence_summary,
         lcri_generalization_severity_by_scope=lcri_gap_severity_by_scope,
         lcri_generalization_severity_summary=lcri_gap_severity_summary,
         lcri_worst_generalization_context=lcri_worst_gap_context,
