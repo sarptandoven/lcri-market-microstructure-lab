@@ -211,9 +211,20 @@ logs readable when several artifacts are missing at once.
 A clean run prints the same summary with `passes_verification: True`, which is
 useful when storing command output next to generated reports.
 
+## Figure artifacts
+
+Figure verification is intentionally format-level, not visual. It catches empty,
+truncated, or non-PNG files listed in the manifest before reviewers open broken
+charts, while leaving statistical interpretation to the generated CSV and JSON
+artifacts.
+
 ## Metadata footprint
 
 Demo runs also write `artifact_metadata_summary.json`. This file reports how
 many artifacts have manifest metadata, their total byte footprint, and the
-largest generated artifact. It is meant for lightweight audit logs, not for
-statistical interpretation.
+largest generated artifact. Verification first hardens the manifest metadata
+itself, rejecting unsafe paths, unlisted metadata entries, incomplete metadata
+records, and partial coverage when any metadata is present. It then recomputes
+this summary payload from the manifest metadata, excluding the summary file
+itself because it is written before the final manifest. It is meant for
+lightweight audit logs, not for statistical interpretation.
