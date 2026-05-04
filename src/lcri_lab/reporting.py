@@ -2712,12 +2712,22 @@ def write_research_summary(
     lcri_ci_confidence_coverage_scorecard: pd.DataFrame | None = None,
     lcri_ci_confidence_coverage_summary: dict[str, Any] | None = None,
     lcri_generalization_severity_by_scope: pd.DataFrame | None = None,
+    lcri_generalization_scope_risk: pd.DataFrame | None = None,
+    lcri_generalization_scope_gate_decisions: pd.DataFrame | None = None,
+    lcri_generalization_scope_gate_decision_summary: dict[str, Any] | None = None,
+    lcri_generalization_critical_contexts: pd.DataFrame | None = None,
+    lcri_generalization_blocker_summary: dict[str, Any] | None = None,
     lcri_generalization_severity_summary: dict[str, Any] | None = None,
     lcri_worst_generalization_context: dict[str, Any] | None = None,
     lcri_generalization_gate_decision: dict[str, Any] | None = None,
     lcri_generalization_gap_delta: pd.DataFrame | None = None,
+    lcri_gap_delta_dominant_scopes: dict[str, Any] | None = None,
     lcri_gap_delta_flags: pd.DataFrame | None = None,
+    lcri_gap_delta_improvements: pd.DataFrame | None = None,
+    lcri_gap_delta_regressions: pd.DataFrame | None = None,
     lcri_gap_delta_scorecard: dict[str, Any] | None = None,
+    lcri_gap_delta_scope_extremes: pd.DataFrame | None = None,
+    lcri_gap_delta_scope_summary: pd.DataFrame | None = None,
     lcri_gap_delta_summary: dict[str, Any] | None = None,
     lcri_scope_stability_contradictions: pd.DataFrame | None = None,
     lcri_scope_stability_contradiction_summary: dict[str, Any] | None = None,
@@ -2731,6 +2741,8 @@ def write_research_summary(
     lcri_evidence_release_checklist_summary: dict[str, Any] | None = None,
     lcri_owner_handoff_packet: pd.DataFrame | None = None,
     lcri_owner_handoff_packet_summary: dict[str, Any] | None = None,
+    lcri_evidence_lineage_map: pd.DataFrame | None = None,
+    lcri_evidence_lineage_map_summary: dict[str, Any] | None = None,
     transition_lift: pd.DataFrame | None = None,
     transition_robustness: dict[str, Any] | None = None,
     heldout_transition_lift: pd.DataFrame | None = None,
@@ -2871,6 +2883,40 @@ def write_research_summary(
                 if lcri_generalization_severity_by_scope is not None
                 else "_Not generated._",
                 "",
+                "## LCRI generalization scope risk",
+                "",
+                _markdown_table(lcri_generalization_scope_risk)
+                if lcri_generalization_scope_risk is not None
+                else "_Not generated._",
+                "",
+                "## LCRI generalization scope gate decisions",
+                "",
+                _markdown_table(lcri_generalization_scope_gate_decisions)
+                if lcri_generalization_scope_gate_decisions is not None
+                else "_Not generated._",
+                "",
+                "## LCRI generalization scope gate decision summary",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (lcri_generalization_scope_gate_decision_summary or {}).items()
+                ],
+                "" if lcri_generalization_scope_gate_decision_summary else "_Not generated._",
+                "",
+                "## LCRI generalization critical contexts",
+                "",
+                _markdown_table(lcri_generalization_critical_contexts)
+                if lcri_generalization_critical_contexts is not None
+                else "_Not generated._",
+                "",
+                "## LCRI generalization blocker summary",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (lcri_generalization_blocker_summary or {}).items()
+                ],
+                "" if lcri_generalization_blocker_summary else "_Not generated._",
+                "",
                 "## LCRI generalization severity summary",
                 "",
                 *[
@@ -2901,10 +2947,30 @@ def write_research_summary(
                 if lcri_generalization_gap_delta is not None
                 else "_Not generated._",
                 "",
+                "## LCRI gap delta dominant scopes",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (lcri_gap_delta_dominant_scopes or {}).items()
+                ],
+                "" if lcri_gap_delta_dominant_scopes else "_Not generated._",
+                "",
                 "## LCRI gap delta flags",
                 "",
                 _markdown_table(lcri_gap_delta_flags)
                 if lcri_gap_delta_flags is not None
+                else "_Not generated._",
+                "",
+                "## LCRI gap delta improvements",
+                "",
+                _markdown_table(lcri_gap_delta_improvements)
+                if lcri_gap_delta_improvements is not None
+                else "_Not generated._",
+                "",
+                "## LCRI gap delta regressions",
+                "",
+                _markdown_table(lcri_gap_delta_regressions)
+                if lcri_gap_delta_regressions is not None
                 else "_Not generated._",
                 "",
                 "## LCRI gap delta scorecard",
@@ -2914,6 +2980,18 @@ def write_research_summary(
                     for key, value in (lcri_gap_delta_scorecard or {}).items()
                 ],
                 "" if lcri_gap_delta_scorecard else "_Not generated._",
+                "",
+                "## LCRI gap delta scope extremes",
+                "",
+                _markdown_table(lcri_gap_delta_scope_extremes)
+                if lcri_gap_delta_scope_extremes is not None
+                else "_Not generated._",
+                "",
+                "## LCRI gap delta scope summary",
+                "",
+                _markdown_table(lcri_gap_delta_scope_summary)
+                if lcri_gap_delta_scope_summary is not None
+                else "_Not generated._",
                 "",
                 "## LCRI gap delta summary",
                 "",
@@ -3006,6 +3084,20 @@ def write_research_summary(
                     for key, value in (lcri_owner_handoff_packet_summary or {}).items()
                 ],
                 "" if lcri_owner_handoff_packet_summary else "_Not generated._",
+                "",
+                "## LCRI evidence lineage map",
+                "",
+                _markdown_table(lcri_evidence_lineage_map)
+                if lcri_evidence_lineage_map is not None
+                else "_Not generated._",
+                "",
+                "## LCRI evidence lineage map summary",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (lcri_evidence_lineage_map_summary or {}).items()
+                ],
+                "" if lcri_evidence_lineage_map_summary else "_Not generated._",
                 "",
                 "## Transition lift",
                 "",
@@ -3114,12 +3206,22 @@ _RESEARCH_SUMMARY_ARTIFACT_SECTIONS = {
     "LCRI CI confidence coverage scorecard": "lcri_ci_confidence_coverage_scorecard.csv",
     "LCRI CI confidence coverage summary": "lcri_ci_confidence_coverage_summary.json",
     "LCRI generalization severity by scope": "lcri_generalization_severity_by_scope.csv",
+    "LCRI generalization scope risk": "lcri_generalization_scope_risk.csv",
+    "LCRI generalization scope gate decisions": "lcri_generalization_scope_gate_decisions.csv",
+    "LCRI generalization scope gate decision summary": "lcri_generalization_scope_gate_decision_summary.json",
+    "LCRI generalization critical contexts": "lcri_generalization_critical_contexts.csv",
+    "LCRI generalization blocker summary": "lcri_generalization_blocker_summary.json",
     "LCRI generalization severity summary": "lcri_generalization_severity_summary.json",
     "LCRI worst generalization context": "lcri_worst_generalization_context.json",
     "LCRI generalization gate decision": "lcri_generalization_gate_decision.json",
     "LCRI generalization gap delta": "lcri_generalization_gap_delta.csv",
+    "LCRI gap delta dominant scopes": "lcri_gap_delta_dominant_scopes.json",
     "LCRI gap delta flags": "lcri_gap_delta_flags.csv",
+    "LCRI gap delta improvements": "lcri_gap_delta_improvements.csv",
+    "LCRI gap delta regressions": "lcri_gap_delta_regressions.csv",
     "LCRI gap delta scorecard": "lcri_gap_delta_scorecard.json",
+    "LCRI gap delta scope extremes": "lcri_gap_delta_scope_extremes.csv",
+    "LCRI gap delta scope summary": "lcri_gap_delta_scope_summary.csv",
     "LCRI gap delta summary": "lcri_gap_delta_summary.json",
     "LCRI scope stability contradictions": "lcri_scope_stability_contradictions.csv",
     "LCRI scope stability contradiction summary": "lcri_scope_stability_contradiction_summary.json",
@@ -3133,6 +3235,8 @@ _RESEARCH_SUMMARY_ARTIFACT_SECTIONS = {
     "LCRI evidence release checklist summary": "lcri_evidence_release_checklist_summary.json",
     "LCRI owner handoff packet": "lcri_owner_handoff_packet.csv",
     "LCRI owner handoff packet summary": "lcri_owner_handoff_packet_summary.json",
+    "LCRI evidence lineage map": "lcri_evidence_lineage_map.csv",
+    "LCRI evidence lineage map summary": "lcri_evidence_lineage_map_summary.json",
     "Transition lift": "transition_lift.csv",
     "Transition robustness": "transition_robustness.json",
     "Heldout transition lift": "heldout_transition_lift.csv",
@@ -3168,6 +3272,8 @@ def _artifact_family(artifact: str) -> str:
         "lcri_owner_handoff_packet.csv",
         "lcri_owner_handoff_packet_summary.json",
         "lcri_owner_handoff_packet.md",
+        "lcri_evidence_lineage_map.csv",
+        "lcri_evidence_lineage_map_summary.json",
     }:
         return "lcri_gate"
     if artifact.startswith("lcri_generalization") or artifact.startswith("lcri_worst"):
