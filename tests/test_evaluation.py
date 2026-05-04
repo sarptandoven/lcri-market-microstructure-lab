@@ -43,6 +43,8 @@ from lcri_lab.evaluation import (
     lcri_generalization_gap_leaderboard,
     lcri_generalization_scope_gate_decisions,
     lcri_scope_gate_decision_summary,
+    lcri_scope_stability_contradiction_summary,
+    lcri_scope_stability_contradictions,
     lcri_generalization_scope_risk,
     lcri_generalization_scope_summary,
     lcri_generalization_severity,
