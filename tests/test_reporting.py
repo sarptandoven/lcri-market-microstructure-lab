@@ -30,6 +30,9 @@ from lcri_lab.reporting import (
     verify_lcri_gap_delta_scope_extremes,
     verify_lcri_gap_delta_scope_summary,
     verify_lcri_gap_delta_summary,
+    verify_lcri_ci_gate_contradiction_consistency,
+    verify_lcri_ci_gate_contradiction_diagnostics,
+    verify_lcri_ci_gate_contradiction_summary,
     verify_lcri_ci_confidence_coverage_consistency,
     verify_lcri_ci_confidence_coverage_scorecard,
     verify_lcri_ci_confidence_coverage_summary,
@@ -48,6 +51,7 @@ from lcri_lab.reporting import (
     verify_lcri_owner_handoff_packet_summary,
     verify_lcri_owner_handoff_packet_consistency,
     verify_lcri_owner_handoff_markdown_packet,
+    verify_owner_facing_lcri_required_artifacts,
     verify_lcri_uncertainty_weighted_review_priority,
     verify_lcri_uncertainty_weighted_review_priority_summary,
     verify_lcri_uncertainty_weighted_review_priority_consistency,
@@ -89,6 +93,33 @@ def _minimal_png(width: int = 1, height: int = 1) -> bytes:
         b"\x00\x00\x00\x00"
         b"\x00\x00\x00\x00IEND\xaeB`\x82"
     )
+
+
+def _write_required_owner_facing_lcri_artifacts(tmp_path) -> None:
+    for artifact in [
+        "lcri_cross_artifact_evidence_index.csv",
+        "lcri_evidence_release_checklist.csv",
+        "lcri_owner_handoff_packet.csv",
+        "lcri_evidence_lineage_map.csv",
+    ]:
+        (tmp_path / artifact).write_text("scope\nsignal\n")
+    for artifact in [
+        "lcri_cross_artifact_evidence_index_summary.json",
+        "lcri_evidence_release_checklist_summary.json",
+        "lcri_owner_handoff_packet_summary.json",
+        "lcri_evidence_lineage_map_summary.json",
+    ]:
+        write_json(tmp_path / artifact, {})
+    (tmp_path / "lcri_owner_handoff_packet.md").write_text("# LCRI Owner Handoff Packet\n")
+    figures = tmp_path / "figures"
+    figures.mkdir()
+    for artifact in [
+        "lcri_cross_artifact_evidence_index.png",
+        "lcri_evidence_release_checklist.png",
+        "lcri_owner_handoff_packet.png",
+        "lcri_evidence_lineage_map.png",
+    ]:
+        (figures / artifact).write_bytes(_minimal_png())
 
 
 def test_build_artifact_manifest_records_run_config_and_outputs() -> None:
@@ -144,6 +175,7 @@ def test_artifact_coverage_matrix_classifies_manifest_artifacts() -> None:
     assert by_artifact.loc["lcri_generalization_severity.csv", "family"] == "lcri_gate"
     assert by_artifact.loc["lcri_gap_delta_summary.json", "family"] == "lcri_gap_delta"
     assert by_artifact.loc["lcri_ci_confidence_coverage_scorecard.csv", "family"] == "lcri_gate"
+    assert by_artifact.loc["lcri_evidence_lineage_map.csv", "family"] == "lcri_gate"
     assert bool(by_artifact.loc["figures/generalization_gap.png", "is_figure"])
     assert by_artifact.loc["artifact_manifest.json", "family"] == "audit"
     assert by_artifact.loc["lcri_owner_handoff_packet.md", "family"] == "lcri_gate"

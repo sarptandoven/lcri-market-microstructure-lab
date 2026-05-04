@@ -118,6 +118,7 @@ from lcri_lab.reporting import (
     verify_lcri_owner_handoff_packet_summary,
     verify_lcri_owner_handoff_packet_consistency,
     verify_lcri_owner_handoff_markdown_packet,
+    verify_owner_facing_lcri_required_artifacts,
     verify_lcri_uncertainty_weighted_review_priority,
     verify_lcri_uncertainty_weighted_review_priority_summary,
     verify_lcri_uncertainty_weighted_review_priority_consistency,
@@ -584,8 +585,13 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         lcri_worst_generalization_context=lcri_worst_gap_context,
         lcri_generalization_gate_decision=lcri_gate_decision,
         lcri_generalization_gap_delta=lcri_gap_delta,
+        lcri_gap_delta_dominant_scopes=lcri_gap_dominant_scopes,
         lcri_gap_delta_flags=lcri_gap_flags,
+        lcri_gap_delta_improvements=lcri_gap_improvements,
+        lcri_gap_delta_regressions=lcri_gap_regressions,
         lcri_gap_delta_scorecard=lcri_gap_scorecard,
+        lcri_gap_delta_scope_extremes=lcri_gap_scope_extremes,
+        lcri_gap_delta_scope_summary=lcri_gap_delta_scope_summary_table,
         lcri_gap_delta_summary=lcri_gap_summary,
         lcri_scope_stability_contradictions=lcri_scope_contradictions,
         lcri_scope_stability_contradiction_summary=lcri_scope_contradiction_summary,
@@ -686,13 +692,34 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         f"{output / 'figures' / 'lcri_ci_confidence_coverage_scorecard.png'}"
     )
     print(f"lcri generalization severity by scope: {output / 'lcri_generalization_severity_by_scope.csv'}")
+    print(f"lcri generalization scope risk: {output / 'lcri_generalization_scope_risk.csv'}")
+    print(
+        "lcri generalization scope gate decisions: "
+        f"{output / 'lcri_generalization_scope_gate_decisions.csv'}"
+    )
+    print(
+        "lcri generalization scope gate decision summary: "
+        f"{output / 'lcri_generalization_scope_gate_decision_summary.json'}"
+    )
+    print(
+        "lcri generalization critical contexts: "
+        f"{output / 'lcri_generalization_critical_contexts.csv'}"
+    )
+    print(
+        "lcri generalization blocker summary: "
+        f"{output / 'lcri_generalization_blocker_summary.json'}"
+    )
     print(f"lcri generalization severity summary: {output / 'lcri_generalization_severity_summary.json'}")
     print(f"lcri worst generalization context: {output / 'lcri_worst_generalization_context.json'}")
     print(f"lcri generalization gate decision: {output / 'lcri_generalization_gate_decision.json'}")
     print(f"lcri generalization gap delta: {output / 'lcri_generalization_gap_delta.csv'}")
     print(f"lcri gap delta dominant scopes: {output / 'lcri_gap_delta_dominant_scopes.json'}")
     print(f"lcri gap delta flags: {output / 'lcri_gap_delta_flags.csv'}")
+    print(f"lcri gap delta improvements: {output / 'lcri_gap_delta_improvements.csv'}")
+    print(f"lcri gap delta regressions: {output / 'lcri_gap_delta_regressions.csv'}")
     print(f"lcri gap delta scorecard: {output / 'lcri_gap_delta_scorecard.json'}")
+    print(f"lcri gap delta scope extremes: {output / 'lcri_gap_delta_scope_extremes.csv'}")
+    print(f"lcri gap delta scope summary: {output / 'lcri_gap_delta_scope_summary.csv'}")
     print(f"lcri gap delta summary: {output / 'lcri_gap_delta_summary.json'}")
     print(f"lcri scope stability contradictions: {output / 'lcri_scope_stability_contradictions.csv'}")
     print(
@@ -759,6 +786,7 @@ def verify_report(report_dir: Path) -> None:
         else []
     )
     errors = [
+        *verify_owner_facing_lcri_required_artifacts(report_dir),
         *verify_artifact_manifest(report_dir, manifest),
         *artifact_coverage_errors,
         *verify_artifact_metadata_summary(report_dir, manifest),
