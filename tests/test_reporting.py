@@ -1440,6 +1440,47 @@ def test_verify_lcri_scope_stability_contradictions_consistency_reports_stale_ro
     assert any("summary.scopes" in error for error in errors)
 
 
+def test_verify_lcri_ci_gate_contradiction_accepts_matching_artifacts(tmp_path) -> None:
+    _write_matching_ci_gate_contradiction_artifacts(tmp_path)
+
+    assert verify_lcri_ci_gate_contradiction_diagnostics(tmp_path) == []
+    assert verify_lcri_ci_gate_contradiction_summary(tmp_path) == []
+    assert verify_lcri_ci_gate_contradiction_consistency(tmp_path) == []
+
+
+def test_verify_lcri_ci_gate_contradiction_reports_stale_row(tmp_path) -> None:
+    _write_matching_ci_gate_contradiction_artifacts(tmp_path)
+    diagnostics = pd.read_csv(tmp_path / "lcri_ci_gate_contradiction_diagnostics.csv")
+    diagnostics.loc[diagnostics["scope"] == "signal", "ci_gate_label"] = "aligned"
+    diagnostics.to_csv(tmp_path / "lcri_ci_gate_contradiction_diagnostics.csv", index=False)
+
+    errors = verify_lcri_ci_gate_contradiction_consistency(tmp_path)
+
+    assert any("ci_gate_contradiction_diagnostics.signal:all.ci_gate_label" in error for error in errors)
+
+
+def test_verify_lcri_ci_gate_contradiction_reports_stale_summary(tmp_path) -> None:
+    _write_matching_ci_gate_contradiction_artifacts(tmp_path)
+    write_json(
+        tmp_path / "lcri_ci_gate_contradiction_summary.json",
+        {
+            "rows": 3,
+            "aligned_rows": 1,
+            "contradiction_rows": 2,
+            "gate_blocks_inside_ci_rows": 0,
+            "gate_warns_inside_ci_rows": 1,
+            "stable_gap_outside_ci_rows": 1,
+            "max_review_priority": 2,
+            "worst_ci_gate_context": "regime:thin:gate_warns_inside_ci",
+        },
+    )
+
+    errors = verify_lcri_ci_gate_contradiction_consistency(tmp_path)
+
+    assert any("ci_gate_contradiction_summary.aligned_rows" in error for error in errors)
+    assert any("ci_gate_contradiction_summary.worst_ci_gate_context" in error for error in errors)
+
+
 def test_verify_lcri_contradiction_review_packet_accepts_matching_sources(tmp_path) -> None:
     _write_matching_contradiction_review_packet_artifacts(tmp_path)
 
@@ -1716,6 +1757,19 @@ def test_verify_lcri_evidence_lineage_map_reports_stale_summary(tmp_path) -> Non
 
     assert any("evidence_lineage_map_summary.complete_scopes" in error for error in errors)
     assert any("evidence_lineage_map_summary.lineage_clear" in error for error in errors)
+
+
+def test_verify_lcri_evidence_lineage_map_reports_missing_handoff_source(tmp_path) -> None:
+    _write_matching_evidence_lineage_map_artifacts(tmp_path)
+    handoff = pd.read_csv(tmp_path / "lcri_owner_handoff_packet.csv")
+    handoff = handoff[handoff["scope"] != "signal"]
+    handoff.to_csv(tmp_path / "lcri_owner_handoff_packet.csv", index=False)
+
+    errors = verify_lcri_evidence_lineage_map_consistency(tmp_path)
+
+    assert any("evidence_lineage_map.signal.handoff_status" in error for error in errors)
+    assert any("evidence_lineage_map.signal.lineage_status" in error for error in errors)
+    assert any("evidence_lineage_map_summary.incomplete_scopes" in error for error in errors)
 
 
 def test_verify_lcri_gap_delta_improvements_accepts_complete_csv(tmp_path) -> None:
