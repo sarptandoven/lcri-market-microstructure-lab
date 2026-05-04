@@ -582,11 +582,26 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         lcri_gap_delta_flags=lcri_gap_flags,
         lcri_gap_delta_scorecard=lcri_gap_scorecard,
         lcri_gap_delta_summary=lcri_gap_summary,
+        lcri_scope_stability_contradictions=lcri_scope_contradictions,
+        lcri_scope_stability_contradiction_summary=lcri_scope_contradiction_summary,
+        lcri_contradiction_review_packet=lcri_review_packet,
+        lcri_contradiction_review_packet_summary=lcri_review_packet_summary,
+        lcri_uncertainty_weighted_review_priority=lcri_uncertainty_priority,
+        lcri_uncertainty_weighted_review_priority_summary=lcri_uncertainty_priority_summary,
+        lcri_cross_artifact_evidence_index=lcri_evidence_index,
+        lcri_cross_artifact_evidence_index_summary=lcri_evidence_index_summary,
+        lcri_evidence_release_checklist=lcri_release_checklist,
+        lcri_evidence_release_checklist_summary=lcri_release_checklist_summary,
+        lcri_owner_handoff_packet=lcri_owner_handoff,
+        lcri_owner_handoff_packet_summary=lcri_owner_handoff_summary,
         transition_lift=transition_lift,
         transition_robustness=transition_robustness,
         heldout_transition_lift=heldout_transition_lift,
         heldout_transition_robustness=heldout_transition_robustness,
     )
+    coverage_matrix = artifact_coverage_matrix(artifact_paths)
+    coverage_matrix.to_csv(output / "artifact_coverage_matrix.csv", index=False)
+    write_json(output / "artifact_coverage_summary.json", artifact_coverage_summary(coverage_matrix))
     preliminary_metadata = collect_artifact_metadata(
         output,
         [path for path in artifact_paths if path != "artifact_metadata_summary.json"],
@@ -624,11 +639,45 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"transition metrics: {output / 'transition_metrics.csv'}")
     print(f"heldout transition metrics: {output / 'heldout_transition_metrics.csv'}")
     print(f"transition generalization gap: {output / 'transition_generalization_gap.csv'}")
+    print(
+        "generalization stability confidence intervals: "
+        f"{output / 'generalization_stability_confidence_intervals.csv'}"
+    )
+    print(
+        "generalization stability confidence interval figure: "
+        f"{output / 'figures' / 'generalization_stability_confidence_intervals.png'}"
+    )
     print(f"generalization overview: {output / 'generalization_overview.json'}")
     print(f"generalization gap leaderboard: {output / 'generalization_gap_leaderboard.csv'}")
     print(f"lcri generalization gap leaderboard: {output / 'lcri_generalization_gap_leaderboard.csv'}")
     print(f"lcri generalization scope summary: {output / 'lcri_generalization_scope_summary.csv'}")
     print(f"lcri generalization severity: {output / 'lcri_generalization_severity.csv'}")
+    print(f"lcri fragility gate alignment: {output / 'lcri_fragility_gate_alignment.csv'}")
+    print(f"lcri fragility gate scorecard: {output / 'lcri_fragility_gate_scorecard.json'}")
+    print(
+        "lcri CI gate contradiction diagnostics: "
+        f"{output / 'lcri_ci_gate_contradiction_diagnostics.csv'}"
+    )
+    print(
+        "lcri CI gate contradiction summary: "
+        f"{output / 'lcri_ci_gate_contradiction_summary.json'}"
+    )
+    print(
+        "lcri CI confidence coverage scorecard: "
+        f"{output / 'lcri_ci_confidence_coverage_scorecard.csv'}"
+    )
+    print(
+        "lcri CI confidence coverage summary: "
+        f"{output / 'lcri_ci_confidence_coverage_summary.json'}"
+    )
+    print(
+        "lcri CI gate contradiction figure: "
+        f"{output / 'figures' / 'lcri_ci_gate_contradiction_diagnostics.png'}"
+    )
+    print(
+        "lcri CI confidence coverage figure: "
+        f"{output / 'figures' / 'lcri_ci_confidence_coverage_scorecard.png'}"
+    )
     print(f"lcri generalization severity by scope: {output / 'lcri_generalization_severity_by_scope.csv'}")
     print(f"lcri generalization severity summary: {output / 'lcri_generalization_severity_summary.json'}")
     print(f"lcri worst generalization context: {output / 'lcri_worst_generalization_context.json'}")
