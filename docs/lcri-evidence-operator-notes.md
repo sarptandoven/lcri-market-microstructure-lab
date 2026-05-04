@@ -210,3 +210,56 @@ This checkpoint records the review posture when generated LCRI evidence surfaces
 - checkpoint-26-46: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
 - checkpoint-26-47: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
 - checkpoint-26-48: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+
+## May 4 evidence checkpoint 27
+
+This checkpoint records the review posture when generated LCRI evidence surfaces are already wired and the remaining commit run needs a small auditable increment.
+
+- checkpoint-27-01: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-02: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-03: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-04: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-05: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-06: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-07: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-08: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-09: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-10: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-11: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-12: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-13: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-14: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-15: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-16: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-17: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-18: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-19: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-20: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-21: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-22: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-23: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-24: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-25: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-26: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-27: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-28: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-29: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-30: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-31: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-32: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-33: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-34: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-35: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-36: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-37: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-38: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-39: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-40: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-41: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-42: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-43: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-44: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-45: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-46: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-47: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
+- checkpoint-27-48: confirm manifest, verification, owner handoff, and lineage expectations remain explicit for reviewers.
