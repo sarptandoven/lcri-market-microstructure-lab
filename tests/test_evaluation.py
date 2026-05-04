@@ -937,6 +937,40 @@ def test_lcri_evidence_lineage_map_flags_stale_source_references() -> None:
     assert "stale or unexpected" in lineage.loc[0, "lineage_note"]
 
 
+def test_lcri_evidence_lineage_map_flags_missing_owner_surfaces() -> None:
+    evidence = pd.DataFrame(
+        {
+            "scope": ["transition", "signal"],
+            "evidence_label": ["urgent", "aligned"],
+            "evidence_score": [11.5, 0.3],
+        }
+    )
+    checklist = pd.DataFrame(
+        {
+            "scope": ["signal"],
+            "check_status": ["ready"],
+            "source_artifact": ["lcri_cross_artifact_evidence_index.csv"],
+        }
+    )
+    handoff = pd.DataFrame(
+        {
+            "scope": ["signal"],
+            "handoff_status": ["signoff_ready"],
+            "evidence_source_artifact": ["lcri_cross_artifact_evidence_index.csv"],
+            "checklist_source_artifact": ["lcri_evidence_release_checklist.csv"],
+        }
+    )
+
+    lineage = lcri_evidence_lineage_map(evidence, checklist, handoff)
+
+    by_scope = lineage.set_index("scope")
+    assert list(lineage["scope"]) == ["transition", "signal"]
+    assert by_scope.loc["transition", "lineage_status"] == "incomplete_lineage"
+    assert by_scope.loc["transition", "checklist_source_artifact"] == "missing_release_checklist"
+    assert by_scope.loc["transition", "handoff_source_artifact"] == "missing_owner_handoff"
+    assert "missing at least one" in by_scope.loc["transition", "lineage_note"]
+
+
 def test_lcri_evidence_lineage_map_summary_counts_chain_health() -> None:
     lineage = pd.DataFrame(
         {
