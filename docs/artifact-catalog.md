@@ -118,11 +118,29 @@ Figures mirror the most important CSV/JSON artifacts for visual review. Treat
 CSV and JSON outputs as source-of-truth for automation, and figures as reviewer
 aids.
 
+- `figures/generalization_stability_confidence_intervals.png`: heldout
+  directional-accuracy intervals ranked by gap-vs-interval and interval width.
 - `figures/lcri_generalization_gap_delta.png`: row-level raw-minus-LCRI gap
   comparison across all scopes.
 - `figures/lcri_generalization_severity_by_scope.png`: stacked stable, warning,
   and critical counts by scope.
+- `figures/lcri_ci_gate_contradiction_diagnostics.png`: CI-vs-gate rows ranked
+  by review priority, with absolute gap bars and CI half-width markers.
 - `figures/lcri_gap_delta_scope_summary.png`: mean stability edge by scope.
+- `figures/lcri_contradiction_review_packet.png`: priority-ranked contradiction
+  evidence with fragility, absolute gate-gap, and relative stability-edge markers.
+- `figures/lcri_uncertainty_weighted_review_priority.png`: owner-review queue
+  ranked by uncertainty-weighted priority, with base priority, CI-width, and
+  wide-CI share markers.
+- `figures/lcri_cross_artifact_evidence_index.png`: scope-level evidence index
+  ranked by final score, with critical gate row, CI/gate contradiction, and
+  uncertainty-priority markers.
+- `figures/lcri_evidence_release_checklist.png`: owner release checklist ranked
+  by blocked/review/monitor/ready status and evidence score.
+- `figures/lcri_owner_handoff_packet.png`: final owner handoff queue ranked by
+  decision urgency, with release-blocker and CI/gate priority overlays.
+- `figures/lcri_evidence_lineage_map.png`: evidence-to-checklist-to-handoff
+  chain health, with stale-reference and missing-surface markers.
 
 Use the figures to spot obvious concentration before opening the corresponding
 CSV files for exact values.
