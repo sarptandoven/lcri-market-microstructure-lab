@@ -3436,8 +3436,18 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
         lcri_generalization_severity_by_scope=pd.DataFrame(
             {"scope": ["regime"], "rows": [2], "stable_rows": [0], "warning_rows": [1], "critical_rows": [1]}
         ),
+        lcri_generalization_scope_risk=lcri_scope_risk,
+        lcri_generalization_scope_gate_decisions=lcri_scope_gate_decisions,
+        lcri_generalization_scope_gate_decision_summary=lcri_scope_gate_summary,
+        lcri_generalization_critical_contexts=lcri_critical_contexts,
+        lcri_generalization_blocker_summary=lcri_blocker_summary,
         lcri_generalization_severity_summary=lcri_generalization_severity_summary,
+        lcri_gap_delta_dominant_scopes=lcri_gap_delta_dominant_scopes,
         lcri_gap_delta_flags=lcri_gap_delta_flags,
+        lcri_gap_delta_improvements=lcri_gap_delta_improvements,
+        lcri_gap_delta_regressions=lcri_gap_delta_regressions,
+        lcri_gap_delta_scope_extremes=lcri_gap_delta_scope_extremes,
+        lcri_gap_delta_scope_summary=lcri_gap_delta_scope_summary,
         lcri_gap_delta_summary=lcri_gap_delta_summary,
         transition_lift=transition_lift,
         transition_robustness={"passes_transition_robustness": True},
@@ -3466,10 +3476,30 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
     assert "| signal | all | lcri | 0.030000 |" in text
     assert "## LCRI generalization severity" in text
     assert "| signal | all | 0.030000 | warning |" in text
+    assert "## LCRI generalization scope risk" in text
+    assert "| signal | 2 | 0.500000 | 0.000000 |" in text
+    assert "## LCRI generalization scope gate decisions" in text
+    assert "| signal | watch | monitor warning contexts |" in text
+    assert "## LCRI generalization scope gate decision summary" in text
+    assert "- watch_rows: 1" in text
+    assert "## LCRI generalization critical contexts" in text
+    assert "| signal | all | 0.080000 |" in text
+    assert "## LCRI generalization blocker summary" in text
+    assert "- max_critical_context: signal:all" in text
     assert "## LCRI generalization severity summary" in text
     assert "- warning_rows: 1" in text
+    assert "## LCRI gap delta dominant scopes" in text
+    assert "- most_lcri_stable_mean_raw_minus_lcri_gap: 0.030000" in text
     assert "## LCRI gap delta flags" in text
     assert "| signal | all | lcri_more_stable |" in text
+    assert "## LCRI gap delta improvements" in text
+    assert "| signal | all | 0.030000 |" in text
+    assert "## LCRI gap delta regressions" in text
+    assert "| regime | thin | -0.040000 |" in text
+    assert "## LCRI gap delta scope extremes" in text
+    assert "| signal | all | 0.030000 | all | 0.030000 |" in text
+    assert "## LCRI gap delta scope summary" in text
+    assert "| signal | 1 | 0.030000 | 1.000000 | 0.000000 |" in text
     assert "## LCRI gap delta summary" in text
     assert "- max_lcri_stability_edge_context: signal:all" in text
     assert "## Heldout transition lift" in text
