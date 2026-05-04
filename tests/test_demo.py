@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -86,6 +87,9 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert metadata_summary["total_size_bytes"] > 0
     assert metadata_summary["largest_artifact"] != "none"
     manifest = json.loads((tmp_path / "artifact_manifest.json").read_text())
+    documented_artifacts = set(manifest["artifacts"]) | {"artifact_manifest.json"}
+    assert _readme_generated_artifacts() == documented_artifacts
+    assert _artifact_catalog_entries() == documented_artifacts
     assert manifest["run"]["seed"] == 3
     assert manifest["model"]["artifact_version"] == 2
     assert "research_summary.md" in manifest["artifacts"]
@@ -126,6 +130,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["lcri_owner_handoff_packet.md"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_evidence_release_checklist.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_evidence_release_checklist_summary.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["lcri_owner_handoff_packet.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["lcri_owner_handoff_packet_summary.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["lcri_evidence_lineage_map.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["lcri_evidence_lineage_map_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_dominant_scopes.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_flags.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_improvements.csv"]["size_bytes"] > 0
@@ -162,6 +170,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## LCRI gap delta summary" in summary
     assert "## LCRI evidence release checklist" in summary
     assert "## LCRI evidence release checklist summary" in summary
+    assert "## LCRI owner handoff packet" in summary
+    assert "## LCRI owner handoff packet summary" in summary
+    assert "## LCRI evidence lineage map" in summary
+    assert "## LCRI evidence lineage map summary" in summary
     assert "## Transition robustness" in summary
     assert "## Heldout transition lift" in summary
 
@@ -169,3 +181,25 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
 def test_run_demo_rejects_invalid_train_fraction(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="train_frac"):
         run_demo(rows=100, seed=3, train_frac=1.0, output=tmp_path)
+
+
+def _readme_generated_artifacts() -> set[str]:
+    readme = Path("README.md").read_text()
+    match = re.search(r"Generated artifacts:\n\n```text\n(.*?)\n```", readme, re.DOTALL)
+    assert match is not None
+    artifacts: set[str] = set()
+    in_figures = False
+    for line in match.group(1).splitlines():
+        entry = line.strip()
+        if not entry or entry == "reports/":
+            continue
+        if entry == "figures/":
+            in_figures = True
+            continue
+        artifacts.add(f"figures/{entry}" if in_figures else entry)
+    return artifacts
+
+
+def _artifact_catalog_entries() -> set[str]:
+    catalog = Path("docs/artifact-catalog.md").read_text()
+    return set(re.findall(r"`([^`]+\.(?:csv|json|md|png))`", catalog))
