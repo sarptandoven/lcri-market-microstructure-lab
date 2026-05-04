@@ -1885,6 +1885,116 @@ def test_verify_research_summary_sections_accepts_matching_artifacts(tmp_path) -
             "max_signal_directional_accuracy_gap": 0.03,
         },
     )
+    write_json(
+        tmp_path / "lcri_gap_delta_dominant_scopes.json",
+        {
+            "most_lcri_stable_scope": "signal",
+            "most_lcri_stable_mean_raw_minus_lcri_gap": 0.03,
+        },
+    )
+    pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "context": "all",
+                "raw_minus_lcri_directional_accuracy_gap": 0.03,
+            }
+        ]
+    ).to_csv(tmp_path / "lcri_gap_delta_improvements.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "scope": "regime",
+                "context": "thin",
+                "raw_minus_lcri_directional_accuracy_gap": -0.04,
+            }
+        ]
+    ).to_csv(tmp_path / "lcri_gap_delta_regressions.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "best_context": "all",
+                "best_raw_minus_lcri_gap": 0.03,
+                "worst_context": "all",
+                "worst_raw_minus_lcri_gap": 0.03,
+            }
+        ]
+    ).to_csv(tmp_path / "lcri_gap_delta_scope_extremes.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "rows": 1,
+                "mean_raw_minus_lcri_gap": 0.03,
+                "min_raw_minus_lcri_gap": 0.03,
+                "max_raw_minus_lcri_gap": 0.03,
+                "lcri_more_stable_share": 1.0,
+                "lcri_less_stable_share": 0.0,
+            }
+        ]
+    ).to_csv(tmp_path / "lcri_gap_delta_scope_summary.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "lineage_status": "complete",
+                "handoff_status": "release_note_monitor",
+            }
+        ]
+    ).to_csv(tmp_path / "lcri_evidence_lineage_map.csv", index=False)
+    write_json(
+        tmp_path / "lcri_evidence_lineage_map_summary.json",
+        {
+            "rows": 1,
+            "complete_scopes": 1,
+            "lineage_clear": True,
+        },
+    )
+    pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "rows": 2,
+                "warning_or_critical_share": 0.5,
+                "critical_share": 0.0,
+            }
+        ]
+    ).to_csv(tmp_path / "lcri_generalization_scope_risk.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "decision": "watch",
+                "required_action": "monitor warning contexts",
+            }
+        ]
+    ).to_csv(tmp_path / "lcri_generalization_scope_gate_decisions.csv", index=False)
+    write_json(
+        tmp_path / "lcri_generalization_scope_gate_decision_summary.json",
+        {
+            "rows": 1,
+            "watch_rows": 1,
+        },
+    )
+    pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "context": "all",
+                "directional_accuracy_gap": 0.08,
+            }
+        ]
+    ).to_csv(tmp_path / "lcri_generalization_critical_contexts.csv", index=False)
+    write_json(
+        tmp_path / "lcri_generalization_blocker_summary.json",
+        {
+            "critical_rows": 1,
+            "critical_scopes": 1,
+            "max_critical_gap": 0.08,
+            "max_critical_context": "signal:all",
+        },
+    )
     (tmp_path / "research_summary.md").write_text(
         "\n".join(
             [
