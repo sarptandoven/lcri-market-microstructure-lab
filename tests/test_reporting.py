@@ -3312,12 +3312,91 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
         "critical_rows": 0,
         "passes_lcri_generalization_gate": True,
     }
+    lcri_scope_risk = pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "rows": 2,
+                "warning_or_critical_share": 0.5,
+                "critical_share": 0.0,
+            }
+        ]
+    )
+    lcri_scope_gate_decisions = pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "decision": "watch",
+                "required_action": "monitor warning contexts",
+            }
+        ]
+    )
+    lcri_scope_gate_summary = {"rows": 1, "watch_rows": 1}
+    lcri_critical_contexts = pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "context": "all",
+                "directional_accuracy_gap": 0.08,
+            }
+        ]
+    )
+    lcri_blocker_summary = {
+        "critical_rows": 1,
+        "critical_scopes": 1,
+        "max_critical_gap": 0.08,
+        "max_critical_context": "signal:all",
+    }
     lcri_gap_delta_flags = pd.DataFrame(
         [
             {
                 "scope": "signal",
                 "context": "all",
                 "stability_flag": "lcri_more_stable",
+            }
+        ]
+    )
+    lcri_gap_delta_dominant_scopes = {
+        "most_lcri_stable_scope": "signal",
+        "most_lcri_stable_mean_raw_minus_lcri_gap": 0.03,
+    }
+    lcri_gap_delta_improvements = pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "context": "all",
+                "raw_minus_lcri_directional_accuracy_gap": 0.03,
+            }
+        ]
+    )
+    lcri_gap_delta_regressions = pd.DataFrame(
+        [
+            {
+                "scope": "regime",
+                "context": "thin",
+                "raw_minus_lcri_directional_accuracy_gap": -0.04,
+            }
+        ]
+    )
+    lcri_gap_delta_scope_extremes = pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "best_context": "all",
+                "best_raw_minus_lcri_gap": 0.03,
+                "worst_context": "all",
+                "worst_raw_minus_lcri_gap": 0.03,
+            }
+        ]
+    )
+    lcri_gap_delta_scope_summary = pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "rows": 1,
+                "mean_raw_minus_lcri_gap": 0.03,
+                "lcri_more_stable_share": 1.0,
+                "lcri_less_stable_share": 0.0,
             }
         ]
     )
