@@ -56,6 +56,133 @@ release decisions:
 - gate decision JSON must match the severity summary and worst-context payload
 - critical context CSVs must contain exactly the critical severity rows
 - blocker summaries must include the affected scopes and worst blocker context
+- blocker summaries must match the critical context CSV counts, scopes, and worst blocker
+- fragility/gate alignment labels must match the severity and heldout fragility pair
+- heldout confidence intervals must recompute lower/upper bounds, interval width,
+  confidence level, and gap-exceeds-half-width flags from fragility uncertainty
+- scope stability contradiction rows must reconcile gate decisions, LCRI-vs-raw
+  gap-delta scope shares, and fragility review counts
+- contradiction review packets must link each scope to the recomputed worst gate,
+  worst relative delta, worst fragility review evidence, and priority label
+- contradiction review packet summaries must match the packet's priority counts,
+  total fragility review rows, and worst-scope pointers
+- uncertainty-weighted review priorities must match the contradiction packet and
+  CI confidence scorecard, including label counts and worst-scope summary fields
+- cross-artifact evidence index rows must recompute from severity-by-scope,
+  scope gates, gap-delta scope shares, stability contradictions, CI confidence
+  coverage, and uncertainty-weighted priorities, with a manifest/PNG-verified
+  score plot for owner review
+- evidence-derived release checklist rows must recompute from the cross-artifact
+  evidence index, including blocked/review/monitor/ready status, required owner
+  action, summary counts, the boolean release-ready checkpoint, and a
+  manifest/PNG-verified release checklist plot
+- owner handoff packet rows must recompute from the cross-artifact evidence
+  index and release checklist, including handoff status, queue text, evidence
+  context fields, summary counts, the boolean handoff-clear checkpoint, a
+  stale-checked owner-facing markdown handoff packet, and a manifest/PNG-verified
+  owner queue plot
+- evidence lineage map rows must recompute from the evidence index, release
+  checklist, and owner handoff packet, including source-artifact links, lineage
+  health labels, summary counts, and the boolean lineage-clear checkpoint
+- CI/gate contradiction diagnostics must recompute from LCRI severity rows and
+  heldout confidence interval flags, including review priorities and summary counts
+  plus a ranked visual audit figure
+
+## Heldout fragility artifacts
+
+Demo runs now include `generalization_fragility_diagnostics.csv`,
+`generalization_fragility_summary.json`,
+`generalization_stability_confidence_intervals.csv`,
+`generalization_stability_confidence_summary.json`,
+`lcri_fragility_gate_alignment.csv`,
+`figures/generalization_fragility_diagnostics.png`, and
+`figures/generalization_stability_confidence_intervals.png`. The diagnostics compare
+full-sample and heldout directional accuracy by signal, regime, and transition
+scope, then scale each gap by the heldout binomial standard error. The resulting
+`stable`, `watch`, and `fragile` labels are uncertainty diagnostics, not release
+gates. Confidence interval artifacts expose the raw heldout interval behind each
+fragility row, including whether the full-to-heldout gap exceeds the interval
+half-width; the companion figure ranks those intervals by review urgency for
+visual audit. The alignment table joins LCRI-only fragility rows to deterministic gate
+severity so reviewers can spot rows where a critical gate is statistically stable
+or where a non-critical gap is fragile relative to heldout uncertainty. The
+scorecard condenses those rows into aligned, review-required, deterministic-block,
+and uncertainty-fragile counts for dashboards.
+Verification checks the expected columns, summary keys, PNG integrity,
+non-negative uncertainty scales, ratio math, confidence interval bounds,
+threshold labels, summary counts, alignment labels, and scorecard counts so the report always exposes a consistent
+heldout sample size and uncertainty scale behind each generalization gap.
+
+CI/gate contradiction artifacts also include
+`figures/lcri_ci_gate_contradiction_diagnostics.png`, which ranks the LCRI-only
+CI-vs-gate rows by review priority and overlays CI half-width markers on the
+absolute deterministic gap bars. The verifier treats the CSV/JSON diagnostics as
+the numeric source of truth and checks the PNG through the manifest/figure layer.
+The CI confidence coverage scorecard is recomputed from the heldout interval
+artifact and CI/gate diagnostics, then its summary is checked for review-scope,
+wide-CI, contradiction, and worst-scope counts so dashboard triage cannot drift
+from the row-level uncertainty evidence. Its companion
+`figures/lcri_ci_confidence_coverage_scorecard.png` is manifest/PNG verified as a
+visual audit surface for the same scope-level uncertainty queue. The
+uncertainty-weighted review queue then joins that CI scorecard back to the
+contradiction packet, producing a single owner-facing priority score and summary
+that verification recomputes from both source artifacts. The cross-artifact
+evidence index takes the final step by joining all scope-level gate, stability,
+fragility, CI, and priority surfaces into one sortable review table; its verifier
+rebuilds the table and summary from source artifacts to catch stale owner-review
+packets. The evidence-derived release checklist then maps the same scope rows to
+explicit release-owner actions and a `release_ready` boolean; verification
+recomputes both CSV and JSON checklist artifacts from the evidence index so stale
+sign-off status cannot survive partial regeneration. The final owner handoff
+markdown packet is checked against the CSV/JSON handoff queue so copied report
+bundles cannot retain stale owner-facing bullets or top queue rows.
+
+## Gap-delta artifacts
+
+LCRI-vs-raw gap-delta scorecards are checked against
+`lcri_generalization_gap_delta.csv` as the source of truth:
+
+- scorecard and summary counts, shares, means, medians, and edge contexts are recomputed
+- improvement and regression CSVs must contain exactly the positive and negative delta rows
+- scope summary, scope extremes, and dominant-scope JSON must match recomputed scope rollups
+- flag rows must match the expected `lcri_more_stable`, `lcri_less_stable`, or
+  `lcri_equal_stability` classification for each scope/context
+
+Demo runs also emit `lcri_scope_stability_contradictions.csv` and
+`lcri_scope_stability_contradiction_summary.json`. These artifacts detect
+cross-scope report contradictions, for example a blocked absolute gate in a
+scope where LCRI is usually more stable than raw imbalance, a passing scope with
+relative LCRI regressions, or a warning scope with broad relative regression.
+Verification recomputes labels and summary counts from the gate decision,
+gap-delta scope summary, and fragility/gate alignment artifacts so the owner
+digest cannot mix stale gate posture with fresh stability deltas. The companion
+`lcri_contradiction_review_packet.csv` is also recomputed from row-level severity,
+gap-delta, and fragility/gate evidence so review packets cannot point at stale
+worst contexts after partial regeneration. The companion
+`lcri_contradiction_review_packet_summary.json` is recomputed from the packet so
+priority counts and worst-scope pointers stay aligned with the row-level review
+queue.
+
+## Research summary sections
+
+`research_summary.md` is verified as the concise owner-facing digest of the run.
+When a CSV or JSON artifact exists, its mapped markdown section must also exist,
+must not say `_Not generated._`, and must expose the artifact's columns or JSON
+keys. Verification also compares rendered CSV cell values and JSON bullet values
+using the same formatting as the generated summary. This catches stale summaries
+after partial report regeneration, especially for LCRI gate, fragility, and
+gap-delta sections that are redundant with machine-readable artifacts.
+
+## Artifact coverage matrix
+
+Demo runs write `artifact_coverage_matrix.csv` and
+`artifact_coverage_summary.json` as a compact audit surface for the report
+bundle. The matrix classifies every manifest artifact by family, extension,
+research-summary exposure, figure status, and manifest-metadata tracking. The
+summary counts total artifacts, summary-backed artifacts, figures,
+metadata-tracked artifacts, and distinct families. Verification recomputes both
+from the manifest so stale coverage dashboards fail before reviewers rely on
+them.
 
 ## When verification fails
 
