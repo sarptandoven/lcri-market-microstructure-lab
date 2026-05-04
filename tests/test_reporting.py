@@ -163,6 +163,7 @@ def test_artifact_coverage_matrix_classifies_manifest_artifacts() -> None:
             "lcri_generalization_severity.csv",
             "lcri_gap_delta_summary.json",
             "lcri_ci_confidence_coverage_scorecard.csv",
+            "lcri_evidence_lineage_map.csv",
             "figures/generalization_gap.png",
             "artifact_manifest.json",
             "lcri_owner_handoff_packet.md",
@@ -297,6 +298,29 @@ def test_verify_artifact_metadata_summary_accepts_matching_manifest_summary(tmp_
     }
 
     assert verify_artifact_metadata_summary(tmp_path, manifest) == []
+
+
+def test_verify_owner_facing_lcri_required_artifacts_accepts_complete_set(tmp_path) -> None:
+    _write_required_owner_facing_lcri_artifacts(tmp_path)
+
+    assert verify_owner_facing_lcri_required_artifacts(tmp_path) == []
+
+
+def test_verify_owner_facing_lcri_required_artifacts_reports_manifest_independent_omissions(
+    tmp_path,
+) -> None:
+    _write_required_owner_facing_lcri_artifacts(tmp_path)
+    (tmp_path / "lcri_cross_artifact_evidence_index.csv").unlink()
+    (tmp_path / "lcri_evidence_release_checklist_summary.json").unlink()
+    (tmp_path / "lcri_owner_handoff_packet.md").unlink()
+    (tmp_path / "lcri_evidence_lineage_map.csv").unlink()
+
+    errors = verify_owner_facing_lcri_required_artifacts(tmp_path)
+
+    assert "missing required owner-facing LCRI artifact: lcri_cross_artifact_evidence_index.csv" in errors
+    assert "missing required owner-facing LCRI artifact: lcri_evidence_release_checklist_summary.json" in errors
+    assert "missing required owner-facing LCRI artifact: lcri_owner_handoff_packet.md" in errors
+    assert "missing required owner-facing LCRI artifact: lcri_evidence_lineage_map.csv" in errors
 
 
 def test_verify_artifact_metadata_summary_reports_stale_summary(tmp_path) -> None:

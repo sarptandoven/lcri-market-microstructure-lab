@@ -198,6 +198,39 @@ def verify_artifact_manifest(output_dir: Path, manifest: dict[str, Any]) -> list
     return errors
 
 
+OWNER_FACING_LCRI_REQUIRED_ARTIFACTS = frozenset(
+    {
+        "lcri_cross_artifact_evidence_index.csv",
+        "lcri_cross_artifact_evidence_index_summary.json",
+        "lcri_evidence_release_checklist.csv",
+        "lcri_evidence_release_checklist_summary.json",
+        "lcri_owner_handoff_packet.csv",
+        "lcri_owner_handoff_packet_summary.json",
+        "lcri_owner_handoff_packet.md",
+        "lcri_evidence_lineage_map.csv",
+        "lcri_evidence_lineage_map_summary.json",
+        "figures/lcri_cross_artifact_evidence_index.png",
+        "figures/lcri_evidence_release_checklist.png",
+        "figures/lcri_owner_handoff_packet.png",
+        "figures/lcri_evidence_lineage_map.png",
+    }
+)
+
+
+def verify_owner_facing_lcri_required_artifacts(output_dir: Path) -> list[str]:
+    """Return errors when mandatory owner-facing LCRI handoff artifacts are absent.
+
+    This check is intentionally independent of manifest/audit contents. The
+    release handoff/lineage surfaces are required for any verified LCRI report,
+    so a stale-but-self-consistent manifest cannot hide their removal.
+    """
+    return [
+        f"missing required owner-facing LCRI artifact: {artifact}"
+        for artifact in sorted(OWNER_FACING_LCRI_REQUIRED_ARTIFACTS)
+        if _is_safe_artifact_path(artifact) and not (output_dir / artifact).exists()
+    ]
+
+
 def verify_artifact_metadata_summary(output_dir: Path, manifest: dict[str, Any]) -> list[str]:
     """Return errors when the compact metadata summary is stale.
 
