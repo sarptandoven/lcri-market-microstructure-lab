@@ -33,6 +33,8 @@ from lcri_lab.reporting import (
     verify_lcri_ci_gate_contradiction_consistency,
     verify_lcri_ci_gate_contradiction_diagnostics,
     verify_lcri_ci_gate_contradiction_summary,
+    owner_facing_lcri_artifact_status,
+    summarize_owner_facing_lcri_artifact_status,
     verify_lcri_ci_confidence_coverage_consistency,
     verify_lcri_ci_confidence_coverage_scorecard,
     verify_lcri_ci_confidence_coverage_summary,
@@ -298,6 +300,34 @@ def test_verify_artifact_metadata_summary_accepts_matching_manifest_summary(tmp_
     }
 
     assert verify_artifact_metadata_summary(tmp_path, manifest) == []
+
+
+def test_owner_facing_lcri_artifact_status_reports_presence_by_family(tmp_path) -> None:
+    _write_required_owner_facing_lcri_artifacts(tmp_path)
+    (tmp_path / "lcri_owner_handoff_packet.md").unlink()
+
+    status = owner_facing_lcri_artifact_status(tmp_path).set_index("artifact")
+
+    assert bool(status.loc["lcri_cross_artifact_evidence_index.csv", "exists"])
+    assert status.loc["lcri_cross_artifact_evidence_index.csv", "family"] == "table"
+    assert status.loc["lcri_evidence_release_checklist_summary.json", "family"] == "summary"
+    assert status.loc["lcri_owner_handoff_packet.md", "family"] == "handoff_markdown"
+    assert not bool(status.loc["lcri_owner_handoff_packet.md", "exists"])
+    assert status.loc["figures/lcri_evidence_lineage_map.png", "family"] == "figure"
+
+
+def test_summarize_owner_facing_lcri_artifact_status_counts_missing_families(tmp_path) -> None:
+    _write_required_owner_facing_lcri_artifacts(tmp_path)
+    (tmp_path / "lcri_owner_handoff_packet.md").unlink()
+    (tmp_path / "figures" / "lcri_owner_handoff_packet.png").unlink()
+
+    summary = summarize_owner_facing_lcri_artifact_status(owner_facing_lcri_artifact_status(tmp_path))
+
+    assert summary["required_artifacts"] == 13
+    assert summary["missing_artifacts"] == 2
+    assert not summary["coverage_complete"]
+    assert summary["missing_by_family"]["figure"] == 1
+    assert summary["missing_by_family"]["handoff_markdown"] == 1
 
 
 def test_verify_owner_facing_lcri_required_artifacts_accepts_complete_set(tmp_path) -> None:

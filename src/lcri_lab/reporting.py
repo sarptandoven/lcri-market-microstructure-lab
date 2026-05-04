@@ -217,6 +217,47 @@ OWNER_FACING_LCRI_REQUIRED_ARTIFACTS = frozenset(
 )
 
 
+def owner_facing_lcri_artifact_status(output_dir: Path) -> pd.DataFrame:
+    """Return required owner-facing LCRI artifact presence by review family."""
+    rows = []
+    for artifact in sorted(OWNER_FACING_LCRI_REQUIRED_ARTIFACTS):
+        if artifact.endswith(".png"):
+            family = "figure"
+        elif artifact.endswith(".md"):
+            family = "handoff_markdown"
+        elif artifact.endswith("_summary.json"):
+            family = "summary"
+        else:
+            family = "table"
+        rows.append(
+            {
+                "artifact": artifact,
+                "family": family,
+                "exists": bool(_is_safe_artifact_path(artifact) and (output_dir / artifact).exists()),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def summarize_owner_facing_lcri_artifact_status(status: pd.DataFrame) -> dict[str, Any]:
+    """Return compact owner-facing LCRI required-artifact coverage counts."""
+    if status.empty:
+        return {"required_artifacts": 0, "present_artifacts": 0, "missing_artifacts": 0, "coverage_complete": True}
+    present = int(status["exists"].sum())
+    rows = int(len(status))
+    missing_by_family = {
+        str(family): int((~group["exists"]).sum())
+        for family, group in status.groupby("family", sort=True)
+    }
+    return {
+        "required_artifacts": rows,
+        "present_artifacts": present,
+        "missing_artifacts": rows - present,
+        "coverage_complete": present == rows,
+        "missing_by_family": missing_by_family,
+    }
+
+
 def verify_owner_facing_lcri_required_artifacts(output_dir: Path) -> list[str]:
     """Return errors when mandatory owner-facing LCRI handoff artifacts are absent.
 
