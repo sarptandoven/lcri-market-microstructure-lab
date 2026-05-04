@@ -161,6 +161,11 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## LCRI CI confidence coverage scorecard" in summary
     assert "## LCRI CI confidence coverage summary" in summary
     assert "## LCRI generalization severity by scope" in summary
+    assert "## LCRI generalization scope risk" in summary
+    assert "## LCRI generalization scope gate decisions" in summary
+    assert "## LCRI generalization scope gate decision summary" in summary
+    assert "## LCRI generalization critical contexts" in summary
+    assert "## LCRI generalization blocker summary" in summary
     assert "## LCRI generalization severity summary" in summary
     assert "## LCRI worst generalization context" in summary
     assert "## LCRI generalization gate decision" in summary
@@ -181,6 +186,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
 def test_run_demo_rejects_invalid_train_fraction(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="train_frac"):
         run_demo(rows=100, seed=3, train_frac=1.0, output=tmp_path)
+
+
+def test_artifact_catalog_covers_readme_generated_artifacts() -> None:
+    assert _artifact_catalog_entries() == _readme_generated_artifacts()
 
 
 def _readme_generated_artifacts() -> set[str]:
