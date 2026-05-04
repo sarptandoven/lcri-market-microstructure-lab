@@ -397,6 +397,12 @@ def test_verify_report_accepts_intact_manifest(
             "lcri_gap_delta_scope_extremes.csv",
             "lcri_gap_delta_scope_summary.csv",
             "lcri_gap_delta_summary.json",
+            "lcri_scope_stability_contradictions.csv",
+            "lcri_scope_stability_contradiction_summary.json",
+            "lcri_contradiction_review_packet.csv",
+            "lcri_contradiction_review_packet_summary.json",
+            "lcri_uncertainty_weighted_review_priority.csv",
+            "lcri_uncertainty_weighted_review_priority_summary.json",
         ],
         "artifact_metadata": {},
     }
@@ -432,6 +438,17 @@ def test_verify_report_rejects_changed_artifact(tmp_path: Path) -> None:
     (tmp_path / "artifact_manifest.json").write_text(json.dumps(manifest))
 
     with pytest.raises(ValueError, match="sha256 mismatch"):
+        verify_report(tmp_path)
+
+
+def test_verify_report_rejects_corrupt_figure_artifact(tmp_path: Path) -> None:
+    figure = tmp_path / "figures" / "gap.png"
+    figure.parent.mkdir()
+    figure.write_bytes(b"not a png")
+    manifest = {"artifacts": ["figures/gap.png"], "artifact_metadata": {}}
+    (tmp_path / "artifact_manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ValueError, match="invalid figure artifact"):
         verify_report(tmp_path)
 
 

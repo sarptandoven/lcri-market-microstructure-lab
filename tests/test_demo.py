@@ -110,8 +110,22 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["lcri_worst_generalization_context.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_generalization_gate_decision.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_generalization_gap_delta.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["figures/generalization_stability_confidence_intervals.png"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["figures/lcri_generalization_severity_by_scope.png"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["figures/lcri_ci_gate_contradiction_diagnostics.png"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["lcri_ci_confidence_coverage_scorecard.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["lcri_ci_confidence_coverage_summary.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["figures/lcri_ci_confidence_coverage_scorecard.png"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["figures/lcri_gap_delta_scope_summary.png"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["figures/lcri_contradiction_review_packet.png"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["figures/lcri_uncertainty_weighted_review_priority.png"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["figures/lcri_cross_artifact_evidence_index.png"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["figures/lcri_evidence_release_checklist.png"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["figures/lcri_owner_handoff_packet.png"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["figures/lcri_evidence_lineage_map.png"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["lcri_owner_handoff_packet.md"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["lcri_evidence_release_checklist.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["lcri_evidence_release_checklist_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_dominant_scopes.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_flags.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_improvements.csv"]["size_bytes"] > 0
@@ -134,6 +148,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## LCRI generalization gap leaderboard" in summary
     assert "## LCRI generalization scope summary" in summary
     assert "## LCRI generalization severity" in summary
+    assert "## LCRI CI gate contradiction diagnostics" in summary
+    assert "## LCRI CI gate contradiction summary" in summary
+    assert "## LCRI CI confidence coverage scorecard" in summary
+    assert "## LCRI CI confidence coverage summary" in summary
     assert "## LCRI generalization severity by scope" in summary
     assert "## LCRI generalization severity summary" in summary
     assert "## LCRI worst generalization context" in summary
@@ -142,6 +160,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## LCRI gap delta flags" in summary
     assert "## LCRI gap delta scorecard" in summary
     assert "## LCRI gap delta summary" in summary
+    assert "## LCRI evidence release checklist" in summary
+    assert "## LCRI evidence release checklist summary" in summary
     assert "## Transition robustness" in summary
     assert "## Heldout transition lift" in summary
 
