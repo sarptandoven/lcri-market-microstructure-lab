@@ -687,11 +687,48 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"lcri gap delta flags: {output / 'lcri_gap_delta_flags.csv'}")
     print(f"lcri gap delta scorecard: {output / 'lcri_gap_delta_scorecard.json'}")
     print(f"lcri gap delta summary: {output / 'lcri_gap_delta_summary.json'}")
+    print(f"lcri scope stability contradictions: {output / 'lcri_scope_stability_contradictions.csv'}")
+    print(
+        "lcri scope stability contradiction summary: "
+        f"{output / 'lcri_scope_stability_contradiction_summary.json'}"
+    )
+    print(f"lcri contradiction review packet: {output / 'lcri_contradiction_review_packet.csv'}")
+    print(
+        "lcri contradiction review packet summary: "
+        f"{output / 'lcri_contradiction_review_packet_summary.json'}"
+    )
+    print(
+        "lcri uncertainty-weighted review priority: "
+        f"{output / 'lcri_uncertainty_weighted_review_priority.csv'}"
+    )
+    print(
+        "lcri uncertainty-weighted review priority summary: "
+        f"{output / 'lcri_uncertainty_weighted_review_priority_summary.json'}"
+    )
+    print(f"lcri cross-artifact evidence index: {output / 'lcri_cross_artifact_evidence_index.csv'}")
+    print(
+        "lcri cross-artifact evidence index summary: "
+        f"{output / 'lcri_cross_artifact_evidence_index_summary.json'}"
+    )
+    print(f"lcri evidence release checklist: {output / 'lcri_evidence_release_checklist.csv'}")
+    print(
+        "lcri evidence release checklist summary: "
+        f"{output / 'lcri_evidence_release_checklist_summary.json'}"
+    )
+    print(f"lcri owner handoff packet: {output / 'lcri_owner_handoff_packet.csv'}")
+    print(f"lcri owner handoff markdown packet: {output / 'lcri_owner_handoff_packet.md'}")
+    print(
+        "lcri owner handoff packet summary: "
+        f"{output / 'lcri_owner_handoff_packet_summary.json'}"
+    )
+    print(f"lcri evidence lineage map: {output / 'lcri_evidence_lineage_map.csv'}")
+    print(f"lcri evidence lineage map figure: {output / 'figures' / 'lcri_evidence_lineage_map.png'}")
     print(f"transition lift: {output / 'transition_lift.csv'}")
     print(f"heldout transition lift: {output / 'heldout_transition_lift.csv'}")
     print(f"transition robustness: {output / 'transition_robustness.json'}")
     print(f"heldout transition robustness: {output / 'heldout_transition_robustness.json'}")
     print(f"summary: {output / 'research_summary.md'}")
+    print(f"artifact coverage matrix: {output / 'artifact_coverage_matrix.csv'}")
     print(f"manifest: {output / 'artifact_manifest.json'}")
     print(f"figures: {output / 'figures'}")
     print()
@@ -703,21 +740,82 @@ def verify_report(report_dir: Path) -> None:
     if not manifest_path.exists():
         raise ValueError(f"missing artifact manifest: {manifest_path}")
     manifest = json.loads(manifest_path.read_text())
+    research_summary_errors = (
+        verify_research_summary_sections(report_dir)
+        if "research_summary.md" in set(manifest.get("artifacts", []))
+        else []
+    )
+    manifest_artifacts = set(manifest.get("artifacts", []))
+    artifact_coverage_errors = (
+        verify_artifact_coverage_matrix(report_dir, manifest)
+        if "artifact_coverage_matrix.csv" in manifest_artifacts
+        else []
+    )
     errors = [
         *verify_artifact_manifest(report_dir, manifest),
+        *artifact_coverage_errors,
+        *verify_artifact_metadata_summary(report_dir, manifest),
+        *verify_figure_artifacts(report_dir, manifest),
+        *verify_generalization_fragility_diagnostics(report_dir),
+        *verify_generalization_fragility_summary(report_dir),
+        *verify_generalization_fragility_consistency(report_dir),
+        *verify_generalization_stability_confidence_intervals(report_dir),
+        *verify_generalization_stability_confidence_summary(report_dir),
+        *verify_generalization_stability_confidence_consistency(report_dir),
         *verify_generalization_overview(report_dir),
         *verify_lcri_generalization_gap_leaderboard(report_dir),
         *verify_lcri_generalization_scope_summary(report_dir),
         *verify_lcri_generalization_severity(report_dir),
+        *verify_lcri_fragility_gate_alignment(report_dir),
+        *verify_lcri_fragility_gate_scorecard(report_dir),
+        *(
+            verify_lcri_ci_gate_contradiction_diagnostics(report_dir)
+            if "lcri_ci_gate_contradiction_diagnostics.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_lcri_ci_gate_contradiction_summary(report_dir)
+            if "lcri_ci_gate_contradiction_summary.json" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_lcri_ci_gate_contradiction_consistency(report_dir)
+            if {
+                "lcri_ci_gate_contradiction_diagnostics.csv",
+                "lcri_ci_gate_contradiction_summary.json",
+            }.issubset(manifest_artifacts)
+            else []
+        ),
+        *(
+            verify_lcri_ci_confidence_coverage_scorecard(report_dir)
+            if "lcri_ci_confidence_coverage_scorecard.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_lcri_ci_confidence_coverage_summary(report_dir)
+            if "lcri_ci_confidence_coverage_summary.json" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_lcri_ci_confidence_coverage_consistency(report_dir)
+            if {
+                "lcri_ci_confidence_coverage_scorecard.csv",
+                "lcri_ci_confidence_coverage_summary.json",
+            }.issubset(manifest_artifacts)
+            else []
+        ),
         *verify_lcri_generalization_severity_by_scope(report_dir),
+        *verify_lcri_generalization_severity_consistency(report_dir),
         *verify_lcri_generalization_scope_risk(report_dir),
         *verify_lcri_generalization_scope_gate_decisions(report_dir),
         *verify_lcri_generalization_scope_gate_decision_summary(report_dir),
+        *verify_lcri_generalization_scope_gate_consistency(report_dir),
         *verify_lcri_generalization_critical_contexts(report_dir),
         *verify_lcri_generalization_blocker_summary(report_dir),
         *verify_lcri_generalization_severity_summary(report_dir),
         *verify_lcri_generalization_gate_decision(report_dir),
         *verify_lcri_worst_generalization_context(report_dir),
+        *verify_lcri_generalization_gate_decision_consistency(report_dir),
         *verify_lcri_generalization_gap_delta(report_dir),
         *verify_lcri_gap_delta_dominant_scopes(report_dir),
         *verify_lcri_gap_delta_flags(report_dir),
