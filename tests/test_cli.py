@@ -12,6 +12,33 @@ def _write_snapshots(path: Path, rows: int = 150) -> None:
     simulate_order_books(SimulationConfig(rows=rows, seed=13)).to_csv(path, index=False)
 
 
+def _write_required_owner_facing_lcri_artifacts(path: Path) -> None:
+    for artifact in [
+        "lcri_cross_artifact_evidence_index.csv",
+        "lcri_evidence_release_checklist.csv",
+        "lcri_owner_handoff_packet.csv",
+        "lcri_evidence_lineage_map.csv",
+    ]:
+        (path / artifact).write_text("scope\nsignal\n")
+    for artifact in [
+        "lcri_cross_artifact_evidence_index_summary.json",
+        "lcri_evidence_release_checklist_summary.json",
+        "lcri_owner_handoff_packet_summary.json",
+        "lcri_evidence_lineage_map_summary.json",
+    ]:
+        (path / artifact).write_text(json.dumps({}))
+    (path / "lcri_owner_handoff_packet.md").write_text("# LCRI Owner Handoff Packet\n")
+    figures = path / "figures"
+    figures.mkdir(exist_ok=True)
+    for artifact in [
+        "lcri_cross_artifact_evidence_index.png",
+        "lcri_evidence_release_checklist.png",
+        "lcri_owner_handoff_packet.png",
+        "lcri_evidence_lineage_map.png",
+    ]:
+        (figures / artifact).write_bytes(b"owner-facing lcri placeholder")
+
+
 def test_normalize_snapshots_writes_derived_state(tmp_path: Path) -> None:
     input_path = tmp_path / "raw.csv"
     output_path = tmp_path / "normalized.csv"
@@ -74,6 +101,7 @@ def test_verify_report_accepts_intact_manifest(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    _write_required_owner_facing_lcri_artifacts(tmp_path)
     artifact = tmp_path / "metrics.csv"
     artifact.write_text("signal,value\n")
     overview = tmp_path / "generalization_overview.json"
@@ -420,6 +448,13 @@ def test_verify_report_error_includes_summary(tmp_path: Path) -> None:
     (tmp_path / "artifact_manifest.json").write_text(json.dumps({"artifacts": []}))
 
     with pytest.raises(ValueError, match="passes_verification"):
+        verify_report(tmp_path)
+
+
+def test_verify_report_rejects_omitted_owner_facing_lcri_artifacts(tmp_path: Path) -> None:
+    (tmp_path / "artifact_manifest.json").write_text(json.dumps({"artifacts": []}))
+
+    with pytest.raises(ValueError, match="missing required owner-facing LCRI artifact"):
         verify_report(tmp_path)
 
 

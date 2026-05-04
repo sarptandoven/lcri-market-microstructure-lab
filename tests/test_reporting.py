@@ -2184,6 +2184,51 @@ def test_write_research_summary_marks_missing_transition_generalization_gap(tmp_
     assert text.count("_Not generated._") >= 3
 
 
+def test_write_research_summary_includes_evidence_lineage_map(tmp_path) -> None:
+    path = tmp_path / "summary.md"
+    metrics = pd.DataFrame(
+        [
+            {
+                "signal": "raw_imbalance",
+                "directional_accuracy": 0.55,
+                "brier_score": 0.30,
+                "rank_correlation": 0.10,
+            }
+        ]
+    )
+    lineage_map = pd.DataFrame(
+        [
+            {
+                "scope": "signal",
+                "lineage_status": "complete",
+                "handoff_status": "release_note_monitor",
+            }
+        ]
+    )
+
+    write_research_summary(
+        path,
+        rows=10,
+        train_rows=7,
+        heldout_rows=3,
+        seed=4,
+        train_frac=0.7,
+        metrics=metrics,
+        lcri_evidence_lineage_map=lineage_map,
+        lcri_evidence_lineage_map_summary={
+            "rows": 1,
+            "complete_scopes": 1,
+            "lineage_clear": True,
+        },
+    )
+
+    text = path.read_text()
+    assert "## LCRI evidence lineage map" in text
+    assert "| signal | complete | release_note_monitor |" in text
+    assert "## LCRI evidence lineage map summary" in text
+    assert "- lineage_clear: true" in text
+
+
 def test_write_json_writes_sorted_pretty_payload(tmp_path) -> None:
     path = tmp_path / "payload.json"
 
