@@ -3,15 +3,15 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from lcri_lab.schema import snapshot_required_columns
+from lcri_lab.schema import l2_side_size_columns, snapshot_required_columns
 
 
 def compute_features(order_books: pd.DataFrame, levels: int = 5) -> pd.DataFrame:
     if levels < 1:
         raise ValueError("levels must be at least 1")
 
-    bid_cols = [f"bid_sz_{level}" for level in range(1, levels + 1)]
-    ask_cols = [f"ask_sz_{level}" for level in range(1, levels + 1)]
+    bid_cols = l2_side_size_columns("bid", levels)
+    ask_cols = l2_side_size_columns("ask", levels)
     required = snapshot_required_columns(levels)
     missing = sorted(set(required) - set(order_books.columns))
     if missing:
