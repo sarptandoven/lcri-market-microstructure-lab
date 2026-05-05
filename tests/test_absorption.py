@@ -36,6 +36,6 @@ def test_shadow_absorption_rejects_invalid_thresholds() -> None:
         }
     )
 
-    for threshold in [-0.1, float("nan")]:
+    for threshold in [-0.1, float("nan"), True]:
         with pytest.raises(ValueError, match="threshold"):
             add_shadow_absorption(frame, threshold=threshold)
