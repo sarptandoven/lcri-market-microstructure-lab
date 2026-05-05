@@ -20,8 +20,8 @@ def add_shadow_absorption(
     other way, the book may be absorbing the visible imbalance instead of letting
     it transmit into price.
     """
-    if threshold < 0.0:
-        raise ValueError("threshold must be non-negative")
+    if not np.isfinite(threshold) or threshold < 0.0:
+        raise ValueError("threshold must be finite and non-negative")
     required = [pressure_col, memory_col, decay_col, fracture_col]
     missing = sorted(set(required) - set(frame.columns))
     if missing:

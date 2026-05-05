@@ -26,7 +26,7 @@ def test_shadow_absorption_rejects_missing_columns() -> None:
         add_shadow_absorption(pd.DataFrame({"lcri": [1.0]}))
 
 
-def test_shadow_absorption_rejects_negative_threshold() -> None:
+def test_shadow_absorption_rejects_invalid_thresholds() -> None:
     frame = pd.DataFrame(
         {
             "lcri": [1.0],
@@ -36,5 +36,6 @@ def test_shadow_absorption_rejects_negative_threshold() -> None:
         }
     )
 
-    with pytest.raises(ValueError, match="threshold"):
-        add_shadow_absorption(frame, threshold=-0.1)
+    for threshold in [-0.1, float("nan")]:
+        with pytest.raises(ValueError, match="threshold"):
+            add_shadow_absorption(frame, threshold=threshold)
