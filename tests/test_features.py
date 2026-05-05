@@ -79,9 +79,5 @@ def test_compute_features_rejects_invalid_spreads() -> None:
     books = simulate_order_books(SimulationConfig(rows=10, seed=7))
     books.loc[0, "spread"] = 0.0
 
-    try:
+    with pytest.raises(ValueError, match="spread"):
         compute_features(books)
-    except ValueError as exc:
-        assert "spread" in str(exc)
-    else:
-        raise AssertionError("expected spread validation")
