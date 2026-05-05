@@ -5,6 +5,8 @@ import math
 import numpy as np
 import pandas as pd
 
+from lcri_lab.schema import l2_price_columns, l2_size_columns
+
 
 def normalize_l2_snapshots(
     frame: pd.DataFrame,
@@ -28,16 +30,8 @@ def normalize_l2_snapshots(
         raise ValueError("tick_size must be a finite positive value")
 
     output = frame.copy()
-    price_columns = [
-        f"{side}_px_{level}"
-        for level in range(1, levels + 1)
-        for side in ("bid", "ask")
-    ]
-    size_columns = [
-        f"{side}_sz_{level}"
-        for level in range(1, levels + 1)
-        for side in ("bid", "ask")
-    ]
+    price_columns = l2_price_columns(levels)
+    size_columns = l2_size_columns(levels)
     missing = sorted(set(price_columns + size_columns) - set(output.columns))
     if missing:
         raise ValueError(f"missing L2 snapshot columns: {missing}")
@@ -82,11 +76,7 @@ def add_l2_state_features(
         raise ValueError("volatility_window must be at least 2")
 
     output = frame.copy()
-    size_columns = [
-        f"{side}_sz_{level}"
-        for level in range(1, levels + 1)
-        for side in ("bid", "ask")
-    ]
+    size_columns = l2_size_columns(levels)
     required = ["mid", *size_columns]
     missing = sorted(set(required) - set(output.columns))
     if missing:
