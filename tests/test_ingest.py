@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from lcri_lab.ingest import normalize_l2_snapshots
+from lcri_lab.ingest import add_l2_state_features, normalize_l2_snapshots
 
 
 def _raw_snapshots() -> pd.DataFrame:
@@ -40,3 +40,15 @@ def test_normalize_l2_snapshots_rejects_crossed_quotes() -> None:
 
     with pytest.raises(ValueError, match="best ask"):
         normalize_l2_snapshots(frame, tick_size=0.01, levels=1)
+
+
+def test_normalize_l2_snapshots_rejects_non_integer_levels() -> None:
+    with pytest.raises(ValueError, match="integer"):
+        normalize_l2_snapshots(_raw_snapshots(), tick_size=0.01, levels=1.5)
+
+
+def test_add_l2_state_features_rejects_non_finite_inputs() -> None:
+    frame = pd.DataFrame({"mid": [100.0, float("nan")], "bid_sz_1": [1.0, 1.0], "ask_sz_1": [1.0, 1.0]})
+
+    with pytest.raises(ValueError, match="finite"):
+        add_l2_state_features(frame, levels=1)

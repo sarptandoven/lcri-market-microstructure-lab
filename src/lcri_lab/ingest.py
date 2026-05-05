@@ -24,6 +24,8 @@ def normalize_l2_snapshots(
     are filled from prices so vendor-specific feeds can be adapted before fit
     or score steps.
     """
+    if not isinstance(levels, int) or isinstance(levels, bool):
+        raise ValueError("levels must be an integer")
     if levels < 1:
         raise ValueError("levels must be at least 1")
     if not math.isfinite(tick_size) or tick_size <= 0.0:
@@ -70,6 +72,8 @@ def add_l2_state_features(
     volatility_window: int = 20,
 ) -> pd.DataFrame:
     """Fill state features required by the model from normalized L2 snapshots."""
+    if not isinstance(levels, int) or isinstance(levels, bool):
+        raise ValueError("levels must be an integer")
     if levels < 1:
         raise ValueError("levels must be at least 1")
     if volatility_window < 2:
@@ -81,6 +85,12 @@ def add_l2_state_features(
     missing = sorted(set(required) - set(output.columns))
     if missing:
         raise ValueError(f"missing normalized L2 columns: {missing}")
+
+    values = output[required].to_numpy(dtype=float)
+    if not np.isfinite(values).all():
+        raise ValueError("normalized L2 columns must be finite")
+    if (output[size_columns] < 0.0).to_numpy().any():
+        raise ValueError("normalized L2 sizes must be non-negative")
 
     depth = output[size_columns].sum(axis=1)
     depth_change = depth.diff().abs().fillna(0.0)
