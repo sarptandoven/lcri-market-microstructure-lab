@@ -30,6 +30,12 @@ def test_add_transaction_cost_labels_rejects_missing_prices() -> None:
     with pytest.raises(ValueError, match="missing transaction label columns"):
         add_transaction_cost_labels(pd.DataFrame({"mid": [100.0]}), tick_size=0.01)
 
+def test_add_transaction_cost_labels_rejects_invalid_tick_size() -> None:
+    frame = pd.DataFrame({"mid": [100.0], "next_mid": [100.0]})
+
+    with pytest.raises(ValueError, match="tick_size"):
+        add_transaction_cost_labels(frame, tick_size=0.0)
+
 def test_add_transaction_cost_labels_rejects_invalid_costs() -> None:
     with pytest.raises(ValueError, match="cost_ticks"):
         add_transaction_cost_labels(pd.DataFrame({"mid": [1.0], "next_mid": [1.0]}), tick_size=0.01, cost_ticks=-1.0)
