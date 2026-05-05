@@ -23,6 +23,8 @@ def test_regime_transition_features_mark_entries() -> None:
 def test_regime_transition_features_reject_invalid_window() -> None:
     with pytest.raises(ValueError, match="window"):
         add_regime_transition_features(pd.DataFrame({"regime": ["thick"]}), window=0)
+    with pytest.raises(ValueError, match="integer"):
+        add_regime_transition_features(pd.DataFrame({"regime": ["thick"]}), window=1.5)
 
 
 def test_regime_transition_features_reject_missing_regime() -> None:

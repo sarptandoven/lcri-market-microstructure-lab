@@ -59,6 +59,13 @@ def test_compute_features_rejects_incomplete_snapshots() -> None:
         compute_features(books)
 
 
+def test_compute_features_rejects_non_integer_levels() -> None:
+    books = simulate_order_books(SimulationConfig(rows=10, seed=4))
+
+    with pytest.raises(ValueError, match="integer"):
+        compute_features(books, levels=1.5)
+
+
 def test_compute_features_rejects_non_finite_inputs() -> None:
     books = simulate_order_books(SimulationConfig(rows=10, seed=5))
     books.loc[0, "volatility"] = float("nan")

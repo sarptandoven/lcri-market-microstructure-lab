@@ -7,6 +7,8 @@ from lcri_lab.schema import l2_side_size_columns, snapshot_required_columns
 
 
 def compute_features(order_books: pd.DataFrame, levels: int = 5) -> pd.DataFrame:
+    if not isinstance(levels, int) or isinstance(levels, bool):
+        raise ValueError("levels must be an integer")
     if levels < 1:
         raise ValueError("levels must be at least 1")
 
@@ -87,6 +89,8 @@ def add_regime_transition_features(
     regime_col: str = "regime",
 ) -> pd.DataFrame:
     """Add features that mark liquidity-regime transitions."""
+    if not isinstance(window, int) or isinstance(window, bool):
+        raise ValueError("window must be an integer")
     if window < 1:
         raise ValueError("window must be at least 1")
     if regime_col not in frame.columns:
