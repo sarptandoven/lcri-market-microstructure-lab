@@ -24,7 +24,11 @@ def add_transaction_cost_labels(
         raise ValueError(f"missing transaction label columns: {missing}")
 
     output = frame.copy()
-    gross_ticks = (output["next_mid"].astype(float) - output["mid"].astype(float)) / tick_size
+    mid = output["mid"].astype(float)
+    next_mid = output["next_mid"].astype(float)
+    if not np.isfinite(np.column_stack([mid, next_mid])).all():
+        raise ValueError("transaction label inputs must be finite")
+    gross_ticks = (next_mid - mid) / tick_size
     long_net = gross_ticks - cost_ticks
     short_net = -gross_ticks - cost_ticks
 
