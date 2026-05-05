@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Optional
 
 import numpy as np
@@ -22,6 +23,10 @@ class LiquidityBaseline:
     mean_: Optional[np.ndarray] = None
     scale_: Optional[np.ndarray] = None
     residual_scale_by_regime: Optional[dict[str, float]] = None
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.ridge) or self.ridge < 0.0:
+            raise ValueError("ridge must be a finite non-negative value")
 
     def fit(self, frame: pd.DataFrame) -> "LiquidityBaseline":
         if frame.empty:
@@ -83,6 +88,8 @@ def _design_matrix(frame: pd.DataFrame) -> np.ndarray:
     if missing:
         raise ValueError(f"missing feature columns: {missing}")
     x = frame[cols].to_numpy(dtype=float)
+    if not np.isfinite(x).all():
+        raise ValueError("feature columns must be finite")
     interactions = np.column_stack(
         [
             frame["spread_ticks"].to_numpy(dtype=float) * frame["replenishment_rate"].to_numpy(dtype=float),
@@ -90,4 +97,6 @@ def _design_matrix(frame: pd.DataFrame) -> np.ndarray:
             frame["log_total_depth"].to_numpy(dtype=float) * frame["depth_slope"].to_numpy(dtype=float),
         ]
     )
+    if not np.isfinite(interactions).all():
+        raise ValueError("feature interactions must be finite")
     return np.column_stack([x, interactions])
