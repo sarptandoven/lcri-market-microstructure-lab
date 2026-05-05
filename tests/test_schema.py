@@ -18,6 +18,13 @@ def test_l2_side_size_columns_track_one_side() -> None:
     assert l2_side_size_columns("ask", levels=2) == ["ask_sz_1", "ask_sz_2"]
 
 
+def test_l2_side_size_columns_rejects_unknown_side() -> None:
+    with pytest.raises(ValueError, match="side"):
+        l2_side_size_columns("mid", levels=2)
+
+
 def test_snapshot_required_columns_rejects_invalid_levels() -> None:
     with pytest.raises(ValueError, match="levels"):
         snapshot_required_columns(levels=0)
+    with pytest.raises(ValueError, match="integer"):
+        snapshot_required_columns(levels=1.5)

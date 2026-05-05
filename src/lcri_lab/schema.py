@@ -2,6 +2,8 @@ from __future__ import annotations
 
 
 def _validate_levels(levels: int) -> None:
+    if not isinstance(levels, int) or isinstance(levels, bool):
+        raise ValueError("levels must be an integer")
     if levels < 1:
         raise ValueError("levels must be at least 1")
 
