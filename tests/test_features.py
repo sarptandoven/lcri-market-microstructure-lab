@@ -55,12 +55,8 @@ def test_tag_liquidity_regimes_overwrites_unclassified_regime() -> None:
 def test_compute_features_rejects_incomplete_snapshots() -> None:
     books = simulate_order_books(SimulationConfig(rows=10, seed=4)).drop(columns=["bid_sz_3"])
 
-    try:
+    with pytest.raises(ValueError, match="bid_sz_3"):
         compute_features(books)
-    except ValueError as exc:
-        assert "bid_sz_3" in str(exc)
-    else:
-        raise AssertionError("expected missing column validation")
 
 
 def test_compute_features_rejects_non_finite_inputs() -> None:
