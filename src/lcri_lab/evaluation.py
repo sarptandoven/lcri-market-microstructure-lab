@@ -15,6 +15,8 @@ def evaluate_signals(frame: pd.DataFrame, signals: list[str] | None = None) -> p
     for signal in signals:
         score = frame[signal].to_numpy(dtype=float)
         target = frame["future_direction"].to_numpy(dtype=float)
+        if not np.isfinite(score).all() or not np.isfinite(target).all():
+            raise ValueError("signal evaluation inputs must be finite")
         probability = _logistic(_standardize(score))
         rows.append(
             {
@@ -82,6 +84,7 @@ def generalization_gap_leaderboard(
     limit: int = 10,
 ) -> pd.DataFrame:
     """Rank the largest directional accuracy gaps across generalization tables."""
+    _validate_limit(limit)
     rows = [
         *_gap_rows(signal_gap, scope="signal", context_column=None),
         *_gap_rows(regime_gap, scope="regime", context_column="regime"),
@@ -105,6 +108,7 @@ def lcri_generalization_gap_leaderboard(
     limit: int = 10,
 ) -> pd.DataFrame:
     """Rank LCRI-only directional accuracy gaps across generalization tables."""
+    _validate_limit(limit)
     leaderboard = generalization_gap_leaderboard(
         signal_gap,
         regime_gap,
@@ -147,6 +151,13 @@ def lcri_worst_generalization_context(lcri_leaderboard: pd.DataFrame) -> dict[st
         "context": str(row["context"]),
         "directional_accuracy_gap": float(row["directional_accuracy_gap"]),
     }
+
+
+def _validate_limit(limit: int) -> None:
+    if not isinstance(limit, int) or isinstance(limit, bool):
+        raise ValueError("limit must be an integer")
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
 
 
 
@@ -252,8 +263,8 @@ def generalization_stability_confidence_intervals(
         "directional_accuracy_gap",
         "gap_exceeds_ci_half_width",
     ]
-    if z_score <= 0.0:
-        raise ValueError("z_score must be positive")
+    if not np.isfinite(z_score) or z_score <= 0.0:
+        raise ValueError("z_score must be finite and positive")
     if fragility_diagnostics.empty:
         return pd.DataFrame(columns=columns)
     _require_columns(

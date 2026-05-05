@@ -74,6 +74,18 @@ def test_summarize_signal_lift_reports_metric_deltas() -> None:
     assert all(isinstance(value, float) for value in summary.values())
 
 
+def test_evaluate_signals_rejects_non_finite_inputs() -> None:
+    frame = pd.DataFrame(
+        {
+            "raw_imbalance": [0.1, float("nan")],
+            "future_direction": [1.0, 0.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="finite"):
+        evaluate_signals(frame, signals=["raw_imbalance"])
+
+
 def test_generalization_gap_leaderboard_ranks_all_scopes() -> None:
     signal_gap = pd.DataFrame(
         {"signal": ["lcri"], "directional_accuracy_gap": [0.05]}
@@ -94,6 +106,12 @@ def test_generalization_gap_leaderboard_ranks_all_scopes() -> None:
     assert output.loc[0, "scope"] == "regime"
     assert output.loc[0, "context"] == "thin"
     assert output.loc[0, "directional_accuracy_gap"] == pytest.approx(0.08)
+
+
+def test_generalization_gap_leaderboard_rejects_invalid_limit() -> None:
+    for limit in [0, 1.5]:
+        with pytest.raises(ValueError, match="limit"):
+            generalization_gap_leaderboard(pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), limit=limit)
 
 
 def test_lcri_generalization_gap_leaderboard_filters_other_signals() -> None:
@@ -123,6 +141,12 @@ def test_lcri_generalization_gap_leaderboard_filters_other_signals() -> None:
     assert list(output["signal"]) == ["lcri", "lcri"]
     assert output.loc[0, "scope"] == "regime"
     assert output.loc[0, "context"] == "thin"
+
+
+def test_lcri_generalization_gap_leaderboard_rejects_invalid_limit() -> None:
+    for limit in [0, 1.5]:
+        with pytest.raises(ValueError, match="limit"):
+            lcri_generalization_gap_leaderboard(pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), limit=limit)
 
 
 def test_lcri_generalization_scope_summary_groups_gap_rows() -> None:
@@ -230,6 +254,12 @@ def test_generalization_stability_confidence_intervals_bound_heldout_accuracy() 
     assert output.loc["all", "heldout_directional_accuracy_ci_width"] == pytest.approx(0.196)
     assert bool(output.loc["all", "gap_exceeds_ci_half_width"])
     assert output.loc["thin", "heldout_directional_accuracy_ci_upper"] == pytest.approx(1.0)
+
+
+def test_generalization_stability_confidence_intervals_rejects_invalid_z_score() -> None:
+    for z_score in [0.0, float("nan")]:
+        with pytest.raises(ValueError, match="z_score"):
+            generalization_stability_confidence_intervals(pd.DataFrame(), z_score=z_score)
 
 
 def test_generalization_stability_confidence_summary_counts_gap_flags() -> None:
