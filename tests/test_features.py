@@ -63,12 +63,8 @@ def test_compute_features_rejects_non_finite_inputs() -> None:
     books = simulate_order_books(SimulationConfig(rows=10, seed=5))
     books.loc[0, "volatility"] = float("nan")
 
-    try:
+    with pytest.raises(ValueError, match="finite"):
         compute_features(books)
-    except ValueError as exc:
-        assert "finite" in str(exc)
-    else:
-        raise AssertionError("expected finite-value validation")
 
 
 def test_compute_features_rejects_negative_sizes() -> None:
