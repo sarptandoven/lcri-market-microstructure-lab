@@ -58,8 +58,16 @@ def add_publishability_gate(
 
     output = frame.copy()
     probability = output["lcri_probability"].astype(float)
-    long_edge = output["long_net_return_ticks"].astype(float) - config.crowding_penalty_ticks - config.latency_penalty_ticks
-    short_edge = output["short_net_return_ticks"].astype(float) - config.crowding_penalty_ticks - config.latency_penalty_ticks
+    long_return = output["long_net_return_ticks"].astype(float)
+    short_return = output["short_net_return_ticks"].astype(float)
+    if not np.isfinite(np.column_stack([probability, long_return, short_return])).all():
+        raise ValueError("publishability inputs must be finite")
+    penalty = config.crowding_penalty_ticks + config.latency_penalty_ticks
+    long_edge = long_return - penalty
+    short_edge = short_return - penalty
+    values = np.column_stack([probability, long_edge, short_edge])
+    if not np.isfinite(values).all():
+        raise ValueError("publishability inputs must be finite")
 
     long_candidate = (probability >= config.probability_threshold) & (long_edge >= config.min_edge_ticks)
     short_candidate = ((1.0 - probability) >= config.probability_threshold) & (short_edge >= config.min_edge_ticks)

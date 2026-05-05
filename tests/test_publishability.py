@@ -33,6 +33,24 @@ def test_publishability_gate_requires_cost_aware_columns() -> None:
         add_publishability_gate(pd.DataFrame({"lcri_probability": [0.7]}))
 
 
+def test_publishability_gate_rejects_non_finite_inputs() -> None:
+    frame = pd.DataFrame(
+        {
+            "lcri_probability": [float("nan")],
+            "long_net_return_ticks": [1.0],
+            "short_net_return_ticks": [-1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="finite"):
+        add_publishability_gate(frame)
+
+
 def test_publishability_config_rejects_invalid_probability_threshold() -> None:
     with pytest.raises(ValueError, match="probability_threshold"):
         PublishabilityConfig(probability_threshold=0.2)
+
+
+def test_publishability_config_rejects_non_finite_controls() -> None:
+    with pytest.raises(ValueError, match="min_edge_ticks"):
+        PublishabilityConfig(min_edge_ticks=float("nan"))
