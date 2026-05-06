@@ -33,6 +33,10 @@ def write_figures(
     lcri_owner_handoff_packet: pd.DataFrame | None = None,
     lcri_evidence_lineage_map: pd.DataFrame | None = None,
 ) -> None:
+    if frame.empty:
+        raise ValueError("cannot write figures from an empty frame")
+    if regime_table.empty:
+        raise ValueError("cannot write figures from an empty regime table")
     output_dir.mkdir(parents=True, exist_ok=True)
     _scatter(frame, output_dir / "raw_vs_lcri_scatter.png")
     _regime_bars(regime_table, output_dir / "regime_signal_quality.png")

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from lcri_lab.plotting import write_figures
 
@@ -28,6 +29,13 @@ def test_write_figures_keeps_heldout_outputs_optional(tmp_path: Path) -> None:
     assert not (tmp_path / "lcri_evidence_release_checklist.png").exists()
     assert not (tmp_path / "lcri_owner_handoff_packet.png").exists()
     assert not (tmp_path / "lcri_evidence_lineage_map.png").exists()
+
+
+def test_write_figures_rejects_empty_inputs(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="empty frame"):
+        write_figures(pd.DataFrame(), _regime_table(), tmp_path)
+    with pytest.raises(ValueError, match="empty regime"):
+        write_figures(_scored_frame(), pd.DataFrame(), tmp_path)
 
 
 def test_write_figures_writes_generalization_fragility_plot(tmp_path: Path) -> None:
