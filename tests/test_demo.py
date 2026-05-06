@@ -50,6 +50,12 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_lcri_signal_monotonicity.csv").exists()
     assert (tmp_path / "lcri_signal_monotonicity_summary.json").exists()
     assert (tmp_path / "heldout_lcri_signal_monotonicity_summary.json").exists()
+    assert (tmp_path / "lcri_calibration_curve.csv").exists()
+    assert (tmp_path / "heldout_lcri_calibration_curve.csv").exists()
+    assert (tmp_path / "lcri_calibration_summary.json").exists()
+    assert (tmp_path / "heldout_lcri_calibration_summary.json").exists()
+    assert (tmp_path / "lcri_calibration_gate.json").exists()
+    assert (tmp_path / "heldout_lcri_calibration_gate.json").exists()
     assert (tmp_path / "transition_robustness.json").exists()
     assert (tmp_path / "heldout_transition_robustness.json").exists()
     assert (tmp_path / "research_summary.md").exists()
@@ -85,6 +91,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
     assert "passes_monotonicity_gate" in monotonicity
+    calibration_gate = json.loads((tmp_path / "lcri_calibration_gate.json").read_text())
+    assert "expected_calibration_error" in calibration_gate
     robustness = json.loads((tmp_path / "transition_robustness.json").read_text())
     assert "passes_transition_robustness" in robustness
     metadata_summary = json.loads((tmp_path / "artifact_metadata_summary.json").read_text())

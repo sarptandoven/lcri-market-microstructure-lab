@@ -7,6 +7,9 @@ from pathlib import Path
 import pandas as pd
 
 from lcri_lab.evaluation import (
+    calibration_curve,
+    calibration_error_summary,
+    calibration_gate_decision,
     evaluate_signals,
     generalization_fragility_diagnostics,
     generalization_fragility_summary,
@@ -345,6 +348,12 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_lcri_monotonicity_summary = signal_quantile_monotonicity_summary(
         heldout_lcri_monotonicity
     )
+    lcri_calibration = calibration_curve(scored, "lcri")
+    heldout_lcri_calibration = calibration_curve(heldout_scored, "lcri")
+    lcri_calibration_summary = calibration_error_summary(lcri_calibration)
+    heldout_lcri_calibration_summary = calibration_error_summary(heldout_lcri_calibration)
+    lcri_calibration_gate = calibration_gate_decision(lcri_calibration_summary)
+    heldout_lcri_calibration_gate = calibration_gate_decision(heldout_lcri_calibration_summary)
     transition_robustness = transition_robustness_summary(scored)
     heldout_transition_robustness = transition_robustness_summary(heldout_scored)
 
@@ -414,6 +423,12 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "heldout_lcri_signal_monotonicity.csv",
         "lcri_signal_monotonicity_summary.json",
         "heldout_lcri_signal_monotonicity_summary.json",
+        "lcri_calibration_curve.csv",
+        "heldout_lcri_calibration_curve.csv",
+        "lcri_calibration_summary.json",
+        "heldout_lcri_calibration_summary.json",
+        "lcri_calibration_gate.json",
+        "heldout_lcri_calibration_gate.json",
         "transition_robustness.json",
         "heldout_transition_robustness.json",
         "research_summary.md",
@@ -542,6 +557,12 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         output / "heldout_lcri_signal_monotonicity_summary.json",
         heldout_lcri_monotonicity_summary,
     )
+    lcri_calibration.to_csv(output / "lcri_calibration_curve.csv", index=False)
+    heldout_lcri_calibration.to_csv(output / "heldout_lcri_calibration_curve.csv", index=False)
+    write_json(output / "lcri_calibration_summary.json", lcri_calibration_summary)
+    write_json(output / "heldout_lcri_calibration_summary.json", heldout_lcri_calibration_summary)
+    write_json(output / "lcri_calibration_gate.json", lcri_calibration_gate)
+    write_json(output / "heldout_lcri_calibration_gate.json", heldout_lcri_calibration_gate)
     write_json(output / "transition_robustness.json", transition_robustness)
     write_json(output / "heldout_transition_robustness.json", heldout_transition_robustness)
     write_figures(
