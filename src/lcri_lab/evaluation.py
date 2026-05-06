@@ -2589,6 +2589,42 @@ def calibration_error_summary(curve: pd.DataFrame) -> dict[str, float | int | st
 
 
 
+def calibration_gate_decision(
+    summary: dict[str, float | int | str],
+    *,
+    max_ece: float = 0.05,
+    max_bin_error: float = 0.15,
+) -> dict[str, bool | float | int | str]:
+    """Build a deterministic release gate from calibration error summary metrics."""
+    if max_ece < 0.0 or max_bin_error < 0.0:
+        raise ValueError("calibration thresholds must be non-negative")
+    _require_mapping_keys(
+        summary,
+        [
+            "bins",
+            "rows",
+            "expected_calibration_error",
+            "max_calibration_error",
+            "worst_calibration_bin",
+        ],
+        label="calibration summary",
+    )
+    ece = float(summary["expected_calibration_error"])
+    max_error = float(summary["max_calibration_error"])
+    passes = ece <= max_ece and max_error <= max_bin_error
+    return {
+        "passes": bool(passes),
+        "decision": "pass" if passes else "block",
+        "bins_evaluated": int(summary["bins"]),
+        "rows_evaluated": int(summary["rows"]),
+        "expected_calibration_error": ece,
+        "max_calibration_error": max_error,
+        "worst_calibration_bin": str(summary["worst_calibration_bin"]),
+        "reason": _calibration_gate_reason(passes, ece, max_error, max_ece, max_bin_error),
+    }
+
+
+
 def _fragility_rows(
     metrics: pd.DataFrame,
     heldout_metrics: pd.DataFrame,
@@ -3082,6 +3118,24 @@ def _require_mapping_keys(payload: dict[str, object], keys: list[str], *, label:
     missing = sorted(set(keys) - set(payload))
     if missing:
         raise ValueError(f"incomplete {label}: {missing}")
+
+
+def _calibration_gate_reason(
+    passes: bool,
+    ece: float,
+    max_error: float,
+    max_ece: float,
+    max_bin_error: float,
+) -> str:
+    if passes:
+        return "calibration passed release thresholds"
+    reasons = []
+    if ece > max_ece:
+        reasons.append(f"ECE {ece:.4f} exceeds {max_ece:.4f}")
+    if max_error > max_bin_error:
+        reasons.append(f"max bin error {max_error:.4f} exceeds {max_bin_error:.4f}")
+    return "; ".join(reasons)
+
 
 
 def _lcri_scope_gate_reason(row: dict[str, object]) -> str:

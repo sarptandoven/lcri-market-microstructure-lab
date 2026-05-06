@@ -4,6 +4,7 @@ import pytest
 from lcri_lab.evaluation import (
     calibration_curve,
     calibration_error_summary,
+    calibration_gate_decision,
     evaluate_signals,
     generalization_fragility_diagnostics,
     generalization_fragility_summary,
@@ -1528,6 +1529,40 @@ def test_calibration_error_summary_reports_weighted_error() -> None:
         "max_calibration_error": pytest.approx(0.25),
         "worst_calibration_bin": "1.0",
     }
+
+
+def test_calibration_gate_decision_blocks_error_breaches() -> None:
+    summary = {
+        "bins": 10,
+        "rows": 1000,
+        "expected_calibration_error": 0.08,
+        "max_calibration_error": 0.20,
+        "worst_calibration_bin": "7",
+    }
+
+    decision = calibration_gate_decision(summary, max_ece=0.05, max_bin_error=0.15)
+
+    assert decision["passes"] is False
+    assert decision["decision"] == "block"
+    assert decision["worst_calibration_bin"] == "7"
+    assert "ECE 0.0800 exceeds 0.0500" in decision["reason"]
+    assert "max bin error 0.2000 exceeds 0.1500" in decision["reason"]
+
+
+def test_calibration_gate_decision_passes_clean_summary() -> None:
+    summary = {
+        "bins": 8,
+        "rows": 500,
+        "expected_calibration_error": 0.02,
+        "max_calibration_error": 0.06,
+        "worst_calibration_bin": "3",
+    }
+
+    decision = calibration_gate_decision(summary)
+
+    assert decision["passes"] is True
+    assert decision["decision"] == "pass"
+    assert decision["reason"] == "calibration passed release thresholds"
 
 
 def test_calibration_error_summary_rejects_negative_rows() -> None:
