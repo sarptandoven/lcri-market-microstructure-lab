@@ -46,9 +46,10 @@ def test_publishability_gate_rejects_non_finite_inputs() -> None:
         add_publishability_gate(frame)
 
 
-def test_publishability_config_rejects_invalid_probability_threshold() -> None:
+@pytest.mark.parametrize("threshold", [0.2, 1.1])
+def test_publishability_config_rejects_invalid_probability_threshold(threshold: float) -> None:
     with pytest.raises(ValueError, match="probability_threshold"):
-        PublishabilityConfig(probability_threshold=0.2)
+        PublishabilityConfig(probability_threshold=threshold)
 
 
 def test_publishability_config_rejects_non_finite_controls() -> None:
