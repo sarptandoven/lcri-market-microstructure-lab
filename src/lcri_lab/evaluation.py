@@ -2493,6 +2493,45 @@ def signal_quantile_monotonicity(
 
 
 
+def signal_quantile_monotonicity_summary(
+    monotonicity: pd.DataFrame,
+) -> dict[str, float | int | str | bool]:
+    """Summarize quantile monotonicity violations for model validation gates."""
+    if monotonicity.empty:
+        return {
+            "quantiles": 0,
+            "monotonicity_violation_rows": 0,
+            "worst_negative_slope": 0.0,
+            "worst_negative_slope_quantile": "none",
+            "mean_observed_frequency": 0.0,
+            "passes_monotonicity_gate": True,
+        }
+    _require_columns(
+        monotonicity,
+        [
+            "quantile",
+            "observed_frequency",
+            "adjacent_frequency_slope",
+            "monotonicity_violation",
+        ],
+    )
+    slope = monotonicity["adjacent_frequency_slope"].astype(float)
+    observed = monotonicity["observed_frequency"].astype(float)
+    if not np.isfinite(np.column_stack([slope, observed])).all():
+        raise ValueError("monotonicity diagnostics must be finite")
+    violations = monotonicity["monotonicity_violation"].astype(bool)
+    worst = monotonicity.loc[slope.idxmin()]
+    return {
+        "quantiles": len(monotonicity),
+        "monotonicity_violation_rows": int(violations.sum()),
+        "worst_negative_slope": float(min(slope.min(), 0.0)),
+        "worst_negative_slope_quantile": str(worst["quantile"]),
+        "mean_observed_frequency": float(observed.mean()),
+        "passes_monotonicity_gate": bool(not violations.any()),
+    }
+
+
+
 def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.DataFrame:
     if bins < 1:
         raise ValueError("bins must be at least 1")

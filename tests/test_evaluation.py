@@ -55,6 +55,7 @@ from lcri_lab.evaluation import (
     regime_metrics,
     signal_generalization_gap,
     signal_quantile_monotonicity,
+    signal_quantile_monotonicity_summary,
     summarize_signal_lift,
 )
 from lcri_lab.model import LCRIModel
@@ -75,6 +76,28 @@ def test_signal_quantile_monotonicity_flags_reversals() -> None:
     assert output["observed_frequency"].tolist() == pytest.approx([0.5, 1.0, 0.0])
     assert output["adjacent_frequency_slope"].tolist() == pytest.approx([0.0, 0.5, -1.0])
     assert output["monotonicity_violation"].tolist() == [False, False, True]
+
+
+def test_signal_quantile_monotonicity_summary_gates_violations() -> None:
+    monotonicity = pd.DataFrame(
+        {
+            "quantile": [0, 1, 2],
+            "observed_frequency": [0.2, 0.8, 0.5],
+            "adjacent_frequency_slope": [0.0, 0.6, -0.3],
+            "monotonicity_violation": [False, False, True],
+        }
+    )
+
+    summary = signal_quantile_monotonicity_summary(monotonicity)
+
+    assert summary == {
+        "quantiles": 3,
+        "monotonicity_violation_rows": 1,
+        "worst_negative_slope": pytest.approx(-0.3),
+        "worst_negative_slope_quantile": "2",
+        "mean_observed_frequency": pytest.approx(0.5),
+        "passes_monotonicity_gate": False,
+    }
 
 
 def test_signal_quantile_monotonicity_rejects_constant_signal() -> None:
