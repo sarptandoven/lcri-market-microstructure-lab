@@ -20,8 +20,8 @@ def add_queue_reversal_risk(
     pressure, and the book has voids behind the touch. That combination can mark
     a crowded signal that is likely to snap back rather than continue.
     """
-    if threshold < 0.0:
-        raise ValueError("threshold must be non-negative")
+    if not np.isfinite(threshold) or threshold < 0.0:
+        raise ValueError("threshold must be finite and non-negative")
     required = [pressure_col, memory_col, transmission_col, void_col]
     missing = sorted(set(required) - set(frame.columns))
     if missing:
