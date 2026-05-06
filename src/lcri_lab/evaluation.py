@@ -2448,6 +2448,51 @@ def evaluate_cost_aware_signals(
     return pd.DataFrame(rows)
 
 
+def signal_quantile_monotonicity(
+    frame: pd.DataFrame,
+    signal: str,
+    *,
+    quantiles: int = 10,
+) -> pd.DataFrame:
+    """Audit whether larger signal quantiles map to higher future-up frequency.
+
+    Directional accuracy can hide a brittle score shape. This diagnostic bins the
+    signal by empirical quantile and reports the observed target rate, adjacent
+    target-rate slope, and monotonicity violation flag for each populated bucket.
+    """
+    if quantiles < 2:
+        raise ValueError("quantiles must be at least 2")
+    _require_columns(frame, [signal, "future_direction"])
+    score = frame[signal].to_numpy(dtype=float)
+    target = frame["future_direction"].to_numpy(dtype=float)
+    if not np.isfinite(np.column_stack([score, target])).all():
+        raise ValueError("monotonicity inputs must be finite")
+    if np.std(score) == 0.0:
+        raise ValueError("signal must vary across rows")
+
+    bucket = pd.qcut(score, q=quantiles, labels=False, duplicates="drop")
+    rows = []
+    previous_rate: float | None = None
+    for quantile in sorted(pd.Series(bucket).dropna().unique()):
+        mask = bucket == quantile
+        target_rate = float(np.mean(target[mask]))
+        slope = 0.0 if previous_rate is None else target_rate - previous_rate
+        rows.append(
+            {
+                "signal": signal,
+                "quantile": int(quantile),
+                "rows": int(np.sum(mask)),
+                "mean_score": float(np.mean(score[mask])),
+                "observed_frequency": target_rate,
+                "adjacent_frequency_slope": slope,
+                "monotonicity_violation": bool(previous_rate is not None and slope < 0.0),
+            }
+        )
+        previous_rate = target_rate
+    return pd.DataFrame(rows)
+
+
+
 def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.DataFrame:
     if bins < 1:
         raise ValueError("bins must be at least 1")

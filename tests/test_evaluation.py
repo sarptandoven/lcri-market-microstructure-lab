@@ -54,10 +54,34 @@ from lcri_lab.evaluation import (
     regime_generalization_gap,
     regime_metrics,
     signal_generalization_gap,
+    signal_quantile_monotonicity,
     summarize_signal_lift,
 )
 from lcri_lab.model import LCRIModel
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
+
+
+def test_signal_quantile_monotonicity_flags_reversals() -> None:
+    frame = pd.DataFrame(
+        {
+            "lcri": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+            "future_direction": [0, 1, 1, 1, 0, 0],
+        }
+    )
+
+    output = signal_quantile_monotonicity(frame, "lcri", quantiles=3)
+
+    assert output["rows"].tolist() == [2, 2, 2]
+    assert output["observed_frequency"].tolist() == pytest.approx([0.5, 1.0, 0.0])
+    assert output["adjacent_frequency_slope"].tolist() == pytest.approx([0.0, 0.5, -1.0])
+    assert output["monotonicity_violation"].tolist() == [False, False, True]
+
+
+def test_signal_quantile_monotonicity_rejects_constant_signal() -> None:
+    frame = pd.DataFrame({"lcri": [1.0, 1.0, 1.0], "future_direction": [0, 1, 1]})
+
+    with pytest.raises(ValueError, match="signal must vary"):
+        signal_quantile_monotonicity(frame, "lcri", quantiles=3)
 
 
 def test_summarize_signal_lift_reports_metric_deltas() -> None:
