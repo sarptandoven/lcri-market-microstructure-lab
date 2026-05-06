@@ -618,6 +618,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         transition_lift=transition_lift,
         transition_robustness=transition_robustness,
         heldout_transition_lift=heldout_transition_lift,
+        lcri_signal_monotonicity=lcri_monotonicity,
+        heldout_lcri_signal_monotonicity=heldout_lcri_monotonicity,
+        lcri_signal_monotonicity_summary=lcri_monotonicity_summary,
+        heldout_lcri_signal_monotonicity_summary=heldout_lcri_monotonicity_summary,
         heldout_transition_robustness=heldout_transition_robustness,
     )
     coverage_matrix = artifact_coverage_matrix(artifact_paths)

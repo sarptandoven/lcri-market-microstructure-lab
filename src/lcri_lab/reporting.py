@@ -2743,6 +2743,10 @@ def write_research_summary(
     transition_lift: pd.DataFrame | None = None,
     transition_robustness: dict[str, Any] | None = None,
     heldout_transition_lift: pd.DataFrame | None = None,
+    lcri_signal_monotonicity: pd.DataFrame | None = None,
+    heldout_lcri_signal_monotonicity: pd.DataFrame | None = None,
+    lcri_signal_monotonicity_summary: dict[str, Any] | None = None,
+    heldout_lcri_signal_monotonicity_summary: dict[str, Any] | None = None,
     heldout_transition_robustness: dict[str, Any] | None = None,
 ) -> None:
     """Write a compact markdown summary of the demo artifacts."""
@@ -3027,6 +3031,20 @@ def write_research_summary(
                     for key, value in (transition_robustness or {}).items()
                 ],
                 "",
+                "## LCRI signal monotonicity",
+                "",
+                _markdown_table(lcri_signal_monotonicity)
+                if lcri_signal_monotonicity is not None
+                else "_Not generated._",
+                "",
+                "## LCRI signal monotonicity summary",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (lcri_signal_monotonicity_summary or {}).items()
+                ],
+                "" if lcri_signal_monotonicity_summary else "_Not generated._",
+                "",
                 "## Heldout transition lift",
                 "",
                 _markdown_table(heldout_transition_lift)
@@ -3039,6 +3057,20 @@ def write_research_summary(
                     f"- {key}: {_format_value(value)}"
                     for key, value in (heldout_transition_robustness or {}).items()
                 ],
+                "",
+                "## Heldout LCRI signal monotonicity",
+                "",
+                _markdown_table(heldout_lcri_signal_monotonicity)
+                if heldout_lcri_signal_monotonicity is not None
+                else "_Not generated._",
+                "",
+                "## Heldout LCRI signal monotonicity summary",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (heldout_lcri_signal_monotonicity_summary or {}).items()
+                ],
+                "" if heldout_lcri_signal_monotonicity_summary else "_Not generated._",
                 "",
             ]
         )
@@ -3144,8 +3176,12 @@ _RESEARCH_SUMMARY_ARTIFACT_SECTIONS = {
     "LCRI owner handoff packet summary": "lcri_owner_handoff_packet_summary.json",
     "Transition lift": "transition_lift.csv",
     "Transition robustness": "transition_robustness.json",
+    "LCRI signal monotonicity": "lcri_signal_monotonicity.csv",
+    "LCRI signal monotonicity summary": "lcri_signal_monotonicity_summary.json",
     "Heldout transition lift": "heldout_transition_lift.csv",
     "Heldout transition robustness": "heldout_transition_robustness.json",
+    "Heldout LCRI signal monotonicity": "heldout_lcri_signal_monotonicity.csv",
+    "Heldout LCRI signal monotonicity summary": "heldout_lcri_signal_monotonicity_summary.json",
 }
 
 
