@@ -6,6 +6,20 @@ def test_public_api_exports_calibration_curve() -> None:
     assert "calibration_curve" in lcri_lab.__all__
 
 
+def test_public_api_exports_calibration_error_gates() -> None:
+    assert callable(lcri_lab.calibration_error_summary)
+    assert callable(lcri_lab.calibration_gate_decision)
+    assert "calibration_error_summary" in lcri_lab.__all__
+    assert "calibration_gate_decision" in lcri_lab.__all__
+
+
+def test_public_api_exports_signal_monotonicity_validation() -> None:
+    assert callable(lcri_lab.signal_quantile_monotonicity)
+    assert callable(lcri_lab.signal_quantile_monotonicity_summary)
+    assert "signal_quantile_monotonicity" in lcri_lab.__all__
+    assert "signal_quantile_monotonicity_summary" in lcri_lab.__all__
+
+
 def test_public_api_exports_artifact_version() -> None:
     assert lcri_lab.ARTIFACT_VERSION == 2
     assert "ARTIFACT_VERSION" in lcri_lab.__all__
