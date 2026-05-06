@@ -20,6 +20,8 @@ def add_pressure_memory(
     different state: the book keeps showing abnormal pressure while the ladder
     remains internally inconsistent.
     """
+    if not isinstance(window, int) or isinstance(window, bool):
+        raise ValueError("window must be an integer")
     if window < 2:
         raise ValueError("window must be at least 2")
     required = [signal_col, fracture_col]

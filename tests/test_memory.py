@@ -31,9 +31,21 @@ def test_pressure_memory_rejects_missing_inputs() -> None:
         add_pressure_memory(pd.DataFrame({"lcri": [1.0]}))
 
 
+def test_pressure_memory_rejects_non_finite_inputs() -> None:
+    frame = pd.DataFrame({"lcri": [float("nan")], "imbalance_fracture": [0.1]})
+
+    with pytest.raises(ValueError, match="finite"):
+        add_pressure_memory(frame)
+
+
 def test_pressure_memory_rejects_invalid_window() -> None:
     with pytest.raises(ValueError, match="window"):
         add_pressure_memory(
             pd.DataFrame({"lcri": [1.0], "imbalance_fracture": [0.1]}),
             window=1,
+        )
+    with pytest.raises(ValueError, match="integer"):
+        add_pressure_memory(
+            pd.DataFrame({"lcri": [1.0], "imbalance_fracture": [0.1]}),
+            window=2.5,
         )
