@@ -73,7 +73,11 @@ from lcri_lab.features import (
 from lcri_lab.labels import add_transaction_cost_labels
 from lcri_lab.memory import add_pressure_memory
 from lcri_lab.model import ARTIFACT_VERSION, LCRIModel, ModelConfig
-from lcri_lab.publishability import PublishabilityConfig, add_publishability_gate
+from lcri_lab.publishability import (
+    PublishabilityConfig,
+    add_publishability_gate,
+    publishability_margin_diagnostics,
+)
 from lcri_lab.reversal import add_queue_reversal_risk
 from lcri_lab.schema import snapshot_required_columns
 from lcri_lab.sensitivity import publishability_latency_sweep
@@ -93,6 +97,7 @@ __all__ = [
     "ModelConfig",
     "PublishabilityConfig",
     "publishability_latency_sweep",
+    "publishability_margin_diagnostics",
     "SimulationConfig",
     "calibration_curve",
     "compare_transmission_signal",

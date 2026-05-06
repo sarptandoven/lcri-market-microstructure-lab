@@ -1,7 +1,53 @@
 import pandas as pd
 import pytest
 
-from lcri_lab.publishability import PublishabilityConfig, add_publishability_gate
+from lcri_lab.publishability import (
+    PublishabilityConfig,
+    add_publishability_gate,
+    publishability_margin_diagnostics,
+)
+
+
+def test_publishability_margin_diagnostics_quantifies_threshold_frontier() -> None:
+    frame = pd.DataFrame(
+        {
+            "lcri_probability": [0.66, 0.34, 0.54],
+            "long_net_return_ticks": [1.00, -0.20, 0.61],
+            "short_net_return_ticks": [-0.20, 0.95, 0.50],
+        }
+    )
+
+    output = publishability_margin_diagnostics(
+        frame,
+        config=PublishabilityConfig(
+            min_edge_ticks=0.50,
+            probability_threshold=0.60,
+            latency_penalty_ticks=0.05,
+        ),
+    )
+
+    assert output["preferred_side"].tolist() == ["long", "short", "long"]
+    assert output["publishability_margin"].tolist() == pytest.approx([0.06, 0.06, -0.06])
+    assert output["frontier_distance"].tolist() == pytest.approx([0.06, 0.06, 0.06])
+    assert output["is_threshold_fragile"].tolist() == [False, False, False]
+
+
+def test_publishability_margin_diagnostics_marks_near_frontier_rows() -> None:
+    frame = pd.DataFrame(
+        {
+            "lcri_probability": [0.59],
+            "long_net_return_ticks": [0.54],
+            "short_net_return_ticks": [0.10],
+        }
+    )
+
+    output = publishability_margin_diagnostics(
+        frame,
+        config=PublishabilityConfig(min_edge_ticks=0.50, probability_threshold=0.60),
+    )
+
+    assert output.loc[0, "publishability_margin"] == pytest.approx(-0.01)
+    assert bool(output.loc[0, "is_threshold_fragile"])
 
 
 def test_publishability_gate_selects_long_short_and_abstain() -> None:

@@ -35,6 +35,60 @@ class PublishabilityConfig:
             raise ValueError("latency_penalty_ticks must be non-negative")
 
 
+def publishability_margin_diagnostics(
+    frame: pd.DataFrame,
+    *,
+    config: PublishabilityConfig | None = None,
+) -> pd.DataFrame:
+    """Measure each row's distance from the conservative publishability frontier.
+
+    Rows near zero are threshold-fragile: a small model-confidence move, latency
+    estimate, or crowding update can flip the publish/abstain decision. The
+    signed margin is positive only when both confidence and net edge clear their
+    side-specific gates.
+    """
+    config = config or PublishabilityConfig()
+    required = {"lcri_probability", "long_net_return_ticks", "short_net_return_ticks"}
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise ValueError(f"missing publishability columns: {missing}")
+
+    probability = frame["lcri_probability"].astype(float)
+    penalty = config.crowding_penalty_ticks + config.latency_penalty_ticks
+    long_edge = frame["long_net_return_ticks"].astype(float) - penalty
+    short_edge = frame["short_net_return_ticks"].astype(float) - penalty
+    values = np.column_stack([probability, long_edge, short_edge])
+    if not np.isfinite(values).all():
+        raise ValueError("publishability inputs must be finite")
+
+    long_confidence_margin = probability - config.probability_threshold
+    short_confidence_margin = (1.0 - probability) - config.probability_threshold
+    long_edge_margin = long_edge - config.min_edge_ticks
+    short_edge_margin = short_edge - config.min_edge_ticks
+    long_margin = np.minimum(long_confidence_margin, long_edge_margin)
+    short_margin = np.minimum(short_confidence_margin, short_edge_margin)
+    signed_margin = np.maximum(long_margin, short_margin)
+    preferred_side = np.select(
+        [long_margin >= short_margin, short_margin > long_margin],
+        ["long", "short"],
+        default="long",
+    )
+    output = pd.DataFrame(
+        {
+            "preferred_side": preferred_side,
+            "long_confidence_margin": long_confidence_margin,
+            "short_confidence_margin": short_confidence_margin,
+            "long_edge_margin_ticks": long_edge_margin,
+            "short_edge_margin_ticks": short_edge_margin,
+            "publishability_margin": signed_margin,
+            "frontier_distance": np.abs(signed_margin),
+            "is_threshold_fragile": np.abs(signed_margin) <= 0.05,
+        },
+        index=frame.index,
+    )
+    return output.reset_index(drop=True)
+
+
 def add_publishability_gate(
     frame: pd.DataFrame,
     *,
