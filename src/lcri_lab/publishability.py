@@ -89,6 +89,43 @@ def publishability_margin_diagnostics(
     return output.reset_index(drop=True)
 
 
+def publishability_margin_summary(
+    diagnostics: pd.DataFrame,
+) -> dict[str, float | int | str]:
+    """Summarize threshold-fragile publishability frontier diagnostics."""
+    if diagnostics.empty:
+        return {
+            "rows": 0,
+            "publishable_margin_rows": 0,
+            "abstain_margin_rows": 0,
+            "threshold_fragile_rows": 0,
+            "threshold_fragile_share": 0.0,
+            "minimum_frontier_distance": 0.0,
+            "closest_frontier_side": "none",
+        }
+    required = {"preferred_side", "publishability_margin", "frontier_distance", "is_threshold_fragile"}
+    missing = sorted(required - set(diagnostics.columns))
+    if missing:
+        raise ValueError(f"missing publishability diagnostic columns: {missing}")
+
+    margin = diagnostics["publishability_margin"].astype(float)
+    distance = diagnostics["frontier_distance"].astype(float)
+    fragile = diagnostics["is_threshold_fragile"].astype(bool)
+    if not np.isfinite(np.column_stack([margin, distance])).all():
+        raise ValueError("publishability diagnostics must be finite")
+    closest = diagnostics.loc[distance.idxmin()]
+    return {
+        "rows": len(diagnostics),
+        "publishable_margin_rows": int((margin >= 0.0).sum()),
+        "abstain_margin_rows": int((margin < 0.0).sum()),
+        "threshold_fragile_rows": int(fragile.sum()),
+        "threshold_fragile_share": float(fragile.mean()),
+        "minimum_frontier_distance": float(distance.min()),
+        "closest_frontier_side": str(closest["preferred_side"]),
+    }
+
+
+
 def add_publishability_gate(
     frame: pd.DataFrame,
     *,

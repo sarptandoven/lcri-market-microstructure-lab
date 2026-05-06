@@ -5,6 +5,7 @@ from lcri_lab.publishability import (
     PublishabilityConfig,
     add_publishability_gate,
     publishability_margin_diagnostics,
+    publishability_margin_summary,
 )
 
 
@@ -48,6 +49,34 @@ def test_publishability_margin_diagnostics_marks_near_frontier_rows() -> None:
 
     assert output.loc[0, "publishability_margin"] == pytest.approx(-0.01)
     assert bool(output.loc[0, "is_threshold_fragile"])
+
+
+def test_publishability_margin_summary_counts_frontier_risk() -> None:
+    diagnostics = pd.DataFrame(
+        {
+            "preferred_side": ["long", "short", "long"],
+            "publishability_margin": [0.10, -0.02, -0.20],
+            "frontier_distance": [0.10, 0.02, 0.20],
+            "is_threshold_fragile": [False, True, False],
+        }
+    )
+
+    summary = publishability_margin_summary(diagnostics)
+
+    assert summary == {
+        "rows": 3,
+        "publishable_margin_rows": 1,
+        "abstain_margin_rows": 2,
+        "threshold_fragile_rows": 1,
+        "threshold_fragile_share": pytest.approx(1 / 3),
+        "minimum_frontier_distance": 0.02,
+        "closest_frontier_side": "short",
+    }
+
+
+def test_publishability_margin_summary_rejects_incomplete_diagnostics() -> None:
+    with pytest.raises(ValueError, match="missing publishability diagnostic"):
+        publishability_margin_summary(pd.DataFrame({"preferred_side": ["long"]}))
 
 
 def test_publishability_gate_selects_long_short_and_abstain() -> None:

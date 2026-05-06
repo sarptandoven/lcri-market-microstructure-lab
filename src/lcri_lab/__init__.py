@@ -77,6 +77,7 @@ from lcri_lab.publishability import (
     PublishabilityConfig,
     add_publishability_gate,
     publishability_margin_diagnostics,
+    publishability_margin_summary,
 )
 from lcri_lab.reversal import add_queue_reversal_risk
 from lcri_lab.schema import snapshot_required_columns
@@ -98,6 +99,7 @@ __all__ = [
     "PublishabilityConfig",
     "publishability_latency_sweep",
     "publishability_margin_diagnostics",
+    "publishability_margin_summary",
     "SimulationConfig",
     "calibration_curve",
     "compare_transmission_signal",
