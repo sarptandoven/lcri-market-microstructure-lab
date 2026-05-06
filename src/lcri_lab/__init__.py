@@ -5,6 +5,7 @@ from lcri_lab.baseline import LiquidityBaseline, compute_lcri, design_feature_na
 from lcri_lab.evaluation import (
     absorption_regime_metrics,
     calibration_curve,
+    calibration_error_summary,
     compare_transmission_signal,
     evaluate_cost_aware_signals,
     evaluate_signals,
@@ -104,6 +105,7 @@ __all__ = [
     "publishability_margin_summary",
     "SimulationConfig",
     "calibration_curve",
+    "calibration_error_summary",
     "compare_transmission_signal",
     "compute_features",
     "compute_lcri",

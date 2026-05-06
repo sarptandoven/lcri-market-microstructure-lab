@@ -3,6 +3,7 @@ import pytest
 
 from lcri_lab.evaluation import (
     calibration_curve,
+    calibration_error_summary,
     evaluate_signals,
     generalization_fragility_diagnostics,
     generalization_fragility_summary,
@@ -1506,6 +1507,41 @@ def test_signal_generalization_gap_compares_full_and_heldout_metrics() -> None:
     assert output.loc["lcri", "directional_accuracy_gap"] == pytest.approx(0.05)
     assert output.loc["lcri", "brier_score_gap"] == pytest.approx(0.04)
     assert output.loc["lcri", "rank_correlation_gap"] == pytest.approx(0.05)
+
+
+def test_calibration_error_summary_reports_weighted_error() -> None:
+    curve = pd.DataFrame(
+        {
+            "bin": [0, 1, 2],
+            "predicted_probability": [0.20, 0.50, 0.80],
+            "observed_frequency": [0.10, 0.75, 0.60],
+            "rows": [10, 30, 60],
+        }
+    )
+
+    summary = calibration_error_summary(curve)
+
+    assert summary == {
+        "bins": 3,
+        "rows": 100,
+        "expected_calibration_error": pytest.approx(0.205),
+        "max_calibration_error": pytest.approx(0.25),
+        "worst_calibration_bin": "1.0",
+    }
+
+
+def test_calibration_error_summary_rejects_negative_rows() -> None:
+    curve = pd.DataFrame(
+        {
+            "bin": [0],
+            "predicted_probability": [0.2],
+            "observed_frequency": [0.3],
+            "rows": [-1],
+        }
+    )
+
+    with pytest.raises(ValueError, match="row counts"):
+        calibration_error_summary(curve)
 
 
 def test_calibration_curve_rejects_non_positive_bins() -> None:

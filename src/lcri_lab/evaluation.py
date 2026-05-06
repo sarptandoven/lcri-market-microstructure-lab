@@ -2556,6 +2556,39 @@ def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.Da
 
 
 
+def calibration_error_summary(curve: pd.DataFrame) -> dict[str, float | int | str]:
+    """Summarize calibration curve error with row-weighted audit metrics."""
+    if curve.empty:
+        return {
+            "bins": 0,
+            "rows": 0,
+            "expected_calibration_error": 0.0,
+            "max_calibration_error": 0.0,
+            "worst_calibration_bin": "none",
+        }
+    _require_columns(curve, ["bin", "predicted_probability", "observed_frequency", "rows"])
+    predicted = curve["predicted_probability"].astype(float)
+    observed = curve["observed_frequency"].astype(float)
+    rows = curve["rows"].astype(float)
+    if not np.isfinite(np.column_stack([predicted, observed, rows])).all():
+        raise ValueError("calibration curve inputs must be finite")
+    if (rows < 0.0).any():
+        raise ValueError("calibration curve row counts must be non-negative")
+
+    total_rows = float(rows.sum())
+    error = (predicted - observed).abs()
+    weights = rows / total_rows if total_rows > 0.0 else rows
+    worst = curve.loc[error.idxmax()]
+    return {
+        "bins": len(curve),
+        "rows": int(total_rows),
+        "expected_calibration_error": float(np.sum(weights * error)),
+        "max_calibration_error": float(error.max()),
+        "worst_calibration_bin": str(worst["bin"]),
+    }
+
+
+
 def _fragility_rows(
     metrics: pd.DataFrame,
     heldout_metrics: pd.DataFrame,
