@@ -112,6 +112,11 @@ class LCRIModel:
             str(key): float(value)
             for key, value in payload["residual_scale_by_regime"].items()
         }
+        if any(
+            (not math.isfinite(value)) or value <= 0.0
+            for value in model.baseline.residual_scale_by_regime.values()
+        ):
+            raise ValueError("model artifact contains invalid residual scales")
         model.is_fit = True
         return model
 
@@ -120,11 +125,11 @@ class LCRIModel:
 
     def predict_proba_from_scores(self, scores: np.ndarray) -> np.ndarray:
         scaled = np.asarray(scores, dtype=float) / self.config.probability_scale
+        if not np.isfinite(scaled).all():
+            raise ValueError("scores must be finite")
         clipped = np.clip(scaled, -20.0, 20.0)
         return 1.0 / (1.0 + np.exp(-clipped))
 
     def _require_fit(self) -> None:
         if not self.is_fit:
-        if not np.isfinite(scaled).all():
-            raise ValueError("scores must be finite")
             raise RuntimeError("model must be fit before scoring")
