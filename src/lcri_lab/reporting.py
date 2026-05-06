@@ -2747,6 +2747,10 @@ def write_research_summary(
     heldout_lcri_signal_monotonicity: pd.DataFrame | None = None,
     lcri_signal_monotonicity_summary: dict[str, Any] | None = None,
     heldout_lcri_signal_monotonicity_summary: dict[str, Any] | None = None,
+    lcri_calibration_curve: pd.DataFrame | None = None,
+    heldout_lcri_calibration_curve: pd.DataFrame | None = None,
+    lcri_calibration_gate: dict[str, Any] | None = None,
+    heldout_lcri_calibration_gate: dict[str, Any] | None = None,
     heldout_transition_robustness: dict[str, Any] | None = None,
 ) -> None:
     """Write a compact markdown summary of the demo artifacts."""
@@ -3058,6 +3062,20 @@ def write_research_summary(
                     for key, value in (heldout_transition_robustness or {}).items()
                 ],
                 "",
+                "## LCRI calibration curve",
+                "",
+                _markdown_table(lcri_calibration_curve)
+                if lcri_calibration_curve is not None
+                else "_Not generated._",
+                "",
+                "## LCRI calibration gate",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (lcri_calibration_gate or {}).items()
+                ],
+                "" if lcri_calibration_gate else "_Not generated._",
+                "",
                 "## Heldout LCRI signal monotonicity",
                 "",
                 _markdown_table(heldout_lcri_signal_monotonicity)
@@ -3071,6 +3089,20 @@ def write_research_summary(
                     for key, value in (heldout_lcri_signal_monotonicity_summary or {}).items()
                 ],
                 "" if heldout_lcri_signal_monotonicity_summary else "_Not generated._",
+                "",
+                "## Heldout LCRI calibration curve",
+                "",
+                _markdown_table(heldout_lcri_calibration_curve)
+                if heldout_lcri_calibration_curve is not None
+                else "_Not generated._",
+                "",
+                "## Heldout LCRI calibration gate",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (heldout_lcri_calibration_gate or {}).items()
+                ],
+                "" if heldout_lcri_calibration_gate else "_Not generated._",
                 "",
             ]
         )
@@ -3182,6 +3214,10 @@ _RESEARCH_SUMMARY_ARTIFACT_SECTIONS = {
     "Heldout transition robustness": "heldout_transition_robustness.json",
     "Heldout LCRI signal monotonicity": "heldout_lcri_signal_monotonicity.csv",
     "Heldout LCRI signal monotonicity summary": "heldout_lcri_signal_monotonicity_summary.json",
+    "LCRI calibration curve": "lcri_calibration_curve.csv",
+    "LCRI calibration gate": "lcri_calibration_gate.json",
+    "Heldout LCRI calibration curve": "heldout_lcri_calibration_curve.csv",
+    "Heldout LCRI calibration gate": "heldout_lcri_calibration_gate.json",
 }
 
 

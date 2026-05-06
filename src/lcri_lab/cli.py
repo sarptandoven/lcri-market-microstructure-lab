@@ -643,6 +643,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         heldout_lcri_signal_monotonicity=heldout_lcri_monotonicity,
         lcri_signal_monotonicity_summary=lcri_monotonicity_summary,
         heldout_lcri_signal_monotonicity_summary=heldout_lcri_monotonicity_summary,
+        lcri_calibration_curve=lcri_calibration,
+        heldout_lcri_calibration_curve=heldout_lcri_calibration,
+        lcri_calibration_gate=lcri_calibration_gate,
+        heldout_lcri_calibration_gate=heldout_lcri_calibration_gate,
         heldout_transition_robustness=heldout_transition_robustness,
     )
     coverage_matrix = artifact_coverage_matrix(artifact_paths)
