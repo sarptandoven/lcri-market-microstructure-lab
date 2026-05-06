@@ -58,6 +58,8 @@ from lcri_lab.evaluation import (
     regime_generalization_gap,
     regime_metrics,
     signal_generalization_gap,
+    signal_quantile_monotonicity,
+    signal_quantile_monotonicity_summary,
     transition_conditioned_metrics,
     transition_generalization_gap,
     transition_robustness_summary,
@@ -337,6 +339,12 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     lcri_lineage_map_summary = lcri_evidence_lineage_map_summary(lcri_lineage_map)
     transition_lift = transition_signal_lift(scored)
     heldout_transition_lift = transition_signal_lift(heldout_scored)
+    lcri_monotonicity = signal_quantile_monotonicity(scored, "lcri")
+    heldout_lcri_monotonicity = signal_quantile_monotonicity(heldout_scored, "lcri")
+    lcri_monotonicity_summary = signal_quantile_monotonicity_summary(lcri_monotonicity)
+    heldout_lcri_monotonicity_summary = signal_quantile_monotonicity_summary(
+        heldout_lcri_monotonicity
+    )
     transition_robustness = transition_robustness_summary(scored)
     heldout_transition_robustness = transition_robustness_summary(heldout_scored)
 
@@ -402,6 +410,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "lcri_evidence_lineage_map_summary.json",
         "transition_lift.csv",
         "heldout_transition_lift.csv",
+        "lcri_signal_monotonicity.csv",
+        "heldout_lcri_signal_monotonicity.csv",
+        "lcri_signal_monotonicity_summary.json",
+        "heldout_lcri_signal_monotonicity_summary.json",
         "transition_robustness.json",
         "heldout_transition_robustness.json",
         "research_summary.md",
@@ -521,6 +533,15 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     write_json(output / "lcri_evidence_lineage_map_summary.json", lcri_lineage_map_summary)
     transition_lift.to_csv(output / "transition_lift.csv", index=False)
     heldout_transition_lift.to_csv(output / "heldout_transition_lift.csv", index=False)
+    lcri_monotonicity.to_csv(output / "lcri_signal_monotonicity.csv", index=False)
+    heldout_lcri_monotonicity.to_csv(
+        output / "heldout_lcri_signal_monotonicity.csv", index=False
+    )
+    write_json(output / "lcri_signal_monotonicity_summary.json", lcri_monotonicity_summary)
+    write_json(
+        output / "heldout_lcri_signal_monotonicity_summary.json",
+        heldout_lcri_monotonicity_summary,
+    )
     write_json(output / "transition_robustness.json", transition_robustness)
     write_json(output / "heldout_transition_robustness.json", heldout_transition_robustness)
     write_figures(

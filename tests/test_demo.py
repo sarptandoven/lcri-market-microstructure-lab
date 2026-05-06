@@ -46,6 +46,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "lcri_gap_delta_summary.json").exists()
     assert (tmp_path / "transition_lift.csv").exists()
     assert (tmp_path / "heldout_transition_lift.csv").exists()
+    assert (tmp_path / "lcri_signal_monotonicity.csv").exists()
+    assert (tmp_path / "heldout_lcri_signal_monotonicity.csv").exists()
+    assert (tmp_path / "lcri_signal_monotonicity_summary.json").exists()
+    assert (tmp_path / "heldout_lcri_signal_monotonicity_summary.json").exists()
     assert (tmp_path / "transition_robustness.json").exists()
     assert (tmp_path / "heldout_transition_robustness.json").exists()
     assert (tmp_path / "research_summary.md").exists()
@@ -79,6 +83,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "lcri_evidence_release_checklist.csv").exists()
     assert (tmp_path / "lcri_evidence_release_checklist_summary.json").exists()
 
+    monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
+    assert "passes_monotonicity_gate" in monotonicity
     robustness = json.loads((tmp_path / "transition_robustness.json").read_text())
     assert "passes_transition_robustness" in robustness
     metadata_summary = json.loads((tmp_path / "artifact_metadata_summary.json").read_text())
