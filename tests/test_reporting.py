@@ -1,6 +1,7 @@
 import json
 
 import pandas as pd
+import pytest
 
 from lcri_lab.reporting import (
     artifact_coverage_matrix,
@@ -113,6 +114,45 @@ def test_build_artifact_manifest_records_run_config_and_outputs() -> None:
     assert manifest["model"] == {"artifact_version": 2}
     assert manifest["artifacts"] == ["metrics.csv"]
     assert manifest["artifact_metadata"] == {"metrics.csv": {"size_bytes": 10, "sha256": "abc"}}
+
+
+def test_build_artifact_manifest_rejects_inconsistent_row_counts() -> None:
+    with pytest.raises(ValueError, match="sum to rows"):
+        build_artifact_manifest(
+            rows=100,
+            train_rows=80,
+            heldout_rows=10,
+            seed=7,
+            train_frac=0.8,
+            model_artifact_version=2,
+            artifacts=[],
+        )
+
+
+def test_build_artifact_manifest_rejects_invalid_train_fraction() -> None:
+    with pytest.raises(ValueError, match="train_frac"):
+        build_artifact_manifest(
+            rows=100,
+            train_rows=80,
+            heldout_rows=20,
+            seed=7,
+            train_frac=float("nan"),
+            model_artifact_version=2,
+            artifacts=[],
+        )
+
+
+def test_build_artifact_manifest_rejects_invalid_model_version() -> None:
+    with pytest.raises(ValueError, match="model_artifact_version"):
+        build_artifact_manifest(
+            rows=100,
+            train_rows=80,
+            heldout_rows=20,
+            seed=7,
+            train_frac=0.8,
+            model_artifact_version=0,
+            artifacts=[],
+        )
 
 
 def test_collect_artifact_metadata_records_size_and_digest(tmp_path) -> None:

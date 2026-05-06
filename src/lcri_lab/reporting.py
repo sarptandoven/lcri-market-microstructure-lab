@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,14 @@ def build_artifact_manifest(
     artifact_metadata: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build a reproducibility manifest for a demo run."""
+    if min(rows, train_rows, heldout_rows) < 0:
+        raise ValueError("manifest row counts must be non-negative")
+    if train_rows + heldout_rows != rows:
+        raise ValueError("train_rows and heldout_rows must sum to rows")
+    if not math.isfinite(train_frac) or not 0.0 < train_frac < 1.0:
+        raise ValueError("train_frac must be finite and between 0 and 1")
+    if model_artifact_version < 1:
+        raise ValueError("model_artifact_version must be at least 1")
     return {
         "run": {
             "rows": rows,
