@@ -20,6 +20,10 @@ class SimulationConfig:
     initial_mid: float = 100.0
 
     def __post_init__(self) -> None:
+        if not isinstance(self.rows, int) or isinstance(self.rows, bool):
+            raise ValueError("rows must be an integer")
+        if not isinstance(self.levels, int) or isinstance(self.levels, bool):
+            raise ValueError("levels must be an integer")
         if self.rows < 1:
             raise ValueError("rows must be at least 1")
         if self.levels < 1:
