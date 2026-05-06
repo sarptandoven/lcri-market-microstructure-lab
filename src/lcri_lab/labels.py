@@ -13,6 +13,8 @@ def add_transaction_cost_labels(
     cost_ticks: float = 1.0,
 ) -> pd.DataFrame:
     """Add next-mid labels after a symmetric spread/slippage cost in ticks."""
+    if isinstance(tick_size, bool) or isinstance(cost_ticks, bool):
+        raise ValueError("tick_size and cost_ticks must be numeric")
     if not math.isfinite(tick_size) or tick_size <= 0.0:
         raise ValueError("tick_size must be a finite positive value")
     if not math.isfinite(cost_ticks) or cost_ticks < 0.0:

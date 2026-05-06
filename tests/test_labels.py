@@ -26,6 +26,17 @@ def test_add_transaction_cost_labels_rejects_non_finite_prices() -> None:
     with pytest.raises(ValueError, match="finite"):
         add_transaction_cost_labels(frame, tick_size=0.01)
 
+
+def test_add_transaction_cost_labels_rejects_boolean_cost_controls() -> None:
+    frame = pd.DataFrame({"mid": [100.0], "next_mid": [100.0]})
+
+    with pytest.raises(ValueError, match="numeric"):
+        add_transaction_cost_labels(frame, tick_size=True)
+
+    with pytest.raises(ValueError, match="numeric"):
+        add_transaction_cost_labels(frame, tick_size=0.01, cost_ticks=False)
+
+
 def test_add_transaction_cost_labels_rejects_missing_prices() -> None:
     with pytest.raises(ValueError, match="missing transaction label columns"):
         add_transaction_cost_labels(pd.DataFrame({"mid": [100.0]}), tick_size=0.01)
