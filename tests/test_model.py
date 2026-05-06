@@ -32,6 +32,8 @@ def test_model_scores_and_persists(tmp_path) -> None:
 def test_model_config_rejects_invalid_values() -> None:
     with pytest.raises(ValueError, match="levels"):
         ModelConfig(levels=0)
+    with pytest.raises(ValueError, match="levels"):
+        ModelConfig(levels=1.5)
     with pytest.raises(ValueError, match="ridge"):
         ModelConfig(ridge=-1.0)
     with pytest.raises(ValueError, match="probability_scale"):

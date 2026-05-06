@@ -23,6 +23,8 @@ class ModelConfig:
     probability_scale: float = 1.0
 
     def __post_init__(self) -> None:
+        if not isinstance(self.levels, int) or isinstance(self.levels, bool):
+            raise ValueError("levels must be an integer")
         if self.levels < 1:
             raise ValueError("levels must be at least 1")
         if not math.isfinite(self.ridge) or self.ridge < 0.0:
