@@ -40,6 +40,11 @@ def test_model_config_rejects_invalid_values() -> None:
         ModelConfig(probability_scale=0.0)
 
 
+def test_model_rejects_non_finite_probability_scores() -> None:
+    with pytest.raises(ValueError, match="scores"):
+        LCRIModel().predict_proba_from_scores(np.array([float("nan")]))
+
+
 def test_model_load_rejects_incomplete_artifact(tmp_path) -> None:
     path = tmp_path / "model.json"
     path.write_text('{"config": {"levels": 5}}')

@@ -125,4 +125,6 @@ class LCRIModel:
 
     def _require_fit(self) -> None:
         if not self.is_fit:
+        if not np.isfinite(scaled).all():
+            raise ValueError("scores must be finite")
             raise RuntimeError("model must be fit before scoring")
