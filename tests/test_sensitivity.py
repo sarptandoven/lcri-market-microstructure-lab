@@ -29,5 +29,6 @@ def test_publishability_latency_sweep_rejects_invalid_grid() -> None:
         }
     )
 
-    with pytest.raises(ValueError, match="latency_grid"):
-        publishability_latency_sweep(frame, latency_grid=(-0.1,))
+    for latency_grid in [(), (-0.1,)]:
+        with pytest.raises(ValueError, match="latency_grid"):
+            publishability_latency_sweep(frame, latency_grid=latency_grid)
