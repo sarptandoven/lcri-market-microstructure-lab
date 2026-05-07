@@ -148,6 +148,57 @@ def reversal_coupling_regime_stress(
     ).reset_index(drop=True)
 
 
+def reversal_stress_concentration_summary(
+    stress: pd.DataFrame,
+    *,
+    concentration_threshold: float = 1.5,
+) -> dict[str, float | int | str | bool]:
+    """Summarize whether reversal stress is dangerously regime-concentrated.
+
+    This turns the regime stress table into a compact report gate. The key
+    research signal is not just that queue reversals exist, but that their
+    lead-lag coupling clusters in a narrow regime more than transmitted pressure
+    exposure alone explains.
+    """
+    if not np.isfinite(concentration_threshold) or concentration_threshold < 0.0:
+        raise ValueError("concentration_threshold must be finite and non-negative")
+    if stress.empty:
+        return {
+            "regimes": 0,
+            "coupled_rows": 0,
+            "top_regime": "none",
+            "max_stress_concentration_ratio": 0.0,
+            "top_coupling_share": 0.0,
+            "top_transmission_exposure_share": 0.0,
+            "concentration_threshold": float(concentration_threshold),
+            "is_concentrated": False,
+            "gate_decision": "pass",
+        }
+    missing = sorted(set(_REGIME_STRESS_COLUMNS) - set(stress.columns))
+    if missing:
+        raise ValueError(f"missing reversal stress summary columns: {missing}")
+
+    numeric = stress[
+        ["coupled_rows", "coupling_share", "transmission_exposure_share", "stress_concentration_ratio"]
+    ].astype(float)
+    if not np.isfinite(numeric.to_numpy()).all():
+        raise ValueError("reversal stress summary inputs must be finite")
+    top = stress.sort_values("stress_concentration_ratio", ascending=False).iloc[0]
+    max_ratio = float(top["stress_concentration_ratio"])
+    is_concentrated = max_ratio >= concentration_threshold and float(top["coupling_share"]) > 0.0
+    return {
+        "regimes": int(len(stress)),
+        "coupled_rows": int(stress["coupled_rows"].astype(int).sum()),
+        "top_regime": str(top["regime"]),
+        "max_stress_concentration_ratio": max_ratio,
+        "top_coupling_share": float(top["coupling_share"]),
+        "top_transmission_exposure_share": float(top["transmission_exposure_share"]),
+        "concentration_threshold": float(concentration_threshold),
+        "is_concentrated": bool(is_concentrated),
+        "gate_decision": "review" if is_concentrated else "pass",
+    }
+
+
 _REGIME_STRESS_COLUMNS = [
     "regime",
     "rows",

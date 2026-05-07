@@ -71,8 +71,10 @@ from lcri_lab.evaluation import (
     transition_robustness_summary,
     transition_signal_lift,
 )
+from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.features import add_regime_transition_features
 from lcri_lab.ingest import normalize_l2_snapshots
+from lcri_lab.memory import add_pressure_memory
 from lcri_lab.model import ARTIFACT_VERSION, LCRIModel, ModelConfig
 from lcri_lab.plotting import write_figures
 from lcri_lab.reporting import (
@@ -153,6 +155,12 @@ from lcri_lab.reporting import (
     write_lcri_owner_handoff_markdown_packet,
     write_research_summary,
 )
+from lcri_lab.reversal import (
+    add_queue_reversal_risk,
+    add_reversal_lead_lag_coupling,
+    reversal_coupling_regime_stress,
+    reversal_stress_concentration_summary,
+)
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
 
@@ -231,8 +239,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     train = books.sample(frac=train_frac, random_state=seed)
     heldout = books.drop(index=train.index)
     model = LCRIModel().fit(train)
-    scored = add_regime_transition_features(model.score_frame(books))
-    heldout_scored = add_regime_transition_features(model.score_frame(heldout))
+    scored = _add_reversal_pressure_stack(add_regime_transition_features(model.score_frame(books)))
+    heldout_scored = _add_reversal_pressure_stack(add_regime_transition_features(model.score_frame(heldout)))
 
     metrics = evaluate_signals(scored)
     heldout_metrics = evaluate_signals(heldout_scored)
@@ -375,6 +383,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         lcri_calibration_fracture_pressure_summary,
         heldout_lcri_calibration_fracture_pressure_summary,
     )
+    reversal_stress = reversal_coupling_regime_stress(scored)
+    heldout_reversal_stress = reversal_coupling_regime_stress(heldout_scored)
+    reversal_stress_summary = reversal_stress_concentration_summary(reversal_stress)
+    heldout_reversal_stress_summary = reversal_stress_concentration_summary(heldout_reversal_stress)
     transition_robustness = transition_robustness_summary(scored)
     heldout_transition_robustness = transition_robustness_summary(heldout_scored)
 
@@ -455,6 +467,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "lcri_calibration_fracture_pressure_summary.json",
         "heldout_lcri_calibration_fracture_pressure_summary.json",
         "lcri_calibration_fracture_gate.json",
+        "lcri_reversal_stress_concentration.csv",
+        "heldout_lcri_reversal_stress_concentration.csv",
+        "lcri_reversal_stress_concentration_summary.json",
+        "heldout_lcri_reversal_stress_concentration_summary.json",
         "transition_robustness.json",
         "heldout_transition_robustness.json",
         "research_summary.md",
@@ -605,6 +621,15 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         heldout_lcri_calibration_fracture_pressure_summary,
     )
     write_json(output / "lcri_calibration_fracture_gate.json", lcri_calibration_fracture_gate)
+    reversal_stress.to_csv(output / "lcri_reversal_stress_concentration.csv", index=False)
+    heldout_reversal_stress.to_csv(
+        output / "heldout_lcri_reversal_stress_concentration.csv", index=False
+    )
+    write_json(output / "lcri_reversal_stress_concentration_summary.json", reversal_stress_summary)
+    write_json(
+        output / "heldout_lcri_reversal_stress_concentration_summary.json",
+        heldout_reversal_stress_summary,
+    )
     write_json(output / "transition_robustness.json", transition_robustness)
     write_json(output / "heldout_transition_robustness.json", heldout_transition_robustness)
     write_figures(
@@ -823,6 +848,11 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"lcri evidence lineage map figure: {output / 'figures' / 'lcri_evidence_lineage_map.png'}")
     print(f"transition lift: {output / 'transition_lift.csv'}")
     print(f"heldout transition lift: {output / 'heldout_transition_lift.csv'}")
+    print(f"lcri reversal stress concentration: {output / 'lcri_reversal_stress_concentration.csv'}")
+    print(
+        "lcri reversal stress concentration summary: "
+        f"{output / 'lcri_reversal_stress_concentration_summary.json'}"
+    )
     print(f"transition robustness: {output / 'transition_robustness.json'}")
     print(f"heldout transition robustness: {output / 'heldout_transition_robustness.json'}")
     print(f"summary: {output / 'research_summary.md'}")
@@ -831,6 +861,13 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"figures: {output / 'figures'}")
     print()
     print(metrics.to_string(index=False))
+
+
+def _add_reversal_pressure_stack(frame: pd.DataFrame) -> pd.DataFrame:
+    return add_reversal_lead_lag_coupling(
+        add_queue_reversal_risk(add_shadow_absorption(add_pressure_memory(frame))),
+        group_col="regime",
+    )
 
 
 def verify_report(report_dir: Path) -> None:

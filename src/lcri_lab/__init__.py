@@ -90,6 +90,7 @@ from lcri_lab.reversal import (
     add_queue_reversal_risk,
     add_reversal_lead_lag_coupling,
     reversal_coupling_regime_stress,
+    reversal_stress_concentration_summary,
 )
 from lcri_lab.schema import snapshot_required_columns
 from lcri_lab.sensitivity import publishability_latency_sweep
@@ -106,6 +107,7 @@ __all__ = [
     "add_queue_reversal_risk",
     "add_reversal_lead_lag_coupling",
     "reversal_coupling_regime_stress",
+    "reversal_stress_concentration_summary",
     "LCRIModel",
     "LiquidityBaseline",
     "ModelConfig",

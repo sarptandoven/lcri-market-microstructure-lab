@@ -5,6 +5,7 @@ from lcri_lab.reversal import (
     add_queue_reversal_risk,
     add_reversal_lead_lag_coupling,
     reversal_coupling_regime_stress,
+    reversal_stress_concentration_summary,
 )
 
 
@@ -98,3 +99,31 @@ def test_reversal_coupling_regime_stress_rejects_negative_coupling() -> None:
 
     with pytest.raises(ValueError, match="non-negative"):
         reversal_coupling_regime_stress(frame)
+
+
+def test_reversal_stress_concentration_summary_flags_clustered_stress() -> None:
+    stress = pd.DataFrame(
+        {
+            "regime": ["thin", "thick"],
+            "rows": [20, 80],
+            "coupled_rows": [7, 1],
+            "coupling_share": [0.75, 0.25],
+            "transmission_exposure_share": [0.30, 0.70],
+            "stress_concentration_ratio": [2.5, 0.36],
+        }
+    )
+
+    summary = reversal_stress_concentration_summary(stress, concentration_threshold=2.0)
+
+    assert summary["top_regime"] == "thin"
+    assert summary["coupled_rows"] == 8
+    assert summary["max_stress_concentration_ratio"] == pytest.approx(2.5)
+    assert summary["is_concentrated"] is True
+    assert summary["gate_decision"] == "review"
+
+
+def test_reversal_stress_concentration_summary_handles_empty_table() -> None:
+    summary = reversal_stress_concentration_summary(pd.DataFrame())
+
+    assert summary["top_regime"] == "none"
+    assert summary["gate_decision"] == "pass"
