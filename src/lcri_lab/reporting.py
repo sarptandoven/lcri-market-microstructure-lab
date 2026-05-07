@@ -2991,6 +2991,8 @@ def write_research_summary(
     heldout_transition_robustness: dict[str, Any] | None = None,
     hidden_resiliency_asymmetry_summary: dict[str, Any] | None = None,
     heldout_hidden_resiliency_asymmetry_summary: dict[str, Any] | None = None,
+    adverse_selection_phase_shift_summary: pd.DataFrame | None = None,
+    heldout_adverse_selection_phase_shift_summary: pd.DataFrame | None = None,
 ) -> None:
     """Write a compact markdown summary of the demo artifacts."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -3315,6 +3317,18 @@ def write_research_summary(
                     for key, value in (heldout_hidden_resiliency_asymmetry_summary or {}).items()
                 ],
                 "",
+                "## Adverse selection phase-shift summary",
+                "",
+                _markdown_table(adverse_selection_phase_shift_summary)
+                if adverse_selection_phase_shift_summary is not None
+                else "_Not generated._",
+                "",
+                "## Heldout adverse selection phase-shift summary",
+                "",
+                _markdown_table(heldout_adverse_selection_phase_shift_summary)
+                if heldout_adverse_selection_phase_shift_summary is not None
+                else "_Not generated._",
+                "",
                 "## LCRI calibration curve",
                 "",
                 _markdown_table(lcri_calibration_curve)
@@ -3539,6 +3553,8 @@ _RESEARCH_SUMMARY_ARTIFACT_SECTIONS = {
     "Heldout transition robustness": "heldout_transition_robustness.json",
     "Hidden resiliency asymmetry summary": "hidden_resiliency_asymmetry_summary.json",
     "Heldout hidden resiliency asymmetry summary": "heldout_hidden_resiliency_asymmetry_summary.json",
+    "Adverse selection phase-shift summary": "adverse_selection_phase_shift_summary.csv",
+    "Heldout adverse selection phase-shift summary": "heldout_adverse_selection_phase_shift_summary.csv",
     "Heldout LCRI signal monotonicity": "heldout_lcri_signal_monotonicity.csv",
     "Heldout LCRI signal monotonicity summary": "heldout_lcri_signal_monotonicity_summary.json",
     "LCRI calibration curve": "lcri_calibration_curve.csv",

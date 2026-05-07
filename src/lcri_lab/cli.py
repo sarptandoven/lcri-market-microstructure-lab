@@ -77,6 +77,7 @@ from lcri_lab.ingest import normalize_l2_snapshots
 from lcri_lab.memory import (
     add_liquidity_memory_half_life,
     add_pressure_memory,
+    adverse_selection_phase_shift_summary,
     hidden_resiliency_asymmetry_summary,
     pressure_memory_decay_summary,
 )
@@ -101,6 +102,7 @@ from lcri_lab.reporting import (
     verify_generalization_stability_confidence_intervals,
     verify_generalization_stability_confidence_summary,
     verify_hidden_resiliency_asymmetry_summary,
+    verify_adverse_selection_phase_shift_summary,
     verify_lcri_fragility_gate_alignment,
     verify_lcri_fragility_gate_scorecard,
     verify_lcri_fracture_reversal_gate,
@@ -368,6 +370,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_memory_decay_summary = pressure_memory_decay_summary(heldout_scored)
     resiliency_asymmetry = hidden_resiliency_asymmetry_summary(scored)
     heldout_resiliency_asymmetry = hidden_resiliency_asymmetry_summary(heldout_scored)
+    adverse_phase_shift = adverse_selection_phase_shift_summary(scored, return_col="future_return_ticks")
+    heldout_adverse_phase_shift = adverse_selection_phase_shift_summary(
+        heldout_scored, return_col="future_return_ticks"
+    )
     lcri_monotonicity = signal_quantile_monotonicity(scored, "lcri")
     heldout_lcri_monotonicity = signal_quantile_monotonicity(heldout_scored, "lcri")
     lcri_monotonicity_summary = signal_quantile_monotonicity_summary(lcri_monotonicity)
@@ -481,6 +487,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "heldout_pressure_memory_decay_summary.csv",
         "hidden_resiliency_asymmetry_summary.json",
         "heldout_hidden_resiliency_asymmetry_summary.json",
+        "adverse_selection_phase_shift_summary.csv",
+        "heldout_adverse_selection_phase_shift_summary.csv",
         "lcri_signal_monotonicity.csv",
         "heldout_lcri_signal_monotonicity.csv",
         "lcri_signal_monotonicity_summary.json",
@@ -633,6 +641,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         output / "heldout_hidden_resiliency_asymmetry_summary.json",
         heldout_resiliency_asymmetry,
     )
+    adverse_phase_shift.to_csv(output / "adverse_selection_phase_shift_summary.csv", index=False)
+    heldout_adverse_phase_shift.to_csv(
+        output / "heldout_adverse_selection_phase_shift_summary.csv", index=False
+    )
     lcri_monotonicity.to_csv(output / "lcri_signal_monotonicity.csv", index=False)
     heldout_lcri_monotonicity.to_csv(
         output / "heldout_lcri_signal_monotonicity.csv", index=False
@@ -777,6 +789,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         heldout_transition_robustness=heldout_transition_robustness,
         hidden_resiliency_asymmetry_summary=resiliency_asymmetry,
         heldout_hidden_resiliency_asymmetry_summary=heldout_resiliency_asymmetry,
+        adverse_selection_phase_shift_summary=adverse_phase_shift,
+        heldout_adverse_selection_phase_shift_summary=heldout_adverse_phase_shift,
     )
     coverage_matrix = artifact_coverage_matrix(artifact_paths)
     coverage_matrix.to_csv(output / "artifact_coverage_matrix.csv", index=False)
@@ -913,6 +927,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "hidden resiliency asymmetry summary: "
         f"{output / 'hidden_resiliency_asymmetry_summary.json'}"
     )
+    print(f"adverse selection phase shift summary: {output / 'adverse_selection_phase_shift_summary.csv'}")
     print(f"lcri reversal stress concentration: {output / 'lcri_reversal_stress_concentration.csv'}")
     print(
         "lcri reversal stress concentration summary: "
@@ -983,6 +998,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_hidden_resiliency_asymmetry_summary.json"
             )
             if "heldout_hidden_resiliency_asymmetry_summary.json" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_adverse_selection_phase_shift_summary(report_dir)
+            if "adverse_selection_phase_shift_summary.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_adverse_selection_phase_shift_summary(
+                report_dir, "heldout_adverse_selection_phase_shift_summary.csv"
+            )
+            if "heldout_adverse_selection_phase_shift_summary.csv" in manifest_artifacts
             else []
         ),
         *verify_generalization_fragility_diagnostics(report_dir),
