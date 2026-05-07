@@ -104,6 +104,7 @@ from lcri_lab.reporting import (
     verify_generalization_stability_confidence_summary,
     verify_hidden_resiliency_asymmetry_summary,
     verify_adverse_selection_phase_shift_summary,
+    verify_phase_shift_artifact_review,
     verify_lcri_fragility_gate_alignment,
     verify_lcri_fragility_gate_scorecard,
     verify_lcri_fracture_reversal_gate,
@@ -1019,6 +1020,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_adverse_selection_phase_shift_summary.csv"
             )
             if "heldout_adverse_selection_phase_shift_summary.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_phase_shift_artifact_review(report_dir)
+            if "phase_shift_artifact_review.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_phase_shift_artifact_review(
+                report_dir, "heldout_phase_shift_artifact_review.csv"
+            )
+            if "heldout_phase_shift_artifact_review.csv" in manifest_artifacts
             else []
         ),
         *verify_generalization_fragility_diagnostics(report_dir),
