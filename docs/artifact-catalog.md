@@ -140,6 +140,10 @@ surfaces without opening every file:
   fracture-pressure gate, including miscalibrated fracture counts.
 - `heldout_lcri_calibration_fracture_pressure_summary.json`: compact heldout
   gate for deciding whether shape/calibration fractures survive out of sample.
+- `phase_shift_artifact_review.csv`: adverse-selection phase-shift rows ranked
+  by fracture-weighted review priority for memory-decay artifact triage.
+- `heldout_phase_shift_artifact_review.csv`: heldout artifact triage for checking
+  whether phase-shift artifacts survive out of sample.
 - `lcri_calibration_fracture_gate.json`: combined full-sample plus heldout
   release gate for miscalibrated monotonicity fractures.
 - `figures/lcri_cross_artifact_evidence_index.png`: visual owner handoff of the
