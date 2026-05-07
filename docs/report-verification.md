@@ -17,7 +17,8 @@ Verification combines three layers:
 4. Manifest metadata summaries are recomputed from manifest size/hash records.
 5. Manifest-listed PNG figures are checked for a valid PNG signature, positive
    IHDR dimensions, and an IEND trailer.
-6. Artifact-specific verifiers check required CSV columns or JSON keys.
+6. Artifact-specific verifiers check required CSV columns or JSON keys, including
+   pressure-memory decay-state and release-velocity bounds.
 7. Research-summary sections are checked against generated CSV/JSON artifacts so
    owner-facing markdown cannot silently retain stale placeholders, omit keys, or
    carry stale numerical values after partial regeneration.

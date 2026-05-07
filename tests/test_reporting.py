@@ -75,6 +75,7 @@ from lcri_lab.reporting import (
     verify_lcri_scope_stability_contradictions,
     verify_lcri_scope_stability_contradictions_consistency,
     verify_lcri_worst_generalization_context,
+    verify_pressure_memory_decay_summary,
     verify_research_summary_sections,
     write_json,
     write_lcri_owner_handoff_markdown_packet,
@@ -165,6 +166,31 @@ def test_collect_artifact_metadata_records_size_and_digest(tmp_path) -> None:
     assert set(metadata) == {"metrics.csv"}
     assert metadata["metrics.csv"]["size_bytes"] == len("signal,value\n")
     assert len(metadata["metrics.csv"]["sha256"]) == 64
+
+
+def test_verify_pressure_memory_decay_summary_checks_bounds(tmp_path) -> None:
+    columns = [
+        "pressure_memory_decay_state",
+        "observations",
+        "share",
+        "decay_events",
+        "event_rate",
+        "mean_half_life",
+        "mean_release_velocity",
+    ]
+    pd.DataFrame(
+        [["fast_decay", 2, 0.4, 2, 1.0, 1.5, 0.3], ["persistent", 3, 0.6, 0, 0.0, 0.0, 0.0]],
+        columns=columns,
+    ).to_csv(tmp_path / "pressure_memory_decay_summary.csv", index=False)
+    pd.DataFrame([["mystery", 1, 0.2, 2, 1.2, -1.0, 0.0]], columns=columns).to_csv(
+        tmp_path / "heldout_pressure_memory_decay_summary.csv", index=False
+    )
+
+    assert verify_pressure_memory_decay_summary(tmp_path) == []
+    errors = verify_pressure_memory_decay_summary(tmp_path, "heldout_pressure_memory_decay_summary.csv")
+    assert any("unknown pressure memory decay states" in error for error in errors)
+    assert any("bounded pressure memory rates" in error for error in errors)
+    assert any("decay events exceed observations" in error for error in errors)
 
 
 def test_artifact_coverage_matrix_classifies_manifest_artifacts() -> None:

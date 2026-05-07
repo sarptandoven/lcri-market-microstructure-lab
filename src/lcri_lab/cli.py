@@ -156,6 +156,7 @@ from lcri_lab.reporting import (
     verify_lcri_scope_stability_contradictions,
     verify_lcri_scope_stability_contradictions_consistency,
     verify_lcri_worst_generalization_context,
+    verify_pressure_memory_decay_summary,
     verify_research_summary_sections,
     write_json,
     write_lcri_owner_handoff_markdown_packet,
@@ -943,6 +944,18 @@ def verify_report(report_dir: Path) -> None:
         *artifact_coverage_errors,
         *verify_artifact_metadata_summary(report_dir, manifest),
         *verify_figure_artifacts(report_dir, manifest),
+        *(
+            verify_pressure_memory_decay_summary(report_dir)
+            if "pressure_memory_decay_summary.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_pressure_memory_decay_summary(
+                report_dir, "heldout_pressure_memory_decay_summary.csv"
+            )
+            if "heldout_pressure_memory_decay_summary.csv" in manifest_artifacts
+            else []
+        ),
         *verify_generalization_fragility_diagnostics(report_dir),
         *verify_generalization_fragility_summary(report_dir),
         *verify_generalization_fragility_consistency(report_dir),

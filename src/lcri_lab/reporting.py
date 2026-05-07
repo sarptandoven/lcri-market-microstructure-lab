@@ -304,6 +304,44 @@ def verify_research_summary_sections(output_dir: Path) -> list[str]:
     return errors
 
 
+def verify_pressure_memory_decay_summary(
+    output_dir: Path, artifact: str = "pressure_memory_decay_summary.csv"
+) -> list[str]:
+    """Return errors for incomplete pressure-memory decay diagnostics."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing pressure memory decay summary: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "pressure_memory_decay_state",
+        "observations",
+        "share",
+        "decay_events",
+        "event_rate",
+        "mean_half_life",
+        "mean_release_velocity",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete pressure memory decay summary {artifact}: {missing}"]
+    numeric = frame[list(required - {"pressure_memory_decay_state"})].astype(float)
+    errors: list[str] = []
+    unknown = sorted(set(frame["pressure_memory_decay_state"].astype(str)) - {"inactive", "fast_decay", "slow_decay", "persistent"})
+    if unknown:
+        errors.append(f"unknown pressure memory decay states in {artifact}: {unknown}")
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite pressure memory decay values in {artifact}")
+    if not numeric[["share", "event_rate"]].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        errors.append(f"bounded pressure memory rates violated in {artifact}")
+    if not numeric[["observations", "decay_events", "mean_half_life", "mean_release_velocity"]].ge(0.0).all().all():
+        errors.append(f"negative pressure memory decay values in {artifact}")
+    if (numeric["decay_events"] > numeric["observations"]).any():
+        errors.append(f"pressure memory decay events exceed observations in {artifact}")
+    if numeric["observations"].sum() > 0 and not math.isclose(numeric["share"].sum(), 1.0, abs_tol=1e-6):
+        errors.append(f"pressure memory decay shares do not sum to one in {artifact}")
+    return errors
+
+
 def verify_figure_artifacts(output_dir: Path, manifest: dict[str, Any]) -> list[str]:
     """Return errors for manifest-listed PNG figures that are unreadable.
 
