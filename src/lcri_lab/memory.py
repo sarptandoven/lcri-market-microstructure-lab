@@ -298,6 +298,51 @@ def adverse_selection_phase_shift_summary(
     return pd.DataFrame(rows)
 
 
+def classify_phase_shift_artifacts(
+    summary: pd.DataFrame,
+    *,
+    score_col: str = "adverse_selection_phase_shift_score",
+    rate_col: str = "adverse_selection_phase_shift_rate",
+    fracture_col: str = "mean_latent_liquidity_fracture",
+) -> pd.DataFrame:
+    """Classify adverse-selection phase-shift rows for reviewer triage."""
+    required = ["pressure_memory_decay_state", score_col, rate_col, fracture_col]
+    missing = sorted(set(required) - set(summary.columns))
+    if missing:
+        raise ValueError(f"missing phase-shift artifact columns: {missing}")
+
+    output = summary.copy()
+    for column in [score_col, rate_col, fracture_col]:
+        output[column] = output[column].astype(float)
+    if not np.isfinite(output[[score_col, rate_col, fracture_col]].to_numpy()).all():
+        raise ValueError("phase-shift artifact inputs must be finite")
+    if not output[rate_col].between(0.0, 1.0).all():
+        raise ValueError("phase-shift artifact rates must be between 0 and 1")
+
+    output["phase_shift_artifact"] = [
+        _phase_shift_artifact(score, rate, fracture)
+        for score, rate, fracture in output[[score_col, rate_col, fracture_col]].itertuples(
+            index=False, name=None
+        )
+    ]
+    output["phase_shift_review_priority"] = (
+        output[score_col] * (1.0 + output[rate_col]) * (1.0 + output[fracture_col].clip(lower=0.0))
+    ).astype(float)
+    return output.sort_values("phase_shift_review_priority", ascending=False).reset_index(drop=True)
+
+
+def _phase_shift_artifact(score: float, adverse_rate: float, fracture: float) -> str:
+    if score > 1.0 and adverse_rate >= 0.5 and fracture > 0.0:
+        return "fractured_adverse_selection"
+    if adverse_rate >= 0.5:
+        return "return_sign_flip"
+    if adverse_rate > 0.0 and fracture > 0.0:
+        return "localized_fracture_shift"
+    if adverse_rate > 0.0:
+        return "thin_phase_shift"
+    return "aligned_pressure_memory"
+
+
 def _phase_shift_interpretation(score: float, adverse_rate: float) -> str:
     if score > 1.0 and adverse_rate >= 0.5:
         return "fractured_adverse_selection"
