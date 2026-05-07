@@ -211,6 +211,22 @@ def test_artifact_coverage_matrix_classifies_manifest_artifacts() -> None:
     assert not bool(by_artifact.loc["artifact_manifest.json", "has_manifest_metadata"])
 
 
+def test_artifact_coverage_summary_empty_matrix_has_stable_role_keys() -> None:
+    matrix = artifact_coverage_matrix([])
+
+    assert artifact_coverage_summary(matrix) == {
+        "artifacts": 0,
+        "research_summary_artifacts": 0,
+        "figure_artifacts": 0,
+        "metadata_tracked_artifacts": 0,
+        "manifest_audit_artifacts": 0,
+        "transition_verification_artifacts": 0,
+        "lcri_release_evidence_artifacts": 0,
+        "owner_readiness_artifacts": 0,
+        "families": 0,
+    }
+
+
 def test_artifact_coverage_summary_counts_audit_surfaces() -> None:
     matrix = artifact_coverage_matrix(
         [
@@ -302,6 +318,28 @@ def test_verify_artifact_coverage_matrix_reports_stale_audit(tmp_path) -> None:
 
     assert "artifact coverage matrix mismatch against manifest artifacts" in errors
     assert any("artifact coverage summary mismatch for artifacts" in error for error in errors)
+
+
+def test_verify_artifact_coverage_matrix_reports_stale_role_summary(tmp_path) -> None:
+    artifacts = ["metrics.csv", "transition_robustness.json", "lcri_owner_handoff_packet.md"]
+    matrix = artifact_coverage_matrix(artifacts)
+    stale_summary = artifact_coverage_summary(matrix) | {
+        "transition_verification_artifacts": 0,
+        "owner_readiness_artifacts": 0,
+    }
+    matrix.to_csv(tmp_path / "artifact_coverage_matrix.csv", index=False)
+    (tmp_path / "artifact_coverage_summary.json").write_text(json.dumps(stale_summary))
+
+    errors = verify_artifact_coverage_matrix(tmp_path, {"artifacts": artifacts})
+
+    assert any(
+        "artifact coverage summary mismatch for transition_verification_artifacts" in error
+        for error in errors
+    )
+    assert any(
+        "artifact coverage summary mismatch for owner_readiness_artifacts" in error
+        for error in errors
+    )
 
 
 def test_verify_artifact_manifest_reports_checksum_mismatch(tmp_path) -> None:

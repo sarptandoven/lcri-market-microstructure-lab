@@ -9,6 +9,36 @@ for reviewers who receive a report directory without the surrounding run logs.
 - `metrics.csv`: full-sample signal quality for raw imbalance and LCRI.
 - `heldout_metrics.csv`: heldout signal quality for the same signals.
 - `lcri-model.json`: transparent fitted baseline and model configuration.
+- `artifact_manifest.json`: final reproducibility manifest with planned report
+  paths plus size and SHA-256 metadata for generated artifacts.
+- `artifact_metadata_summary.json`: compact metadata-footprint audit derived
+  from manifest metadata.
+- `artifact_coverage_matrix.csv`: manifest-level artifact classification by
+  family, extension, research-summary exposure, figure status, metadata
+  tracking, and verification role.
+- `artifact_coverage_summary.json`: compact counts for total artifacts,
+  summary-backed artifacts, figures, metadata tracking, families, and the
+  verification roles used by release review.
+
+## Verification roles
+
+`artifact_coverage_matrix.csv` gives every artifact one review role so release
+readiness checks can distinguish narrative, audit, and machine-verification
+surfaces without opening every file:
+
+- `manifest_audit`: manifest, metadata, and coverage files that prove the bundle
+  is complete and reproducible.
+- `transition_verification`: transition-conditioned metrics, lift,
+  robustness, and reversal-transition gate outputs that test whether latent
+  liquidity fracture pressure survives regime changes.
+- `lcri_release_evidence`: LCRI gate, gap-delta, contradiction, calibration,
+  release-checklist, and lineage artifacts that support publishability review.
+- `owner_readiness`: `research_summary.md` and
+  `lcri_owner_handoff_packet.md`, the markdown surfaces intended for human
+  sign-off.
+- `visual_evidence`: generated PNG figures for reviewer inspection.
+- `supporting_evidence`: ordinary CSV/JSON support files that are not one of the
+  stricter release or audit surfaces.
 
 ## Generalization files
 
