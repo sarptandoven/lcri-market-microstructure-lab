@@ -53,6 +53,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_hidden_resiliency_asymmetry_summary.json").exists()
     assert (tmp_path / "adverse_selection_phase_shift_summary.csv").exists()
     assert (tmp_path / "heldout_adverse_selection_phase_shift_summary.csv").exists()
+    assert (tmp_path / "phase_shift_artifact_review.csv").exists()
+    assert (tmp_path / "heldout_phase_shift_artifact_review.csv").exists()
     assert (tmp_path / "lcri_signal_monotonicity.csv").exists()
     assert (tmp_path / "heldout_lcri_signal_monotonicity.csv").exists()
     assert (tmp_path / "lcri_signal_monotonicity_summary.json").exists()
@@ -158,6 +160,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["heldout_pressure_memory_decay_summary.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["hidden_resiliency_asymmetry_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["adverse_selection_phase_shift_summary.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["phase_shift_artifact_review.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_flags.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_improvements.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_regressions.csv"]["size_bytes"] > 0

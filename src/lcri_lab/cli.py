@@ -78,6 +78,7 @@ from lcri_lab.memory import (
     add_liquidity_memory_half_life,
     add_pressure_memory,
     adverse_selection_phase_shift_summary,
+    classify_phase_shift_artifacts,
     hidden_resiliency_asymmetry_summary,
     pressure_memory_decay_summary,
 )
@@ -374,6 +375,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_adverse_phase_shift = adverse_selection_phase_shift_summary(
         heldout_scored, return_col="future_return_ticks"
     )
+    phase_shift_artifacts = classify_phase_shift_artifacts(adverse_phase_shift)
+    heldout_phase_shift_artifacts = classify_phase_shift_artifacts(heldout_adverse_phase_shift)
     lcri_monotonicity = signal_quantile_monotonicity(scored, "lcri")
     heldout_lcri_monotonicity = signal_quantile_monotonicity(heldout_scored, "lcri")
     lcri_monotonicity_summary = signal_quantile_monotonicity_summary(lcri_monotonicity)
@@ -489,6 +492,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "heldout_hidden_resiliency_asymmetry_summary.json",
         "adverse_selection_phase_shift_summary.csv",
         "heldout_adverse_selection_phase_shift_summary.csv",
+        "phase_shift_artifact_review.csv",
+        "heldout_phase_shift_artifact_review.csv",
         "lcri_signal_monotonicity.csv",
         "heldout_lcri_signal_monotonicity.csv",
         "lcri_signal_monotonicity_summary.json",
@@ -644,6 +649,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     adverse_phase_shift.to_csv(output / "adverse_selection_phase_shift_summary.csv", index=False)
     heldout_adverse_phase_shift.to_csv(
         output / "heldout_adverse_selection_phase_shift_summary.csv", index=False
+    )
+    phase_shift_artifacts.to_csv(output / "phase_shift_artifact_review.csv", index=False)
+    heldout_phase_shift_artifacts.to_csv(
+        output / "heldout_phase_shift_artifact_review.csv", index=False
     )
     lcri_monotonicity.to_csv(output / "lcri_signal_monotonicity.csv", index=False)
     heldout_lcri_monotonicity.to_csv(
