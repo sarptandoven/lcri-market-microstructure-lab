@@ -5,6 +5,7 @@ from lcri_lab.memory import (
     add_liquidity_memory_half_life,
     add_pressure_memory,
     adverse_selection_phase_shift_summary,
+    classify_phase_shift_artifacts,
     classify_pressure_memory_artifacts,
     hidden_resiliency_asymmetry_summary,
     pressure_memory_decay_summary,
@@ -158,6 +159,38 @@ def test_adverse_selection_phase_shift_scores_fractured_fast_decay() -> None:
     assert summary.loc["fast_decay", "adverse_selection_phase_shift_score"] == pytest.approx(3.75)
     assert summary.loc["fast_decay", "phase_shift_interpretation"] == "fractured_adverse_selection"
     assert summary.loc["persistent", "phase_shift_interpretation"] == "aligned_pressure_memory"
+
+
+def test_classify_phase_shift_artifacts_ranks_fractured_review_rows() -> None:
+    summary = pd.DataFrame(
+        {
+            "pressure_memory_decay_state": ["persistent", "fast_decay", "slow_decay"],
+            "adverse_selection_phase_shift_rate": [0.0, 1.0, 0.4],
+            "mean_latent_liquidity_fracture": [2.0, 3.0, 2.0],
+            "adverse_selection_phase_shift_score": [0.0, 3.0, 0.8],
+        }
+    )
+
+    output = classify_phase_shift_artifacts(summary)
+
+    assert output.loc[0, "pressure_memory_decay_state"] == "fast_decay"
+    assert output.loc[0, "phase_shift_artifact"] == "fractured_adverse_selection"
+    assert output.loc[1, "phase_shift_artifact"] == "localized_fracture_shift"
+    assert output.loc[2, "phase_shift_artifact"] == "aligned_pressure_memory"
+
+
+def test_classify_phase_shift_artifacts_rejects_bad_rates() -> None:
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        classify_phase_shift_artifacts(
+            pd.DataFrame(
+                {
+                    "pressure_memory_decay_state": ["fast_decay"],
+                    "adverse_selection_phase_shift_rate": [1.5],
+                    "mean_latent_liquidity_fracture": [1.0],
+                    "adverse_selection_phase_shift_score": [2.0],
+                }
+            )
+        )
 
 
 def test_liquidity_memory_half_life_respects_groups() -> None:
