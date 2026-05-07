@@ -74,7 +74,7 @@ from lcri_lab.evaluation import (
 from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.features import add_regime_transition_features
 from lcri_lab.ingest import normalize_l2_snapshots
-from lcri_lab.memory import add_pressure_memory
+from lcri_lab.memory import add_liquidity_memory_half_life, add_pressure_memory
 from lcri_lab.model import ARTIFACT_VERSION, LCRIModel, ModelConfig
 from lcri_lab.plotting import write_figures
 from lcri_lab.reporting import (
@@ -895,8 +895,12 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
 
 
 def _add_reversal_pressure_stack(frame: pd.DataFrame) -> pd.DataFrame:
+    pressure_stack = add_liquidity_memory_half_life(
+        add_pressure_memory(frame),
+        group_col="regime",
+    )
     return add_reversal_lead_lag_coupling(
-        add_queue_reversal_risk(add_shadow_absorption(add_pressure_memory(frame))),
+        add_queue_reversal_risk(add_shadow_absorption(pressure_stack)),
         group_col="regime",
     )
 

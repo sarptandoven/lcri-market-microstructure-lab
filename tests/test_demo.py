@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from lcri_lab.cli import run_demo
@@ -96,6 +97,12 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     robustness = json.loads((tmp_path / "transition_robustness.json").read_text())
     assert "passes_transition_robustness" in robustness
     metadata_summary = json.loads((tmp_path / "artifact_metadata_summary.json").read_text())
+    sample_columns = set(pd.read_csv(tmp_path / "sample_snapshots.csv", nrows=1).columns)
+    assert {
+        "pressure_memory_half_life",
+        "pressure_memory_decay_ratio",
+        "pressure_memory_decay_event",
+    }.issubset(sample_columns)
     assert metadata_summary["artifacts_with_metadata"] > 0
     assert metadata_summary["total_size_bytes"] > 0
     assert metadata_summary["largest_artifact"] != "none"
