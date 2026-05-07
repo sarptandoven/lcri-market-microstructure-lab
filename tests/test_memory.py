@@ -4,6 +4,7 @@ import pytest
 from lcri_lab.memory import (
     add_liquidity_memory_half_life,
     add_pressure_memory,
+    classify_pressure_memory_artifacts,
     pressure_memory_decay_summary,
 )
 
@@ -90,6 +91,30 @@ def test_pressure_memory_decay_summary_counts_state_release_speed() -> None:
     assert summary.loc["fast_decay", "mean_release_velocity"] == pytest.approx(0.6)
     assert summary.loc["fast_decay", "mean_latent_liquidity_fracture"] == pytest.approx(1.2)
     assert summary.loc["persistent", "decay_events"] == 0
+
+
+def test_classify_pressure_memory_artifacts_flags_fractured_release() -> None:
+    frame = pd.DataFrame(
+        {
+            "pressure_memory_decay_state": ["fast_decay", "fast_decay", "persistent", "slow_decay"],
+            "pressure_memory_release_velocity": [0.7, 0.5, 0.0, 0.1],
+            "latent_liquidity_fracture": [4.0, 3.0, 5.0, 0.2],
+        }
+    )
+
+    output = classify_pressure_memory_artifacts(frame, high_fracture_quantile=0.5).set_index(
+        "pressure_memory_decay_state"
+    )
+
+    assert output.loc["fast_decay", "pressure_memory_artifact"] == "fractured_fast_release"
+    assert output.loc["persistent", "pressure_memory_artifact"] == "latent_fracture_persistence"
+    assert output.loc["slow_decay", "pressure_memory_artifact"] == "benign_decay"
+    assert output.loc["fast_decay", "artifact_severity"] == pytest.approx(3.5 * 1.6)
+
+
+def test_classify_pressure_memory_artifacts_rejects_bad_inputs() -> None:
+    with pytest.raises(ValueError, match="missing pressure memory artifact columns"):
+        classify_pressure_memory_artifacts(pd.DataFrame({"pressure_memory_decay_state": ["x"]}))
 
 
 def test_liquidity_memory_half_life_respects_groups() -> None:

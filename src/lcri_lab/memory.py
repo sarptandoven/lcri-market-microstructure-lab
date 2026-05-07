@@ -152,6 +152,58 @@ def pressure_memory_decay_summary(
     return pd.DataFrame(rows)
 
 
+def classify_pressure_memory_artifacts(
+    frame: pd.DataFrame,
+    *,
+    state_col: str = "pressure_memory_decay_state",
+    velocity_col: str = "pressure_memory_release_velocity",
+    fracture_col: str = "latent_liquidity_fracture",
+    high_fracture_quantile: float = 0.75,
+) -> pd.DataFrame:
+    """Classify decay states into pressure-memory artifact families."""
+    required = [state_col, velocity_col, fracture_col]
+    missing = sorted(set(required) - set(frame.columns))
+    if missing:
+        raise ValueError(f"missing pressure memory artifact columns: {missing}")
+    if not np.isfinite(high_fracture_quantile) or not 0.0 < high_fracture_quantile < 1.0:
+        raise ValueError("high_fracture_quantile must be finite and between 0 and 1")
+
+    data = frame[required].copy()
+    data[velocity_col] = data[velocity_col].astype(float)
+    data[fracture_col] = data[fracture_col].astype(float)
+    if not np.isfinite(data[[velocity_col, fracture_col]].to_numpy()).all():
+        raise ValueError("pressure memory artifact inputs must be finite")
+
+    fracture_bar = float(data[fracture_col].quantile(high_fracture_quantile))
+    velocity_bar = float(data.loc[data[velocity_col].gt(0.0), velocity_col].median())
+    velocity_bar = velocity_bar if math.isfinite(velocity_bar) else 0.0
+    rows = []
+    for state, group in data.groupby(state_col, sort=True):
+        mean_velocity = _finite_mean_or_zero(group[velocity_col])
+        mean_fracture = _finite_mean_or_zero(group[fracture_col])
+        elevated_fracture = mean_fracture >= fracture_bar and mean_fracture > 0.0
+        active_release = mean_velocity >= velocity_bar and mean_velocity > 0.0
+        if state == "persistent" and elevated_fracture:
+            artifact = "latent_fracture_persistence"
+        elif state == "fast_decay" and elevated_fracture and active_release:
+            artifact = "fractured_fast_release"
+        elif state == "slow_decay" and elevated_fracture:
+            artifact = "sticky_fracture_decay"
+        else:
+            artifact = "benign_decay"
+        rows.append(
+            {
+                "pressure_memory_decay_state": state,
+                "observations": int(len(group)),
+                "mean_release_velocity": mean_velocity,
+                "mean_latent_liquidity_fracture": mean_fracture,
+                "pressure_memory_artifact": artifact,
+                "artifact_severity": float(mean_fracture * (1.0 + mean_velocity)),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def _finite_mean_or_zero(value: pd.Series) -> float:
     mean = float(value.mean()) if len(value) else 0.0
     return mean if math.isfinite(mean) else 0.0
