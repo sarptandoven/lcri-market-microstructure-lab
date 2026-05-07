@@ -2791,6 +2791,8 @@ def write_research_summary(
     lcri_reversal_stress_summary: dict[str, Any] | None = None,
     heldout_lcri_reversal_stress_summary: dict[str, Any] | None = None,
     lcri_fracture_reversal_gate: dict[str, Any] | None = None,
+    lcri_reversal_transition_gate: pd.DataFrame | None = None,
+    heldout_lcri_reversal_transition_gate: pd.DataFrame | None = None,
     heldout_transition_robustness: dict[str, Any] | None = None,
 ) -> None:
     """Write a compact markdown summary of the demo artifacts."""
@@ -3162,6 +3164,18 @@ def write_research_summary(
                 ],
                 "" if lcri_fracture_reversal_gate else "_Not generated._",
                 "",
+                "## LCRI reversal transition gate",
+                "",
+                _markdown_table(lcri_reversal_transition_gate)
+                if lcri_reversal_transition_gate is not None
+                else "_Not generated._",
+                "",
+                "## Heldout LCRI reversal transition gate",
+                "",
+                _markdown_table(heldout_lcri_reversal_transition_gate)
+                if heldout_lcri_reversal_transition_gate is not None
+                else "_Not generated._",
+                "",
                 "## Heldout LCRI signal monotonicity",
                 "",
                 _markdown_table(heldout_lcri_signal_monotonicity)
@@ -3322,6 +3336,8 @@ _RESEARCH_SUMMARY_ARTIFACT_SECTIONS = {
     "LCRI reversal stress concentration summary": "lcri_reversal_stress_concentration_summary.json",
     "Heldout LCRI reversal stress concentration summary": "heldout_lcri_reversal_stress_concentration_summary.json",
     "LCRI fracture reversal gate": "lcri_fracture_reversal_gate.json",
+    "LCRI reversal transition gate": "lcri_reversal_transition_gate.csv",
+    "Heldout LCRI reversal transition gate": "heldout_lcri_reversal_transition_gate.csv",
     "Heldout LCRI calibration curve": "heldout_lcri_calibration_curve.csv",
     "Heldout LCRI calibration gate": "heldout_lcri_calibration_gate.json",
     "Heldout LCRI calibration fracture pressure": "heldout_lcri_calibration_fracture_pressure.csv",
@@ -3353,7 +3369,7 @@ def _artifact_family(artifact: str) -> str:
         "heldout_lcri_reversal_stress"
     ):
         return "lcri_gate"
-    if artifact == "lcri_fracture_reversal_gate.json":
+    if artifact == "lcri_fracture_reversal_gate.json" or "reversal_transition_gate" in artifact:
         return "lcri_gate"
     if artifact in {
         "lcri_contradiction_review_packet.csv",

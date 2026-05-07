@@ -3030,6 +3030,20 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
             "max_stress_concentration_ratio": 1.1,
         },
         lcri_fracture_reversal_gate={"decision": "review", "passes": False},
+        lcri_reversal_transition_gate=pd.DataFrame(
+            {
+                "transition": ["thick->thin"],
+                "transition_stress_share": [0.8],
+                "transition_gate_decision": ["review"],
+            }
+        ),
+        heldout_lcri_reversal_transition_gate=pd.DataFrame(
+            {
+                "transition": ["thin->shock"],
+                "transition_stress_share": [1.0],
+                "transition_gate_decision": ["pass"],
+            }
+        ),
     )
 
     text = path.read_text()
@@ -3067,3 +3081,6 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
     assert "## Heldout LCRI reversal stress concentration summary" in text
     assert "## LCRI fracture reversal gate" in text
     assert "- decision: review" in text
+    assert "## LCRI reversal transition gate" in text
+    assert "| thick->thin | 0.800000 | review |" in text
+    assert "## Heldout LCRI reversal transition gate" in text
