@@ -2605,6 +2605,42 @@ def calibration_monotonicity_pressure(
     )
 
 
+def calibration_monotonicity_pressure_summary(
+    pressure: pd.DataFrame,
+) -> dict[str, float | int | str | bool]:
+    """Summarize calibration-shape fracture pressure for release gates."""
+    if pressure.empty:
+        return {
+            "rows": 0,
+            "fractured_miscalibrated_rows": 0,
+            "fractured_shape_only_rows": 0,
+            "total_fracture_pressure": 0.0,
+            "max_fracture_pressure": 0.0,
+            "worst_pressure_quantile": "none",
+            "passes_fracture_pressure_gate": True,
+        }
+    _require_columns(
+        pressure,
+        ["quantile", "fracture_pressure", "pressure_label"],
+    )
+    values = pressure["fracture_pressure"].astype(float)
+    if not np.isfinite(values).all():
+        raise ValueError("fracture pressure values must be finite")
+    labels = pressure["pressure_label"].astype(str)
+    worst = pressure.loc[values.idxmax()]
+    fractured_miscalibrated = labels == "fractured_miscalibrated"
+    fractured_shape_only = labels == "fractured_shape_only"
+    return {
+        "rows": len(pressure),
+        "fractured_miscalibrated_rows": int(fractured_miscalibrated.sum()),
+        "fractured_shape_only_rows": int(fractured_shape_only.sum()),
+        "total_fracture_pressure": float(values.sum()),
+        "max_fracture_pressure": float(values.max()),
+        "worst_pressure_quantile": str(worst["quantile"]),
+        "passes_fracture_pressure_gate": bool(not fractured_miscalibrated.any()),
+    }
+
+
 
 def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.DataFrame:
     if bins < 1:

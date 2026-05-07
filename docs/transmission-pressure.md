@@ -22,3 +22,7 @@ Rows labelled `fractured_miscalibrated` are the most suspicious: the model is
 not only inverted locally, it is also mispricing the same score region. Treat
 those rows as candidates for latent liquidity fracture review before promoting
 transmission pressure or LCRI into a release gate.
+
+`calibration_monotonicity_pressure_summary` converts the row-level table into a
+compact gate: any miscalibrated fracture blocks the fracture-pressure gate,
+while shape-only fractures remain visible as review debt.

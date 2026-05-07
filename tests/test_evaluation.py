@@ -6,6 +6,7 @@ from lcri_lab.evaluation import (
     calibration_error_summary,
     calibration_gate_decision,
     calibration_monotonicity_pressure,
+    calibration_monotonicity_pressure_summary,
     evaluate_signals,
     generalization_fragility_diagnostics,
     generalization_fragility_summary,
@@ -139,6 +140,28 @@ def test_calibration_monotonicity_pressure_flags_fractured_miscalibration() -> N
 def test_calibration_monotonicity_pressure_rejects_negative_threshold() -> None:
     with pytest.raises(ValueError, match="residual_threshold"):
         calibration_monotonicity_pressure(pd.DataFrame(), pd.DataFrame(), residual_threshold=-0.1)
+
+
+def test_calibration_monotonicity_pressure_summary_blocks_mispriced_fractures() -> None:
+    pressure = pd.DataFrame(
+        {
+            "quantile": [0, 1, 2],
+            "fracture_pressure": [0.0, 0.02, 0.12],
+            "pressure_label": ["aligned", "fractured_shape_only", "fractured_miscalibrated"],
+        }
+    )
+
+    summary = calibration_monotonicity_pressure_summary(pressure)
+
+    assert summary == {
+        "rows": 3,
+        "fractured_miscalibrated_rows": 1,
+        "fractured_shape_only_rows": 1,
+        "total_fracture_pressure": pytest.approx(0.14),
+        "max_fracture_pressure": pytest.approx(0.12),
+        "worst_pressure_quantile": "2",
+        "passes_fracture_pressure_gate": False,
+    }
 
 
 def test_summarize_signal_lift_reports_metric_deltas() -> None:
