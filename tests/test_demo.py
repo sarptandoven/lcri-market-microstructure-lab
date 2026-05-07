@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from lcri_lab.cli import run_demo
+from lcri_lab.cli import run_demo, verify_report
 
 
 def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -197,6 +197,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## Heldout transition lift" in summary
     assert "## Hidden resiliency asymmetry summary" in summary
     assert "## Adverse selection phase-shift summary" in summary
+
+    verify_report(tmp_path)
 
 
 def test_run_demo_rejects_invalid_train_fraction(tmp_path: Path) -> None:
