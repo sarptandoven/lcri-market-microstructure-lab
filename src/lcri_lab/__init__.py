@@ -78,7 +78,11 @@ from lcri_lab.features import (
     tag_liquidity_regimes,
 )
 from lcri_lab.labels import add_transaction_cost_labels
-from lcri_lab.memory import add_liquidity_memory_half_life, add_pressure_memory
+from lcri_lab.memory import (
+    add_liquidity_memory_half_life,
+    add_pressure_memory,
+    pressure_memory_decay_summary,
+)
 from lcri_lab.model import ARTIFACT_VERSION, LCRIModel, ModelConfig
 from lcri_lab.publishability import (
     PublishabilityConfig,
@@ -104,6 +108,7 @@ __all__ = [
     "add_transaction_cost_labels",
     "add_pressure_memory",
     "add_liquidity_memory_half_life",
+    "pressure_memory_decay_summary",
     "add_regime_transition_features",
     "add_shadow_absorption",
     "add_publishability_gate",

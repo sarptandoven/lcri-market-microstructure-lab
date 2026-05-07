@@ -106,6 +106,50 @@ def add_liquidity_memory_half_life(
     return output
 
 
+def pressure_memory_decay_summary(
+    frame: pd.DataFrame,
+    *,
+    state_col: str = "pressure_memory_decay_state",
+    half_life_col: str = "pressure_memory_half_life",
+    velocity_col: str = "pressure_memory_release_velocity",
+) -> pd.DataFrame:
+    """Summarize decay-state frequency and release speed diagnostics."""
+    required = [state_col, half_life_col, velocity_col]
+    missing = sorted(set(required) - set(frame.columns))
+    if missing:
+        raise ValueError(f"missing pressure memory summary columns: {missing}")
+
+    data = frame[required].copy()
+    data[half_life_col] = data[half_life_col].astype(float)
+    data[velocity_col] = data[velocity_col].astype(float)
+    if not np.isfinite(data[[half_life_col, velocity_col]].to_numpy()).all():
+        raise ValueError("pressure memory summary inputs must be finite")
+
+    rows = []
+    total = max(1, len(data))
+    for state, group in data.groupby(state_col, sort=True):
+        decay_events = group[half_life_col].gt(0.0)
+        event_half_life = group.loc[decay_events, half_life_col]
+        event_velocity = group.loc[decay_events, velocity_col]
+        rows.append(
+            {
+                "pressure_memory_decay_state": state,
+                "observations": int(len(group)),
+                "share": float(len(group) / total),
+                "decay_events": int(decay_events.sum()),
+                "event_rate": float(decay_events.mean()),
+                "mean_half_life": _finite_mean_or_zero(event_half_life),
+                "mean_release_velocity": _finite_mean_or_zero(event_velocity),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _finite_mean_or_zero(value: pd.Series) -> float:
+    mean = float(value.mean()) if len(value) else 0.0
+    return mean if math.isfinite(mean) else 0.0
+
+
 def _safe_zscore(value: pd.Series, scale: pd.Series) -> pd.Series:
     safe_scale = scale.mask(scale <= 0.0)
     zscore = value / safe_scale

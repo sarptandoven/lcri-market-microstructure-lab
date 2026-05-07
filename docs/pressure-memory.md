@@ -15,7 +15,7 @@ pressure_memory_release_velocity = (1 - decay_ratio) / half_life on decay events
 pressure_memory_decay_state = inactive | persistent | fast_decay | slow_decay
 ```
 
-Half-life state is a compact artifact label. Fast decay marks transient pressure that loses force quickly. Slow decay marks observed memory release only after a longer local window, which is closer to latent-liquidity stress than simple mean reversion. Release velocity keeps the same event sparse but distinguishes abrupt memory collapse from slower leakage.
+Half-life state is a compact artifact label. Fast decay marks transient pressure that loses force quickly. Slow decay marks observed memory release only after a longer local window, which is closer to latent-liquidity stress than simple mean reversion. Release velocity keeps the same event sparse but distinguishes abrupt memory collapse from slower leakage. `pressure_memory_decay_summary` aggregates state share, event rate, mean half-life, and mean release velocity for artifact-level comparison.
 
 The research target is not to replace LCRI. It is to separate durable residual pressure from one-shot dislocations.
 

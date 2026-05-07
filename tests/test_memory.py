@@ -1,7 +1,11 @@
 import pandas as pd
 import pytest
 
-from lcri_lab.memory import add_liquidity_memory_half_life, add_pressure_memory
+from lcri_lab.memory import (
+    add_liquidity_memory_half_life,
+    add_pressure_memory,
+    pressure_memory_decay_summary,
+)
 
 
 def test_pressure_memory_adds_persistence_features() -> None:
@@ -69,6 +73,18 @@ def test_liquidity_memory_half_life_marks_local_decay_events() -> None:
     assert output["pressure_memory_decay_ratio"].iloc[3] == pytest.approx(1.9 / 4.0)
     assert output["pressure_memory_release_velocity"].iloc[3] == pytest.approx((1.0 - 1.9 / 4.0) / 2.0)
     assert output["pressure_memory_release_velocity"].iloc[5] == pytest.approx(0.6)
+
+
+def test_pressure_memory_decay_summary_counts_state_release_speed() -> None:
+    frame = pd.DataFrame({"pressure_memory": [0.0, 4.0, 3.0, 1.9, -5.0, -2.0]})
+    output = add_liquidity_memory_half_life(frame, window=4)
+
+    summary = pressure_memory_decay_summary(output).set_index("pressure_memory_decay_state")
+
+    assert summary.loc["fast_decay", "observations"] == 1
+    assert summary.loc["fast_decay", "event_rate"] == pytest.approx(1.0)
+    assert summary.loc["fast_decay", "mean_release_velocity"] == pytest.approx(0.6)
+    assert summary.loc["persistent", "decay_events"] == 0
 
 
 def test_liquidity_memory_half_life_respects_groups() -> None:
