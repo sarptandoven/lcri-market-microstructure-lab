@@ -86,7 +86,11 @@ from lcri_lab.publishability import (
     publishability_margin_diagnostics,
     publishability_margin_summary,
 )
-from lcri_lab.reversal import add_queue_reversal_risk, add_reversal_lead_lag_coupling
+from lcri_lab.reversal import (
+    add_queue_reversal_risk,
+    add_reversal_lead_lag_coupling,
+    reversal_coupling_regime_stress,
+)
 from lcri_lab.schema import snapshot_required_columns
 from lcri_lab.sensitivity import publishability_latency_sweep
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
@@ -101,6 +105,7 @@ __all__ = [
     "add_publishability_gate",
     "add_queue_reversal_risk",
     "add_reversal_lead_lag_coupling",
+    "reversal_coupling_regime_stress",
     "LCRIModel",
     "LiquidityBaseline",
     "ModelConfig",

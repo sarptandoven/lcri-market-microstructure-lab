@@ -1,7 +1,11 @@
 import pandas as pd
 import pytest
 
-from lcri_lab.reversal import add_queue_reversal_risk, add_reversal_lead_lag_coupling
+from lcri_lab.reversal import (
+    add_queue_reversal_risk,
+    add_reversal_lead_lag_coupling,
+    reversal_coupling_regime_stress,
+)
 
 
 def test_queue_reversal_risk_flags_fragile_pressure() -> None:
@@ -63,3 +67,34 @@ def test_reversal_lead_lag_coupling_scores_next_queue_snapback() -> None:
 def test_reversal_lead_lag_coupling_rejects_missing_columns() -> None:
     with pytest.raises(ValueError, match="missing reversal coupling columns"):
         add_reversal_lead_lag_coupling(pd.DataFrame({"transmission_pressure": [1.0]}))
+
+
+def test_reversal_coupling_regime_stress_ranks_concentrated_regimes() -> None:
+    frame = pd.DataFrame(
+        {
+            "regime": ["thin", "thin", "thick", "thick"],
+            "transmission_pressure": [1.0, 1.0, 4.0, 4.0],
+            "reversal_lead_lag_coupling": [0.6, 0.4, 0.0, 0.0],
+        }
+    )
+
+    stress = reversal_coupling_regime_stress(frame)
+
+    assert stress["regime"].tolist() == ["thin", "thick"]
+    assert stress.loc[0, "coupled_rows"] == 2
+    assert stress.loc[0, "coupling_share"] == pytest.approx(1.0)
+    assert stress.loc[0, "transmission_exposure_share"] == pytest.approx(0.2)
+    assert stress.loc[0, "stress_concentration_ratio"] == pytest.approx(5.0)
+
+
+def test_reversal_coupling_regime_stress_rejects_negative_coupling() -> None:
+    frame = pd.DataFrame(
+        {
+            "regime": ["thin"],
+            "transmission_pressure": [1.0],
+            "reversal_lead_lag_coupling": [-0.1],
+        }
+    )
+
+    with pytest.raises(ValueError, match="non-negative"):
+        reversal_coupling_regime_stress(frame)

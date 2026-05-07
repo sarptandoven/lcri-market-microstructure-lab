@@ -96,3 +96,63 @@ def add_reversal_lead_lag_coupling(
     output["reversal_lead_lag_coupling"] = coupling
     output["reversal_lead_lag_flag"] = coupling > 0.0
     return output
+
+
+def reversal_coupling_regime_stress(
+    frame: pd.DataFrame,
+    *,
+    regime_col: str = "regime",
+    coupling_col: str = "reversal_lead_lag_coupling",
+    transmission_col: str = "transmission_pressure",
+) -> pd.DataFrame:
+    """Summarize where lead-lag reversal stress concentrates by regime.
+
+    A regime whose share of coupling stress is larger than its share of
+    transmitted pressure is a microstructure failure mode.
+    """
+    required = [regime_col, coupling_col, transmission_col]
+    missing = sorted(set(required) - set(frame.columns))
+    if missing:
+        raise ValueError(f"missing reversal stress columns: {missing}")
+    if frame.empty:
+        return pd.DataFrame(columns=_REGIME_STRESS_COLUMNS)
+
+    regime = frame[regime_col].astype(str)
+    coupling = frame[coupling_col].astype(float)
+    exposure = frame[transmission_col].astype(float).abs()
+    if not np.isfinite(np.column_stack([coupling, exposure])).all():
+        raise ValueError("reversal stress inputs must be finite")
+    if (coupling < 0.0).any():
+        raise ValueError("reversal coupling must be non-negative")
+
+    total_coupling = coupling.sum()
+    total_exposure = exposure.sum()
+    rows = []
+    for value, index in regime.groupby(regime, sort=True).groups.items():
+        regime_coupling = coupling.loc[index]
+        regime_exposure = exposure.loc[index]
+        coupling_share = regime_coupling.sum() / total_coupling if total_coupling else 0.0
+        exposure_share = regime_exposure.sum() / total_exposure if total_exposure else 0.0
+        rows.append(
+            {
+                "regime": value,
+                "rows": len(index),
+                "coupled_rows": int((regime_coupling > 0.0).sum()),
+                "coupling_share": float(coupling_share),
+                "transmission_exposure_share": float(exposure_share),
+                "stress_concentration_ratio": float(coupling_share / exposure_share) if exposure_share else 0.0,
+            }
+        )
+    return pd.DataFrame(rows, columns=_REGIME_STRESS_COLUMNS).sort_values(
+        "stress_concentration_ratio", ascending=False
+    ).reset_index(drop=True)
+
+
+_REGIME_STRESS_COLUMNS = [
+    "regime",
+    "rows",
+    "coupled_rows",
+    "coupling_share",
+    "transmission_exposure_share",
+    "stress_concentration_ratio",
+]
