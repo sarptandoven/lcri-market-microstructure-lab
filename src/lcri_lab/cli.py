@@ -10,6 +10,8 @@ from lcri_lab.evaluation import (
     calibration_curve,
     calibration_error_summary,
     calibration_gate_decision,
+    calibration_monotonicity_pressure,
+    calibration_monotonicity_pressure_summary,
     evaluate_signals,
     generalization_fragility_diagnostics,
     generalization_fragility_summary,
@@ -354,6 +356,20 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_lcri_calibration_summary = calibration_error_summary(heldout_lcri_calibration)
     lcri_calibration_gate = calibration_gate_decision(lcri_calibration_summary)
     heldout_lcri_calibration_gate = calibration_gate_decision(heldout_lcri_calibration_summary)
+    lcri_calibration_fracture_pressure = calibration_monotonicity_pressure(
+        lcri_calibration,
+        lcri_monotonicity,
+    )
+    heldout_lcri_calibration_fracture_pressure = calibration_monotonicity_pressure(
+        heldout_lcri_calibration,
+        heldout_lcri_monotonicity,
+    )
+    lcri_calibration_fracture_pressure_summary = calibration_monotonicity_pressure_summary(
+        lcri_calibration_fracture_pressure
+    )
+    heldout_lcri_calibration_fracture_pressure_summary = calibration_monotonicity_pressure_summary(
+        heldout_lcri_calibration_fracture_pressure
+    )
     transition_robustness = transition_robustness_summary(scored)
     heldout_transition_robustness = transition_robustness_summary(heldout_scored)
 
@@ -429,6 +445,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "heldout_lcri_calibration_summary.json",
         "lcri_calibration_gate.json",
         "heldout_lcri_calibration_gate.json",
+        "lcri_calibration_fracture_pressure.csv",
+        "heldout_lcri_calibration_fracture_pressure.csv",
+        "lcri_calibration_fracture_pressure_summary.json",
+        "heldout_lcri_calibration_fracture_pressure_summary.json",
         "transition_robustness.json",
         "heldout_transition_robustness.json",
         "research_summary.md",
@@ -563,6 +583,20 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     write_json(output / "heldout_lcri_calibration_summary.json", heldout_lcri_calibration_summary)
     write_json(output / "lcri_calibration_gate.json", lcri_calibration_gate)
     write_json(output / "heldout_lcri_calibration_gate.json", heldout_lcri_calibration_gate)
+    lcri_calibration_fracture_pressure.to_csv(
+        output / "lcri_calibration_fracture_pressure.csv", index=False
+    )
+    heldout_lcri_calibration_fracture_pressure.to_csv(
+        output / "heldout_lcri_calibration_fracture_pressure.csv", index=False
+    )
+    write_json(
+        output / "lcri_calibration_fracture_pressure_summary.json",
+        lcri_calibration_fracture_pressure_summary,
+    )
+    write_json(
+        output / "heldout_lcri_calibration_fracture_pressure_summary.json",
+        heldout_lcri_calibration_fracture_pressure_summary,
+    )
     write_json(output / "transition_robustness.json", transition_robustness)
     write_json(output / "heldout_transition_robustness.json", heldout_transition_robustness)
     write_figures(

@@ -102,6 +102,14 @@ for reviewers who receive a report directory without the surrounding run logs.
   flagging missing or stale source-artifact links.
 - `lcri_evidence_lineage_map_summary.json`: compact lineage-health counts,
   worst-scope pointer, and boolean `lineage_clear` checkpoint.
+- `lcri_calibration_fracture_pressure.csv`: calibration bins aligned to signal
+  quantiles, with residual-weighted monotonicity fracture pressure per bucket.
+- `heldout_lcri_calibration_fracture_pressure.csv`: heldout version of the
+  calibration-shape pressure table for out-of-sample fracture review.
+- `lcri_calibration_fracture_pressure_summary.json`: compact full-sample
+  fracture-pressure gate, including miscalibrated fracture counts.
+- `heldout_lcri_calibration_fracture_pressure_summary.json`: compact heldout
+  gate for deciding whether shape/calibration fractures survive out of sample.
 - `figures/lcri_cross_artifact_evidence_index.png`: visual owner handoff of the
   cross-artifact evidence score with gate, CI, and uncertainty markers.
 - `figures/lcri_evidence_release_checklist.png`: visual release-owner checklist
