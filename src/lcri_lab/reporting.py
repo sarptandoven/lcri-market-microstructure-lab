@@ -374,6 +374,46 @@ def verify_hidden_resiliency_asymmetry_summary(
     return errors
 
 
+def verify_adverse_selection_phase_shift_summary(
+    output_dir: Path, artifact: str = "adverse_selection_phase_shift_summary.csv"
+) -> list[str]:
+    """Return errors for incomplete adverse-selection phase-shift diagnostics."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing adverse selection phase-shift summary: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "pressure_memory_decay_state",
+        "observations",
+        "active_observations",
+        "adverse_selection_phase_shift_rate",
+        "mean_release_velocity",
+        "mean_latent_liquidity_fracture",
+        "adverse_selection_phase_shift_score",
+        "phase_shift_interpretation",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete adverse selection phase-shift summary {artifact}: {missing}"]
+
+    numeric_columns = list(required - {"pressure_memory_decay_state", "phase_shift_interpretation"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite adverse selection phase-shift values in {artifact}")
+    if not numeric[["adverse_selection_phase_shift_rate"]].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        errors.append(f"bounded adverse selection phase-shift rates violated in {artifact}")
+    if not numeric.ge(0.0).all().all():
+        errors.append(f"negative adverse selection phase-shift values in {artifact}")
+    unknown = sorted(
+        set(frame["phase_shift_interpretation"].astype(str))
+        - {"fractured_adverse_selection", "localized_phase_shift", "aligned_pressure_memory"}
+    )
+    if unknown:
+        errors.append(f"unknown adverse selection phase-shift interpretations in {artifact}: {unknown}")
+    return errors
+
+
 def verify_figure_artifacts(output_dir: Path, manifest: dict[str, Any]) -> list[str]:
     """Return errors for manifest-listed PNG figures that are unreadable.
 

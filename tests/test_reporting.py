@@ -14,6 +14,7 @@ from lcri_lab.reporting import (
     verify_artifact_coverage_matrix,
     verify_artifact_manifest,
     verify_artifact_metadata_summary,
+    verify_adverse_selection_phase_shift_summary,
     verify_figure_artifacts,
     verify_generalization_fragility_consistency,
     verify_generalization_fragility_diagnostics,
@@ -185,6 +186,31 @@ def test_verify_hidden_resiliency_asymmetry_summary_checks_schema(tmp_path) -> N
     assert verify_hidden_resiliency_asymmetry_summary(tmp_path) == []
     write_json(tmp_path / "hidden_resiliency_asymmetry_summary.json", {"interpretation": "x"})
     assert "incomplete hidden resiliency" in verify_hidden_resiliency_asymmetry_summary(tmp_path)[0]
+
+
+def test_verify_adverse_selection_phase_shift_summary_checks_schema(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            ["fast_decay", 2, 2, 1.0, 0.5, 2.5, 3.75, "fractured_adverse_selection"],
+            ["persistent", 1, 1, 0.0, 0.0, 1.0, 0.0, "aligned_pressure_memory"],
+        ],
+        columns=[
+            "pressure_memory_decay_state",
+            "observations",
+            "active_observations",
+            "adverse_selection_phase_shift_rate",
+            "mean_release_velocity",
+            "mean_latent_liquidity_fracture",
+            "adverse_selection_phase_shift_score",
+            "phase_shift_interpretation",
+        ],
+    ).to_csv(tmp_path / "adverse_selection_phase_shift_summary.csv", index=False)
+
+    assert verify_adverse_selection_phase_shift_summary(tmp_path) == []
+    pd.DataFrame([{"phase_shift_interpretation": "x"}]).to_csv(
+        tmp_path / "adverse_selection_phase_shift_summary.csv", index=False
+    )
+    assert "incomplete adverse selection" in verify_adverse_selection_phase_shift_summary(tmp_path)[0]
 
 
 def test_verify_pressure_memory_decay_summary_checks_bounds(tmp_path) -> None:
