@@ -5,6 +5,7 @@ from lcri_lab.evaluation import (
     calibration_curve,
     calibration_error_summary,
     calibration_gate_decision,
+    calibration_monotonicity_pressure,
     evaluate_signals,
     generalization_fragility_diagnostics,
     generalization_fragility_summary,
@@ -107,6 +108,37 @@ def test_signal_quantile_monotonicity_rejects_constant_signal() -> None:
 
     with pytest.raises(ValueError, match="signal must vary"):
         signal_quantile_monotonicity(frame, "lcri", quantiles=3)
+
+
+def test_calibration_monotonicity_pressure_flags_fractured_miscalibration() -> None:
+    calibration = pd.DataFrame(
+        {
+            "bin": [0, 1, 2],
+            "predicted_probability": [0.2, 0.5, 0.8],
+            "observed_frequency": [0.25, 0.7, 0.4],
+            "rows": [10, 10, 10],
+        }
+    )
+    monotonicity = pd.DataFrame(
+        {
+            "quantile": [0, 1, 2],
+            "observed_frequency": [0.25, 0.7, 0.4],
+            "adjacent_frequency_slope": [0.0, 0.45, -0.3],
+            "monotonicity_violation": [False, False, True],
+            "rows": [10, 10, 10],
+        }
+    )
+
+    output = calibration_monotonicity_pressure(calibration, monotonicity)
+
+    assert output.loc[2, "pressure_label"] == "fractured_miscalibrated"
+    assert output.loc[2, "calibration_residual"] == pytest.approx(-0.4)
+    assert output.loc[2, "fracture_pressure"] == pytest.approx(0.3 * 0.4 * (1 / 3) ** 0.5)
+
+
+def test_calibration_monotonicity_pressure_rejects_negative_threshold() -> None:
+    with pytest.raises(ValueError, match="residual_threshold"):
+        calibration_monotonicity_pressure(pd.DataFrame(), pd.DataFrame(), residual_threshold=-0.1)
 
 
 def test_summarize_signal_lift_reports_metric_deltas() -> None:

@@ -2531,6 +2531,80 @@ def signal_quantile_monotonicity_summary(
     }
 
 
+def calibration_monotonicity_pressure(
+    calibration: pd.DataFrame,
+    monotonicity: pd.DataFrame,
+    *,
+    residual_threshold: float = 0.05,
+) -> pd.DataFrame:
+    """Locate buckets where calibration residuals amplify monotonicity breaks.
+
+    A publishable LCRI curve should be both calibrated and order-preserving. This
+    diagnostic aligns calibration bins with monotonicity quantiles by ordinal rank
+    and scores *fracture pressure*: a negative adjacent frequency slope weighted
+    by the same bucket's calibration residual and row share. High pressure rows
+    identify score regions where the model is both shape-inverted and mispriced.
+    """
+    if residual_threshold < 0.0:
+        raise ValueError("residual_threshold must be non-negative")
+    _require_columns(calibration, ["predicted_probability", "observed_frequency", "rows"])
+    _require_columns(
+        monotonicity,
+        ["quantile", "observed_frequency", "adjacent_frequency_slope", "rows"],
+    )
+    if calibration.empty or monotonicity.empty:
+        return pd.DataFrame(
+            columns=[
+                "bucket_rank",
+                "quantile",
+                "rows",
+                "predicted_probability",
+                "observed_frequency",
+                "calibration_residual",
+                "adjacent_frequency_slope",
+                "fracture_pressure",
+                "pressure_label",
+            ]
+        )
+
+    left = calibration.reset_index(drop=True).copy()
+    right = monotonicity.reset_index(drop=True).copy()
+    limit = min(len(left), len(right))
+    left = left.iloc[:limit]
+    right = right.iloc[:limit]
+    predicted = left["predicted_probability"].astype(float).to_numpy()
+    observed = left["observed_frequency"].astype(float).to_numpy()
+    rows = right["rows"].astype(float).to_numpy()
+    slope = right["adjacent_frequency_slope"].astype(float).to_numpy()
+    values = np.column_stack([predicted, observed, rows, slope])
+    if not np.isfinite(values).all():
+        raise ValueError("calibration monotonicity inputs must be finite")
+    if (rows < 0.0).any():
+        raise ValueError("monotonicity row counts must be non-negative")
+
+    residual = observed - predicted
+    row_share = rows / rows.sum() if rows.sum() > 0.0 else np.zeros_like(rows)
+    fracture_pressure = np.maximum(-slope, 0.0) * np.abs(residual) * np.sqrt(row_share)
+    pressure_label = np.select(
+        [(slope < 0.0) & (np.abs(residual) >= residual_threshold), slope < 0.0],
+        ["fractured_miscalibrated", "fractured_shape_only"],
+        default="aligned",
+    )
+    return pd.DataFrame(
+        {
+            "bucket_rank": np.arange(limit, dtype=int),
+            "quantile": right["quantile"].astype(int).to_numpy(),
+            "rows": rows.astype(int),
+            "predicted_probability": predicted,
+            "observed_frequency": observed,
+            "calibration_residual": residual,
+            "adjacent_frequency_slope": slope,
+            "fracture_pressure": fracture_pressure,
+            "pressure_label": pressure_label,
+        }
+    )
+
+
 
 def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.DataFrame:
     if bins < 1:
