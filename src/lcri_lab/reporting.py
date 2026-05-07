@@ -25,6 +25,7 @@ from lcri_lab.evaluation import (
     lcri_uncertainty_weighted_review_priority,
     lcri_uncertainty_weighted_review_priority_summary,
 )
+from lcri_lab.reversal import fracture_reversal_release_gate
 
 
 def build_artifact_manifest(
@@ -1424,6 +1425,37 @@ def verify_lcri_ci_gate_contradiction_consistency(output_dir: Path) -> list[str]
             expected_value,
             summary.get(key),
         )
+    return errors
+
+
+def verify_lcri_fracture_reversal_gate(output_dir: Path) -> list[str]:
+    """Return errors when the fracture/reversal release gate is stale."""
+    gate_path = output_dir / "lcri_fracture_reversal_gate.json"
+    reversal_path = output_dir / "lcri_reversal_stress_concentration_summary.json"
+    fracture_path = output_dir / "lcri_calibration_fracture_gate.json"
+    heldout_reversal_path = output_dir / "heldout_lcri_reversal_stress_concentration_summary.json"
+    if not gate_path.exists():
+        return ["missing LCRI fracture reversal gate: lcri_fracture_reversal_gate.json"]
+    if not reversal_path.exists() or not fracture_path.exists():
+        return []
+
+    gate = json.loads(gate_path.read_text())
+    reversal_summary = json.loads(reversal_path.read_text())
+    fracture_gate = json.loads(fracture_path.read_text())
+    heldout_reversal_summary = (
+        json.loads(heldout_reversal_path.read_text()) if heldout_reversal_path.exists() else None
+    )
+    expected = fracture_reversal_release_gate(
+        reversal_summary,
+        fracture_gate,
+        heldout_reversal_summary=heldout_reversal_summary,
+    )
+    errors: list[str] = []
+    missing = sorted(set(expected) - set(gate))
+    if missing:
+        errors.append(f"incomplete LCRI fracture reversal gate: {missing}")
+    for key, expected_value in expected.items():
+        _append_lcri_gate_mismatch(errors, f"fracture_reversal_gate.{key}", expected_value, gate.get(key))
     return errors
 
 

@@ -97,6 +97,7 @@ from lcri_lab.reporting import (
     verify_generalization_stability_confidence_summary,
     verify_lcri_fragility_gate_alignment,
     verify_lcri_fragility_gate_scorecard,
+    verify_lcri_fracture_reversal_gate,
     verify_lcri_ci_confidence_coverage_consistency,
     verify_lcri_ci_confidence_coverage_scorecard,
     verify_lcri_ci_confidence_coverage_summary,
@@ -915,6 +916,11 @@ def verify_report(report_dir: Path) -> None:
         *verify_lcri_generalization_severity(report_dir),
         *verify_lcri_fragility_gate_alignment(report_dir),
         *verify_lcri_fragility_gate_scorecard(report_dir),
+        *(
+            verify_lcri_fracture_reversal_gate(report_dir)
+            if "lcri_fracture_reversal_gate.json" in manifest_artifacts
+            else []
+        ),
         *(
             verify_lcri_ci_gate_contradiction_diagnostics(report_dir)
             if "lcri_ci_gate_contradiction_diagnostics.csv" in manifest_artifacts
