@@ -31,6 +31,7 @@ def test_write_figures_keeps_heldout_outputs_optional(tmp_path: Path) -> None:
     assert not (tmp_path / "lcri_evidence_lineage_map.png").exists()
     assert not (tmp_path / "lcri_calibration_fracture_pressure.png").exists()
     assert not (tmp_path / "lcri_reversal_transition_gate.png").exists()
+    assert not (tmp_path / "pressure_memory_decay_fracture.png").exists()
 
 
 def test_write_figures_rejects_empty_inputs(tmp_path: Path) -> None:
@@ -222,6 +223,17 @@ def test_write_figures_writes_lcri_reversal_transition_gate_plot(tmp_path: Path)
     assert (tmp_path / "lcri_reversal_transition_gate.png").exists()
 
 
+def test_write_figures_writes_pressure_memory_decay_fracture_plot(tmp_path: Path) -> None:
+    write_figures(
+        _scored_frame(),
+        _regime_table(),
+        tmp_path,
+        pressure_memory_decay_summary=_pressure_memory_decay_summary(),
+    )
+
+    assert (tmp_path / "pressure_memory_decay_fracture.png").exists()
+
+
 def test_write_figures_writes_lcri_gap_delta_scope_plot(tmp_path: Path) -> None:
     frame = _scored_frame()
     regime_table = _regime_table()
@@ -291,6 +303,16 @@ def _regime_table() -> pd.DataFrame:
             "regime": ["thick", "thick"],
             "signal": ["raw_imbalance", "lcri"],
             "directional_accuracy": [0.5, 0.75],
+        }
+    )
+
+
+def _pressure_memory_decay_summary() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "pressure_memory_decay_state": ["fast_decay", "persistent"],
+            "mean_latent_liquidity_fracture": [2.5, 1.0],
+            "mean_release_velocity": [0.5, 0.0],
         }
     )
 

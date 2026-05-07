@@ -34,6 +34,7 @@ def write_figures(
     lcri_evidence_lineage_map: pd.DataFrame | None = None,
     lcri_calibration_fracture_pressure: pd.DataFrame | None = None,
     lcri_reversal_transition_gate: pd.DataFrame | None = None,
+    pressure_memory_decay_summary: pd.DataFrame | None = None,
 ) -> None:
     if frame.empty:
         raise ValueError("cannot write figures from an empty frame")
@@ -156,6 +157,11 @@ def write_figures(
             lcri_reversal_transition_gate,
             output_dir / "lcri_reversal_transition_gate.png",
         )
+    if pressure_memory_decay_summary is not None:
+        _pressure_memory_decay_fracture_bars(
+            pressure_memory_decay_summary,
+            output_dir / "pressure_memory_decay_fracture.png",
+        )
 
 
 def _scatter(frame: pd.DataFrame, path: Path) -> None:
@@ -167,6 +173,33 @@ def _scatter(frame: pd.DataFrame, path: Path) -> None:
     ax.set_title("Raw imbalance vs liquidity-conditioned residual imbalance")
     ax.set_xlabel("Raw imbalance")
     ax.set_ylabel("LCRI")
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+
+
+def _pressure_memory_decay_fracture_bars(table: pd.DataFrame, path: Path) -> None:
+    required = {
+        "pressure_memory_decay_state",
+        "mean_latent_liquidity_fracture",
+        "mean_release_velocity",
+    }
+    if table.empty or not required.issubset(table.columns):
+        return
+    plot = table.sort_values("mean_latent_liquidity_fracture", ascending=False).copy()
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.bar(
+        plot["pressure_memory_decay_state"].astype(str),
+        plot["mean_latent_liquidity_fracture"].astype(float),
+        color="#e45756",
+        alpha=0.75,
+    )
+    ax.set_title("Pressure-memory decay fracture exposure")
+    ax.set_xlabel("Decay state")
+    ax.set_ylabel("Mean latent liquidity fracture")
+    ax.tick_params(axis="x", rotation=25)
+    for index, velocity in enumerate(plot["mean_release_velocity"].astype(float)):
+        ax.text(index, 0.0, f"vel {velocity:.2f}", ha="center", va="bottom", rotation=90, fontsize=8)
     fig.tight_layout()
     fig.savefig(path, dpi=160)
     plt.close(fig)
