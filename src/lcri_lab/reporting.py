@@ -104,6 +104,7 @@ def artifact_coverage_matrix(artifacts: list[str]) -> pd.DataFrame:
             {
                 "artifact": artifact,
                 "family": _artifact_family(artifact),
+                "verification_role": _artifact_verification_role(artifact),
                 "extension": Path(artifact).suffix.lstrip(".") or "none",
                 "in_research_summary": artifact in summary_artifacts,
                 "is_figure": artifact.startswith("figures/") and artifact.endswith(".png"),
@@ -115,6 +116,7 @@ def artifact_coverage_matrix(artifacts: list[str]) -> pd.DataFrame:
         columns=[
             "artifact",
             "family",
+            "verification_role",
             "extension",
             "in_research_summary",
             "is_figure",
@@ -131,6 +133,7 @@ def artifact_coverage_summary(matrix: pd.DataFrame) -> dict[str, int]:
             "research_summary_artifacts": 0,
             "figure_artifacts": 0,
             "metadata_tracked_artifacts": 0,
+            "transition_verification_artifacts": 0,
             "families": 0,
         }
     return {
@@ -138,6 +141,9 @@ def artifact_coverage_summary(matrix: pd.DataFrame) -> dict[str, int]:
         "research_summary_artifacts": int(matrix["in_research_summary"].astype(bool).sum()),
         "figure_artifacts": int(matrix["is_figure"].astype(bool).sum()),
         "metadata_tracked_artifacts": int(matrix["has_manifest_metadata"].astype(bool).sum()),
+        "transition_verification_artifacts": int(
+            (matrix["verification_role"] == "transition_verification").sum()
+        ),
         "families": int(matrix["family"].nunique()),
     }
 
@@ -3452,6 +3458,32 @@ def _artifact_family(artifact: str) -> str:
     return "other"
 
 
+def _artifact_verification_role(artifact: str) -> str:
+    if artifact.startswith("figures/"):
+        return "visual_evidence"
+    if artifact in {"artifact_manifest.json", "artifact_coverage_matrix.csv"}:
+        return "manifest_audit"
+    if artifact.startswith("artifact_"):
+        return "manifest_audit"
+    if "reversal_transition_gate" in artifact:
+        return "transition_verification"
+    if artifact in {
+        "transition_metrics.csv",
+        "heldout_transition_metrics.csv",
+        "transition_generalization_gap.csv",
+        "transition_lift.csv",
+        "heldout_transition_lift.csv",
+        "transition_robustness.json",
+        "heldout_transition_robustness.json",
+    }:
+        return "transition_verification"
+    if artifact.startswith("lcri_") or artifact.startswith("heldout_lcri_"):
+        return "lcri_release_evidence"
+    if artifact in {"research_summary.md", "lcri_owner_handoff_packet.md"}:
+        return "owner_readiness"
+    return "supporting_evidence"
+
+
 def _compare_artifact_coverage_records(
     errors: list[str],
     *,
@@ -3461,6 +3493,7 @@ def _compare_artifact_coverage_records(
     columns = [
         "artifact",
         "family",
+        "verification_role",
         "extension",
         "in_research_summary",
         "is_figure",

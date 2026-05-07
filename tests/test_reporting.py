@@ -177,6 +177,8 @@ def test_artifact_coverage_matrix_classifies_manifest_artifacts() -> None:
             "lcri_calibration_fracture_gate.json",
             "lcri_reversal_stress_concentration_summary.json",
             "lcri_fracture_reversal_gate.json",
+            "lcri_reversal_transition_gate.csv",
+            "heldout_transition_robustness.json",
             "figures/generalization_gap.png",
             "artifact_manifest.json",
             "lcri_owner_handoff_packet.md",
@@ -192,8 +194,16 @@ def test_artifact_coverage_matrix_classifies_manifest_artifacts() -> None:
     assert by_artifact.loc["lcri_calibration_fracture_gate.json", "family"] == "lcri_gate"
     assert by_artifact.loc["lcri_reversal_stress_concentration_summary.json", "family"] == "lcri_gate"
     assert by_artifact.loc["lcri_fracture_reversal_gate.json", "family"] == "lcri_gate"
+    assert by_artifact.loc["lcri_reversal_transition_gate.csv", "verification_role"] == (
+        "transition_verification"
+    )
+    assert by_artifact.loc["heldout_transition_robustness.json", "verification_role"] == (
+        "transition_verification"
+    )
     assert bool(by_artifact.loc["figures/generalization_gap.png", "is_figure"])
+    assert by_artifact.loc["figures/generalization_gap.png", "verification_role"] == "visual_evidence"
     assert by_artifact.loc["artifact_manifest.json", "family"] == "audit"
+    assert by_artifact.loc["artifact_manifest.json", "verification_role"] == "manifest_audit"
     assert by_artifact.loc["lcri_owner_handoff_packet.md", "family"] == "lcri_gate"
     assert not bool(by_artifact.loc["artifact_manifest.json", "has_manifest_metadata"])
 
@@ -204,16 +214,18 @@ def test_artifact_coverage_summary_counts_audit_surfaces() -> None:
             "metrics.csv",
             "research_summary.md",
             "artifact_coverage_matrix.csv",
+            "transition_robustness.json",
             "figures/generalization_gap.png",
         ]
     )
 
     assert artifact_coverage_summary(matrix) == {
-        "artifacts": 4,
-        "research_summary_artifacts": 1,
+        "artifacts": 5,
+        "research_summary_artifacts": 2,
         "figure_artifacts": 1,
-        "metadata_tracked_artifacts": 4,
-        "families": 3,
+        "metadata_tracked_artifacts": 5,
+        "transition_verification_artifacts": 1,
+        "families": 4,
     }
 
 
