@@ -4,6 +4,7 @@ import pytest
 from lcri_lab.memory import (
     add_liquidity_memory_half_life,
     add_pressure_memory,
+    adverse_selection_phase_shift_summary,
     classify_pressure_memory_artifacts,
     hidden_resiliency_asymmetry_summary,
     pressure_memory_decay_summary,
@@ -138,6 +139,25 @@ def test_hidden_resiliency_asymmetry_flags_fast_release_fracture() -> None:
 def test_hidden_resiliency_asymmetry_rejects_bad_inputs() -> None:
     with pytest.raises(ValueError, match="missing hidden resiliency columns"):
         hidden_resiliency_asymmetry_summary(pd.DataFrame({"pressure_memory_decay_state": ["x"]}))
+
+
+def test_adverse_selection_phase_shift_scores_fractured_fast_decay() -> None:
+    frame = pd.DataFrame(
+        {
+            "pressure_memory_decay_state": ["fast_decay", "fast_decay", "persistent"],
+            "pressure_memory": [2.0, 3.0, -2.0],
+            "gross_return_ticks": [-1.0, -2.0, -1.0],
+            "pressure_memory_release_velocity": [0.6, 0.4, 0.0],
+            "latent_liquidity_fracture": [2.0, 3.0, 1.0],
+        }
+    )
+
+    summary = adverse_selection_phase_shift_summary(frame).set_index("pressure_memory_decay_state")
+
+    assert summary.loc["fast_decay", "adverse_selection_phase_shift_rate"] == pytest.approx(1.0)
+    assert summary.loc["fast_decay", "adverse_selection_phase_shift_score"] == pytest.approx(3.75)
+    assert summary.loc["fast_decay", "phase_shift_interpretation"] == "fractured_adverse_selection"
+    assert summary.loc["persistent", "phase_shift_interpretation"] == "aligned_pressure_memory"
 
 
 def test_liquidity_memory_half_life_respects_groups() -> None:

@@ -252,6 +252,60 @@ def hidden_resiliency_asymmetry_summary(
     }
 
 
+def adverse_selection_phase_shift_summary(
+    frame: pd.DataFrame,
+    *,
+    state_col: str = "pressure_memory_decay_state",
+    signal_col: str = "pressure_memory",
+    return_col: str = "gross_return_ticks",
+    velocity_col: str = "pressure_memory_release_velocity",
+    fracture_col: str = "latent_liquidity_fracture",
+) -> pd.DataFrame:
+    """Summarize when pressure memory shifts into adverse selection."""
+    required = [state_col, signal_col, return_col, velocity_col, fracture_col]
+    missing = sorted(set(required) - set(frame.columns))
+    if missing:
+        raise ValueError(f"missing adverse selection phase-shift columns: {missing}")
+
+    data = frame[required].copy()
+    for column in [signal_col, return_col, velocity_col, fracture_col]:
+        data[column] = data[column].astype(float)
+    if not np.isfinite(data[[signal_col, return_col, velocity_col, fracture_col]].to_numpy()).all():
+        raise ValueError("adverse selection phase-shift inputs must be finite")
+
+    active = np.sign(data[signal_col]).ne(0.0) & np.sign(data[return_col]).ne(0.0)
+    data["_active"] = active
+    data["_phase_shift"] = active & np.sign(data[signal_col]).ne(np.sign(data[return_col]))
+    rows = []
+    for state, group in data.groupby(state_col, sort=True):
+        active_group = group[group["_active"]]
+        adverse_rate = _finite_mean_or_zero(active_group["_phase_shift"].astype(float))
+        mean_velocity = _finite_mean_or_zero(group[velocity_col])
+        mean_fracture = _finite_mean_or_zero(group[fracture_col])
+        score = adverse_rate * mean_fracture * (1.0 + max(mean_velocity, 0.0))
+        rows.append(
+            {
+                "pressure_memory_decay_state": state,
+                "observations": int(len(group)),
+                "active_pressure_observations": int(len(active_group)),
+                "adverse_selection_phase_shift_rate": adverse_rate,
+                "mean_release_velocity": mean_velocity,
+                "mean_latent_liquidity_fracture": mean_fracture,
+                "adverse_selection_phase_shift_score": float(score),
+                "phase_shift_interpretation": _phase_shift_interpretation(score, adverse_rate),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _phase_shift_interpretation(score: float, adverse_rate: float) -> str:
+    if score > 1.0 and adverse_rate >= 0.5:
+        return "fractured_adverse_selection"
+    if adverse_rate > 0.0:
+        return "localized_phase_shift"
+    return "aligned_pressure_memory"
+
+
 def _finite_mean_or_zero(value: pd.Series) -> float:
     mean = float(value.mean()) if len(value) else 0.0
     return mean if math.isfinite(mean) else 0.0

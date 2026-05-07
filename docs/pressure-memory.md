@@ -22,6 +22,8 @@ Half-life state is a compact artifact label. Fast decay marks transient pressure
 
 `hidden_resiliency_asymmetry_summary` is the report-level guardrail for this failure mode. It compares fast-decay fracture against slow/persistent fracture and scales positive gaps by the fast-vs-slow release-velocity advantage. A positive score means apparent resiliency is asymmetric: displayed pressure unloaded quickly, but latent fracture stayed higher in the fast-release bucket. That is a warning against calling the event healthy purely because pressure memory decayed.
 
+`adverse_selection_phase_shift_summary` checks whether the sign of pressure memory is followed by an opposite realized tick return. That state is interpreted as a phase shift: residual pressure was stale displayed liquidity, not continuation. The score multiplies phase-shift rate by latent fracture and release velocity so fractured fast-release buckets surface ahead of benign alignment.
+
 Artifact families:
 
 - `fractured_fast_release`: visible pressure clears quickly while fracture stays elevated

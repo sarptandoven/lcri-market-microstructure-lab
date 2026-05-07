@@ -81,6 +81,7 @@ from lcri_lab.labels import add_transaction_cost_labels
 from lcri_lab.memory import (
     add_liquidity_memory_half_life,
     add_pressure_memory,
+    adverse_selection_phase_shift_summary,
     classify_pressure_memory_artifacts,
     hidden_resiliency_asymmetry_summary,
     pressure_memory_decay_summary,
@@ -110,6 +111,7 @@ __all__ = [
     "add_transaction_cost_labels",
     "add_pressure_memory",
     "add_liquidity_memory_half_life",
+    "adverse_selection_phase_shift_summary",
     "classify_pressure_memory_artifacts",
     "hidden_resiliency_asymmetry_summary",
     "pressure_memory_decay_summary",
