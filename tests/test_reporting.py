@@ -284,6 +284,7 @@ def test_verify_lcri_reversal_transition_gate_consistency_detects_stale_release(
     pd.DataFrame(
         {
             "transition": ["thin->thick"],
+            "total_reversal_coupling": [3.0],
             "transition_stress_share": [0.75],
             "release_gate_decision": ["review"],
             "transition_gate_decision": ["review"],
@@ -294,6 +295,29 @@ def test_verify_lcri_reversal_transition_gate_consistency_detects_stale_release(
 
     assert any("transition gate release mismatch" in error for error in errors)
     assert any("inactive release gate has review transitions" in error for error in errors)
+
+
+def test_verify_lcri_reversal_transition_gate_consistency_detects_stale_transition_decisions(
+    tmp_path,
+) -> None:
+    write_json(tmp_path / "lcri_fracture_reversal_gate.json", {"decision": "review", "passes": False})
+    pd.DataFrame(
+        {
+            "transition": ["thin->thick", "thick->thin"],
+            "total_reversal_coupling": [4.0, 0.0],
+            "transition_stress_share": [0.80, 0.60],
+            "release_gate_decision": ["review", "review"],
+            "transition_gate_decision": ["pass", "review"],
+        }
+    ).to_csv(tmp_path / "lcri_reversal_transition_gate.csv", index=False)
+
+    errors = verify_lcri_reversal_transition_gate_consistency(tmp_path)
+
+    assert any("active release gate missing high-stress review transition" in error for error in errors)
+    assert any(
+        "transition gate review decision lacks active high-stress support" in error for error in errors
+    )
+
 
 def test_verify_artifact_coverage_matrix_accepts_matching_audit(tmp_path) -> None:
     artifacts = ["metrics.csv", "research_summary.md", "figures/generalization_gap.png"]

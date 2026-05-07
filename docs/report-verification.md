@@ -173,6 +173,17 @@ using the same formatting as the generated summary. This catches stale summaries
 after partial report regeneration, especially for LCRI gate, fragility, and
 gap-delta sections that are redundant with machine-readable artifacts.
 
+## Transition verification consistency
+
+Verification treats `lcri_reversal_transition_gate.csv` and its heldout sibling as
+localized explanations of the combined fracture/reversal release gate. Each row
+must echo the run-level release decision, keep transition stress share within
+`[0, 1]`, use non-negative finite reversal coupling, and reserve `review` for
+active release gates where a transition carries at least half of transition-local
+reversal stress. This prevents the transition gate from claiming a clean pass
+when latent-liquidity fracture pressure is actually concentrated at a regime
+boundary, or claiming review when there is no active combined-release support.
+
 ## Artifact coverage matrix
 
 Demo runs write `artifact_coverage_matrix.csv` and

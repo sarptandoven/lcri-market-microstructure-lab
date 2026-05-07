@@ -1483,6 +1483,7 @@ def verify_lcri_reversal_transition_gate_consistency(output_dir: Path) -> list[s
     errors: list[str] = []
     required = {
         "transition",
+        "total_reversal_coupling",
         "transition_stress_share",
         "release_gate_decision",
         "transition_gate_decision",
@@ -1519,6 +1520,21 @@ def verify_lcri_reversal_transition_gate_consistency(output_dir: Path) -> list[s
             errors.append(f"non-finite transition stress share in {artifact}")
         if ((stress_share < 0.0) | (stress_share > 1.0)).any():
             errors.append(f"transition stress share outside [0, 1] in {artifact}")
+
+        total_coupling = table.get("total_reversal_coupling", pd.Series(0.0, index=table.index)).astype(
+            float
+        )
+        if not np.isfinite(total_coupling.to_numpy()).all():
+            errors.append(f"non-finite transition reversal coupling in {artifact}")
+        if (total_coupling < 0.0).any():
+            errors.append(f"negative transition reversal coupling in {artifact}")
+
+        expected_review = release_active & (stress_share >= 0.50) & (total_coupling > 0.0)
+        found_review = table["transition_gate_decision"].astype(str) == "review"
+        if (expected_review & ~found_review).any():
+            errors.append(f"active release gate missing high-stress review transition in {artifact}")
+        if (~expected_review & found_review).any():
+            errors.append(f"transition gate review decision lacks active high-stress support in {artifact}")
         if not release_active and "review" in decisions:
             errors.append(f"inactive release gate has review transitions in {artifact}")
     return errors
