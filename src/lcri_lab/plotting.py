@@ -33,6 +33,7 @@ def write_figures(
     lcri_owner_handoff_packet: pd.DataFrame | None = None,
     lcri_evidence_lineage_map: pd.DataFrame | None = None,
     lcri_calibration_fracture_pressure: pd.DataFrame | None = None,
+    lcri_reversal_transition_gate: pd.DataFrame | None = None,
 ) -> None:
     if frame.empty:
         raise ValueError("cannot write figures from an empty frame")
@@ -150,6 +151,11 @@ def write_figures(
             lcri_calibration_fracture_pressure,
             output_dir / "lcri_calibration_fracture_pressure.png",
         )
+    if lcri_reversal_transition_gate is not None:
+        _lcri_reversal_transition_gate_bars(
+            lcri_reversal_transition_gate,
+            output_dir / "lcri_reversal_transition_gate.png",
+        )
 
 
 def _scatter(frame: pd.DataFrame, path: Path) -> None:
@@ -187,6 +193,28 @@ def _lcri_calibration_fracture_pressure_bars(table: pd.DataFrame, path: Path) ->
     ax.set_ylabel("Residual-weighted fracture pressure")
     for index, residual in enumerate(plot["calibration_residual"].astype(float)):
         ax.text(index, 0.0, f"resid {residual:+.2f}", rotation=90, va="bottom", ha="center", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+
+
+def _lcri_reversal_transition_gate_bars(table: pd.DataFrame, path: Path) -> None:
+    required = {"transition", "transition_stress_share", "transition_gate_decision"}
+    if table.empty or not required.issubset(table.columns):
+        return
+    plot = table.sort_values("transition_stress_share", ascending=False).head(12).copy()
+    colors = plot["transition_gate_decision"].map(
+        {"review": "#e45756", "pass": "#72b7b2"}
+    ).fillna("#4c78a8")
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.bar(plot["transition"].astype(str), plot["transition_stress_share"].astype(float), color=colors)
+    ax.set_title("Combined gate reversal stress at regime transitions")
+    ax.set_xlabel("Transition")
+    ax.set_ylabel("Share of transition reversal coupling")
+    ax.set_ylim(0.0, max(1.0, float(plot["transition_stress_share"].max()) * 1.1))
+    ax.tick_params(axis="x", rotation=35)
+    for index, decision in enumerate(plot["transition_gate_decision"].astype(str)):
+        ax.text(index, 0.02, decision, ha="center", va="bottom", fontsize=8, rotation=90)
     fig.tight_layout()
     fig.savefig(path, dpi=160)
     plt.close(fig)

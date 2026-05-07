@@ -30,6 +30,7 @@ def test_write_figures_keeps_heldout_outputs_optional(tmp_path: Path) -> None:
     assert not (tmp_path / "lcri_owner_handoff_packet.png").exists()
     assert not (tmp_path / "lcri_evidence_lineage_map.png").exists()
     assert not (tmp_path / "lcri_calibration_fracture_pressure.png").exists()
+    assert not (tmp_path / "lcri_reversal_transition_gate.png").exists()
 
 
 def test_write_figures_rejects_empty_inputs(tmp_path: Path) -> None:
@@ -207,6 +208,20 @@ def test_write_figures_writes_lcri_calibration_fracture_pressure_plot(tmp_path: 
     assert (tmp_path / "lcri_calibration_fracture_pressure.png").exists()
 
 
+def test_write_figures_writes_lcri_reversal_transition_gate_plot(tmp_path: Path) -> None:
+    frame = _scored_frame()
+    regime_table = _regime_table()
+
+    write_figures(
+        frame,
+        regime_table,
+        tmp_path,
+        lcri_reversal_transition_gate=_reversal_transition_gate(),
+    )
+
+    assert (tmp_path / "lcri_reversal_transition_gate.png").exists()
+
+
 def test_write_figures_writes_lcri_gap_delta_scope_plot(tmp_path: Path) -> None:
     frame = _scored_frame()
     regime_table = _regime_table()
@@ -287,6 +302,16 @@ def _calibration_fracture_pressure() -> pd.DataFrame:
             "calibration_residual": [0.01, -0.05, -0.2],
             "fracture_pressure": [0.0, 0.03, 0.12],
             "pressure_label": ["aligned", "fractured_shape_only", "fractured_miscalibrated"],
+        }
+    )
+
+
+def _reversal_transition_gate() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "transition": ["thick->thin", "thin->shock"],
+            "transition_stress_share": [0.75, 0.25],
+            "transition_gate_decision": ["review", "pass"],
         }
     )
 
