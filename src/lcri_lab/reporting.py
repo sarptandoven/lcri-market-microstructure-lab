@@ -2917,6 +2917,8 @@ def write_research_summary(
     lcri_reversal_transition_gate: pd.DataFrame | None = None,
     heldout_lcri_reversal_transition_gate: pd.DataFrame | None = None,
     heldout_transition_robustness: dict[str, Any] | None = None,
+    hidden_resiliency_asymmetry_summary: dict[str, Any] | None = None,
+    heldout_hidden_resiliency_asymmetry_summary: dict[str, Any] | None = None,
 ) -> None:
     """Write a compact markdown summary of the demo artifacts."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -3227,6 +3229,20 @@ def write_research_summary(
                     for key, value in (heldout_transition_robustness or {}).items()
                 ],
                 "",
+                "## Hidden resiliency asymmetry summary",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (hidden_resiliency_asymmetry_summary or {}).items()
+                ],
+                "",
+                "## Heldout hidden resiliency asymmetry summary",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (heldout_hidden_resiliency_asymmetry_summary or {}).items()
+                ],
+                "",
                 "## LCRI calibration curve",
                 "",
                 _markdown_table(lcri_calibration_curve)
@@ -3449,6 +3465,8 @@ _RESEARCH_SUMMARY_ARTIFACT_SECTIONS = {
     "LCRI signal monotonicity summary": "lcri_signal_monotonicity_summary.json",
     "Heldout transition lift": "heldout_transition_lift.csv",
     "Heldout transition robustness": "heldout_transition_robustness.json",
+    "Hidden resiliency asymmetry summary": "hidden_resiliency_asymmetry_summary.json",
+    "Heldout hidden resiliency asymmetry summary": "heldout_hidden_resiliency_asymmetry_summary.json",
     "Heldout LCRI signal monotonicity": "heldout_lcri_signal_monotonicity.csv",
     "Heldout LCRI signal monotonicity summary": "heldout_lcri_signal_monotonicity_summary.json",
     "LCRI calibration curve": "lcri_calibration_curve.csv",
