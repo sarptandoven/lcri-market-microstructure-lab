@@ -110,6 +110,8 @@ for reviewers who receive a report directory without the surrounding run logs.
   fracture-pressure gate, including miscalibrated fracture counts.
 - `heldout_lcri_calibration_fracture_pressure_summary.json`: compact heldout
   gate for deciding whether shape/calibration fractures survive out of sample.
+- `lcri_calibration_fracture_gate.json`: combined full-sample plus heldout
+  release gate for miscalibrated monotonicity fractures.
 - `figures/lcri_cross_artifact_evidence_index.png`: visual owner handoff of the
   cross-artifact evidence score with gate, CI, and uncertainty markers.
 - `figures/lcri_evidence_release_checklist.png`: visual release-owner checklist

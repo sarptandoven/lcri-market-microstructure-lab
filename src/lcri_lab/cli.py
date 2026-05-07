@@ -9,6 +9,7 @@ import pandas as pd
 from lcri_lab.evaluation import (
     calibration_curve,
     calibration_error_summary,
+    calibration_fracture_gate_decision,
     calibration_gate_decision,
     calibration_monotonicity_pressure,
     calibration_monotonicity_pressure_summary,
@@ -370,6 +371,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_lcri_calibration_fracture_pressure_summary = calibration_monotonicity_pressure_summary(
         heldout_lcri_calibration_fracture_pressure
     )
+    lcri_calibration_fracture_gate = calibration_fracture_gate_decision(
+        lcri_calibration_fracture_pressure_summary,
+        heldout_lcri_calibration_fracture_pressure_summary,
+    )
     transition_robustness = transition_robustness_summary(scored)
     heldout_transition_robustness = transition_robustness_summary(heldout_scored)
 
@@ -449,6 +454,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "heldout_lcri_calibration_fracture_pressure.csv",
         "lcri_calibration_fracture_pressure_summary.json",
         "heldout_lcri_calibration_fracture_pressure_summary.json",
+        "lcri_calibration_fracture_gate.json",
         "transition_robustness.json",
         "heldout_transition_robustness.json",
         "research_summary.md",
@@ -598,6 +604,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         output / "heldout_lcri_calibration_fracture_pressure_summary.json",
         heldout_lcri_calibration_fracture_pressure_summary,
     )
+    write_json(output / "lcri_calibration_fracture_gate.json", lcri_calibration_fracture_gate)
     write_json(output / "transition_robustness.json", transition_robustness)
     write_json(output / "heldout_transition_robustness.json", heldout_transition_robustness)
     write_figures(
@@ -687,6 +694,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         heldout_lcri_calibration_fracture_pressure=heldout_lcri_calibration_fracture_pressure,
         lcri_calibration_fracture_pressure_summary=lcri_calibration_fracture_pressure_summary,
         heldout_lcri_calibration_fracture_pressure_summary=heldout_lcri_calibration_fracture_pressure_summary,
+        lcri_calibration_fracture_gate=lcri_calibration_fracture_gate,
         heldout_transition_robustness=heldout_transition_robustness,
     )
     coverage_matrix = artifact_coverage_matrix(artifact_paths)
