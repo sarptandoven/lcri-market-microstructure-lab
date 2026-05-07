@@ -414,6 +414,47 @@ def verify_adverse_selection_phase_shift_summary(
     return errors
 
 
+def verify_phase_shift_artifact_review(
+    output_dir: Path, artifact: str = "phase_shift_artifact_review.csv"
+) -> list[str]:
+    """Return errors for stale phase-shift artifact triage tables."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing phase-shift artifact review: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "pressure_memory_decay_state",
+        "adverse_selection_phase_shift_rate",
+        "mean_latent_liquidity_fracture",
+        "adverse_selection_phase_shift_score",
+        "phase_shift_artifact",
+        "phase_shift_review_priority",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete phase-shift artifact review {artifact}: {missing}"]
+
+    numeric = frame[list(required - {"pressure_memory_decay_state", "phase_shift_artifact"})].astype(float)
+    errors: list[str] = []
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite phase-shift artifact review values in {artifact}")
+    if not numeric["adverse_selection_phase_shift_rate"].between(0.0, 1.0).all():
+        errors.append(f"bounded phase-shift artifact rates violated in {artifact}")
+    if not numeric.ge(0.0).all().all():
+        errors.append(f"negative phase-shift artifact review values in {artifact}")
+    known = {
+        "fractured_adverse_selection",
+        "return_sign_flip",
+        "localized_fracture_shift",
+        "thin_phase_shift",
+        "aligned_pressure_memory",
+    }
+    unknown = sorted(set(frame["phase_shift_artifact"].astype(str)) - known)
+    if unknown:
+        errors.append(f"unknown phase-shift artifact labels in {artifact}: {unknown}")
+    return errors
+
+
 def verify_figure_artifacts(output_dir: Path, manifest: dict[str, Any]) -> list[str]:
     """Return errors for manifest-listed PNG figures that are unreadable.
 
