@@ -67,6 +67,8 @@ def test_liquidity_memory_half_life_marks_local_decay_events() -> None:
         "fast_decay",
     ]
     assert output["pressure_memory_decay_ratio"].iloc[3] == pytest.approx(1.9 / 4.0)
+    assert output["pressure_memory_release_velocity"].iloc[3] == pytest.approx((1.0 - 1.9 / 4.0) / 2.0)
+    assert output["pressure_memory_release_velocity"].iloc[5] == pytest.approx(0.6)
 
 
 def test_liquidity_memory_half_life_respects_groups() -> None:

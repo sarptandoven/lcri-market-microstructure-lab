@@ -11,10 +11,11 @@ pressure_memory = ewma(lcri)
 fracture_memory = ewma(imbalance_fracture)
 pressure_decay_risk = abs(lcri - pressure_memory) / (1 + abs(lcri))
 pressure_memory_half_life = bars since local memory peak decayed by 50%
+pressure_memory_release_velocity = (1 - decay_ratio) / half_life on decay events
 pressure_memory_decay_state = inactive | persistent | fast_decay | slow_decay
 ```
 
-Half-life state is a compact artifact label. Fast decay marks transient pressure that loses force quickly. Slow decay marks observed memory release only after a longer local window, which is closer to latent-liquidity stress than simple mean reversion.
+Half-life state is a compact artifact label. Fast decay marks transient pressure that loses force quickly. Slow decay marks observed memory release only after a longer local window, which is closer to latent-liquidity stress than simple mean reversion. Release velocity keeps the same event sparse but distinguishes abrupt memory collapse from slower leakage.
 
 The research target is not to replace LCRI. It is to separate durable residual pressure from one-shot dislocations.
 

@@ -93,8 +93,10 @@ def add_liquidity_memory_half_life(
     decay_event = half_life.gt(0.0)
     slow_decay = half_life.ge(max(2.0, float(window) / 2.0))
     inactive_memory = half_life.eq(0.0) & decay_ratio.eq(0.0)
+    release_velocity = (1.0 - decay_ratio).where(decay_event, 0.0) / half_life.mask(~decay_event, 1.0)
     output["pressure_memory_half_life"] = half_life.astype(float)
     output["pressure_memory_decay_ratio"] = decay_ratio.astype(float)
+    output["pressure_memory_release_velocity"] = release_velocity.astype(float)
     output["pressure_memory_decay_event"] = decay_event
     output["pressure_memory_decay_state"] = np.select(
         [inactive_memory, decay_event & slow_decay, decay_event],
