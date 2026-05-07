@@ -4,6 +4,7 @@ import pytest
 from lcri_lab.evaluation import (
     calibration_curve,
     calibration_error_summary,
+    calibration_fracture_gate_decision,
     calibration_gate_decision,
     calibration_monotonicity_pressure,
     calibration_monotonicity_pressure_summary,
@@ -162,6 +163,26 @@ def test_calibration_monotonicity_pressure_summary_blocks_mispriced_fractures() 
         "worst_pressure_quantile": "2",
         "passes_fracture_pressure_gate": False,
     }
+
+
+def test_calibration_fracture_gate_decision_blocks_heldout_fractures() -> None:
+    summary = {
+        "fractured_miscalibrated_rows": 0,
+        "max_fracture_pressure": 0.02,
+        "worst_pressure_quantile": "1",
+    }
+    heldout_summary = {
+        "fractured_miscalibrated_rows": 1,
+        "max_fracture_pressure": 0.14,
+        "worst_pressure_quantile": "3",
+    }
+
+    decision = calibration_fracture_gate_decision(summary, heldout_summary)
+
+    assert decision["passes"] is False
+    assert decision["decision"] == "block"
+    assert decision["worst_pressure_quantile"] == "3"
+    assert "heldout" in str(decision["reason"])
 
 
 def test_summarize_signal_lift_reports_metric_deltas() -> None:

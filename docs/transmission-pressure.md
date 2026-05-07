@@ -26,3 +26,8 @@ transmission pressure or LCRI into a release gate.
 `calibration_monotonicity_pressure_summary` converts the row-level table into a
 compact gate: any miscalibrated fracture blocks the fracture-pressure gate,
 while shape-only fractures remain visible as review debt.
+
+`calibration_fracture_gate_decision` can combine full-sample and heldout
+summaries. A heldout miscalibrated fracture blocks first, because that means the
+shape/calibration failure survived out-of-sample rather than being only an
+in-sample fit artifact.

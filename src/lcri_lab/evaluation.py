@@ -2641,6 +2641,45 @@ def calibration_monotonicity_pressure_summary(
     }
 
 
+def calibration_fracture_gate_decision(
+    summary: dict[str, float | int | str | bool],
+    heldout_summary: dict[str, float | int | str | bool] | None = None,
+) -> dict[str, bool | float | int | str]:
+    """Combine full and heldout fracture-pressure summaries into a release gate."""
+    _require_mapping_keys(
+        summary,
+        ["fractured_miscalibrated_rows", "max_fracture_pressure", "worst_pressure_quantile"],
+        label="fracture pressure summary",
+    )
+    heldout_summary = heldout_summary or {}
+    if heldout_summary:
+        _require_mapping_keys(
+            heldout_summary,
+            ["fractured_miscalibrated_rows", "max_fracture_pressure", "worst_pressure_quantile"],
+            label="heldout fracture pressure summary",
+        )
+    full_rows = int(summary["fractured_miscalibrated_rows"])
+    heldout_rows = int(heldout_summary.get("fractured_miscalibrated_rows", 0))
+    max_pressure = float(summary["max_fracture_pressure"])
+    heldout_max_pressure = float(heldout_summary.get("max_fracture_pressure", 0.0))
+    passes = full_rows == 0 and heldout_rows == 0
+    worst_quantile = (
+        heldout_summary.get("worst_pressure_quantile")
+        if heldout_max_pressure > max_pressure
+        else summary["worst_pressure_quantile"]
+    )
+    return {
+        "passes": bool(passes),
+        "decision": "pass" if passes else "block",
+        "fractured_miscalibrated_rows": full_rows,
+        "heldout_fractured_miscalibrated_rows": heldout_rows,
+        "max_fracture_pressure": max_pressure,
+        "heldout_max_fracture_pressure": heldout_max_pressure,
+        "worst_pressure_quantile": str(worst_quantile),
+        "reason": _calibration_fracture_gate_reason(full_rows, heldout_rows),
+    }
+
+
 
 def calibration_curve(frame: pd.DataFrame, signal: str, bins: int = 10) -> pd.DataFrame:
     if bins < 1:
@@ -3245,6 +3284,14 @@ def _calibration_gate_reason(
     if max_error > max_bin_error:
         reasons.append(f"max bin error {max_error:.4f} exceeds {max_bin_error:.4f}")
     return "; ".join(reasons)
+
+
+def _calibration_fracture_gate_reason(full_rows: int, heldout_rows: int) -> str:
+    if full_rows == 0 and heldout_rows == 0:
+        return "no miscalibrated monotonicity fractures detected"
+    if heldout_rows:
+        return f"{heldout_rows} heldout miscalibrated fracture row(s) require review"
+    return f"{full_rows} full-sample miscalibrated fracture row(s) require review"
 
 
 
