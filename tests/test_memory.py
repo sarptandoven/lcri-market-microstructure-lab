@@ -24,10 +24,12 @@ def test_pressure_memory_adds_persistence_features() -> None:
         "pressure_memory_z",
         "memory_fracture_alignment",
         "pressure_decay_risk",
+        "latent_liquidity_fracture",
     }
     assert expected.issubset(output.columns)
     assert output["pressure_decay_risk"].ge(0).all()
     assert output["pressure_memory"].iloc[0] == pytest.approx(0.5)
+    assert output["latent_liquidity_fracture"].iloc[0] == pytest.approx(0.05)
 
 
 def test_pressure_memory_rejects_missing_inputs() -> None:

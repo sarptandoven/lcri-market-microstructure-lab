@@ -10,6 +10,7 @@ Pressure memory adds a small time-series layer on top of scored snapshots:
 pressure_memory = ewma(lcri)
 fracture_memory = ewma(imbalance_fracture)
 pressure_decay_risk = abs(lcri - pressure_memory) / (1 + abs(lcri))
+latent_liquidity_fracture = abs(pressure_memory) * abs(fracture_memory)
 pressure_memory_half_life = bars since local memory peak decayed by 50%
 pressure_memory_release_velocity = (1 - decay_ratio) / half_life on decay events
 pressure_memory_decay_state = inactive | persistent | fast_decay | slow_decay
@@ -17,7 +18,7 @@ pressure_memory_decay_state = inactive | persistent | fast_decay | slow_decay
 
 Half-life state is a compact artifact label. Fast decay marks transient pressure that loses force quickly. Slow decay marks observed memory release only after a longer local window, which is closer to latent-liquidity stress than simple mean reversion. Release velocity keeps the same event sparse but distinguishes abrupt memory collapse from slower leakage. `pressure_memory_decay_summary` aggregates state share, event rate, mean half-life, and mean release velocity for artifact-level comparison.
 
-The research target is not to replace LCRI. It is to separate durable residual pressure from one-shot dislocations.
+The research target is not to replace LCRI. It is to separate durable residual pressure from one-shot dislocations. Latent fracture is deliberately multiplicative: high pressure memory with a calm book should not look like the same state as high memory while the ladder remains fractured.
 
 Useful hypotheses:
 

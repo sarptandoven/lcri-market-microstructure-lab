@@ -44,6 +44,7 @@ def add_pressure_memory(
     output["pressure_memory_z"] = _safe_zscore(signal_memory, signal_std)
     output["memory_fracture_alignment"] = np.sign(signal_memory) * fracture_memory.abs()
     output["pressure_decay_risk"] = (signal - signal_memory).abs() / (1.0 + signal.abs())
+    output["latent_liquidity_fracture"] = signal_memory.abs() * fracture_memory.abs()
     return output
 
 
