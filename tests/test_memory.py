@@ -58,6 +58,14 @@ def test_liquidity_memory_half_life_marks_local_decay_events() -> None:
 
     assert output["pressure_memory_decay_event"].tolist() == [False, False, False, True, False, True]
     assert output["pressure_memory_half_life"].tolist() == [0.0, 0.0, 0.0, 2.0, 0.0, 1.0]
+    assert output["pressure_memory_decay_state"].tolist() == [
+        "inactive",
+        "persistent",
+        "persistent",
+        "slow_decay",
+        "persistent",
+        "fast_decay",
+    ]
     assert output["pressure_memory_decay_ratio"].iloc[3] == pytest.approx(1.9 / 4.0)
 
 
