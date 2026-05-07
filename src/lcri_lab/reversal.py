@@ -249,6 +249,78 @@ def fracture_reversal_release_gate(
     }
 
 
+def reversal_transition_gate_diagnostics(
+    frame: pd.DataFrame,
+    release_gate: dict[str, float | int | str | bool],
+    *,
+    regime_col: str = "regime",
+    coupling_col: str = "reversal_lead_lag_coupling",
+    transition_col: str = "regime_changed",
+    stress_share_threshold: float = 0.50,
+) -> pd.DataFrame:
+    """Localize combined-gate reversal stress at cross-regime boundaries.
+
+    The combined fracture/reversal gate is a run-level release decision. This
+    diagnostic explains whether that decision is being driven by stress that
+    appears exactly when liquidity state changes, where latent queues should be
+    most fragile and transmitted pressure is least trustworthy.
+    """
+    if not np.isfinite(stress_share_threshold) or not 0.0 <= stress_share_threshold <= 1.0:
+        raise ValueError("stress_share_threshold must be finite and between 0 and 1")
+    missing_gate = sorted({"decision", "passes"} - set(release_gate))
+    if missing_gate:
+        raise ValueError(f"missing release gate columns: {missing_gate}")
+    required = [regime_col, coupling_col, transition_col]
+    missing = sorted(set(required) - set(frame.columns))
+    if missing:
+        raise ValueError(f"missing reversal transition columns: {missing}")
+    if frame.empty:
+        return pd.DataFrame(columns=_TRANSITION_GATE_COLUMNS)
+
+    output = frame.copy()
+    regimes = output[regime_col].astype(str)
+    previous_regime = regimes.shift(1)
+    coupling = output[coupling_col].astype(float)
+    transition = output[transition_col].astype(float) > 0.0
+    if not np.isfinite(coupling.to_numpy()).all():
+        raise ValueError("reversal transition coupling inputs must be finite")
+    if (coupling < 0.0).any():
+        raise ValueError("reversal transition coupling must be non-negative")
+
+    cross_regime = previous_regime.notna() & (regimes != previous_regime)
+    transition_rows = output.loc[transition | cross_regime].assign(
+        transition_label=(previous_regime.fillna("start") + "->" + regimes)
+    )
+    if transition_rows.empty:
+        return pd.DataFrame(columns=_TRANSITION_GATE_COLUMNS)
+
+    total_transition_coupling = float(transition_rows[coupling_col].sum())
+    release_decision = str(release_gate["decision"])
+    release_active = release_decision in {"review", "block"} or release_gate.get("passes") is False
+    rows = []
+    for label, group in transition_rows.groupby("transition_label", sort=True):
+        stress = group[coupling_col].astype(float)
+        stress_share = float(stress.sum() / total_transition_coupling) if total_transition_coupling else 0.0
+        rows.append(
+            {
+                "transition": label,
+                "rows": len(group),
+                "coupled_rows": int((stress > 0.0).sum()),
+                "total_reversal_coupling": float(stress.sum()),
+                "mean_reversal_coupling": float(stress.mean()),
+                "peak_reversal_coupling": float(stress.max()),
+                "transition_stress_share": stress_share,
+                "release_gate_decision": release_decision,
+                "transition_gate_decision": "review"
+                if release_active and stress_share >= stress_share_threshold and stress.sum() > 0.0
+                else "pass",
+            }
+        )
+    return pd.DataFrame(rows, columns=_TRANSITION_GATE_COLUMNS).sort_values(
+        "transition_stress_share", ascending=False
+    ).reset_index(drop=True)
+
+
 def _require_reversal_summary(summary: dict[str, float | int | str | bool], *, label: str) -> None:
     missing = sorted({"gate_decision", "max_stress_concentration_ratio", "top_regime"} - set(summary))
     if missing:
@@ -272,4 +344,16 @@ _REGIME_STRESS_COLUMNS = [
     "coupling_share",
     "transmission_exposure_share",
     "stress_concentration_ratio",
+]
+
+_TRANSITION_GATE_COLUMNS = [
+    "transition",
+    "rows",
+    "coupled_rows",
+    "total_reversal_coupling",
+    "mean_reversal_coupling",
+    "peak_reversal_coupling",
+    "transition_stress_share",
+    "release_gate_decision",
+    "transition_gate_decision",
 ]

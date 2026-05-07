@@ -7,6 +7,7 @@ from lcri_lab.reversal import (
     fracture_reversal_release_gate,
     reversal_coupling_regime_stress,
     reversal_stress_concentration_summary,
+    reversal_transition_gate_diagnostics,
 )
 
 
@@ -185,3 +186,59 @@ def test_fracture_reversal_release_gate_rejects_incomplete_inputs() -> None:
             {"gate_decision": "pass"},
             {"decision": "pass", "max_fracture_pressure": 0.0, "worst_pressure_quantile": "none"},
         )
+
+
+def test_reversal_transition_gate_diagnostics_localizes_combined_gate_stress() -> None:
+    frame = pd.DataFrame(
+        {
+            "regime": ["thick", "thin", "thin", "shock", "shock"],
+            "regime_changed": [0, 1, 0, 1, 0],
+            "reversal_lead_lag_coupling": [0.0, 0.8, 0.1, 0.2, 0.0],
+        }
+    )
+    release_gate = {"decision": "block", "passes": False}
+
+    diagnostics = reversal_transition_gate_diagnostics(
+        frame,
+        release_gate,
+        stress_share_threshold=0.70,
+    )
+
+    assert diagnostics["transition"].tolist() == ["thick->thin", "thin->shock"]
+    assert diagnostics.loc[0, "rows"] == 1
+    assert diagnostics.loc[0, "coupled_rows"] == 1
+    assert diagnostics.loc[0, "transition_stress_share"] == pytest.approx(0.8)
+    assert diagnostics.loc[0, "release_gate_decision"] == "block"
+    assert diagnostics.loc[0, "transition_gate_decision"] == "review"
+    assert diagnostics.loc[1, "transition_gate_decision"] == "pass"
+
+
+def test_reversal_transition_gate_diagnostics_requires_active_release_gate() -> None:
+    frame = pd.DataFrame(
+        {
+            "regime": ["thick", "thin"],
+            "regime_changed": [0, 1],
+            "reversal_lead_lag_coupling": [0.0, 1.0],
+        }
+    )
+
+    diagnostics = reversal_transition_gate_diagnostics(
+        frame,
+        {"decision": "pass", "passes": True},
+        stress_share_threshold=0.50,
+    )
+
+    assert diagnostics.loc[0, "transition_stress_share"] == pytest.approx(1.0)
+    assert diagnostics.loc[0, "transition_gate_decision"] == "pass"
+
+
+def test_reversal_transition_gate_diagnostics_rejects_bad_inputs() -> None:
+    frame = pd.DataFrame(
+        {"regime": ["thin"], "regime_changed": [1], "reversal_lead_lag_coupling": [-0.1]}
+    )
+
+    with pytest.raises(ValueError, match="non-negative"):
+        reversal_transition_gate_diagnostics(frame, {"decision": "review", "passes": False})
+
+    with pytest.raises(ValueError, match="missing release gate columns"):
+        reversal_transition_gate_diagnostics(frame, {"decision": "review"})
