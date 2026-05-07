@@ -205,6 +205,9 @@ def test_artifact_coverage_matrix_classifies_manifest_artifacts() -> None:
     assert by_artifact.loc["artifact_manifest.json", "family"] == "audit"
     assert by_artifact.loc["artifact_manifest.json", "verification_role"] == "manifest_audit"
     assert by_artifact.loc["lcri_owner_handoff_packet.md", "family"] == "lcri_gate"
+    assert by_artifact.loc["lcri_owner_handoff_packet.md", "verification_role"] == (
+        "owner_readiness"
+    )
     assert not bool(by_artifact.loc["artifact_manifest.json", "has_manifest_metadata"])
 
 
@@ -216,16 +219,21 @@ def test_artifact_coverage_summary_counts_audit_surfaces() -> None:
             "artifact_coverage_matrix.csv",
             "transition_robustness.json",
             "figures/generalization_gap.png",
+            "lcri_gap_delta_summary.json",
+            "lcri_owner_handoff_packet.md",
         ]
     )
 
     assert artifact_coverage_summary(matrix) == {
-        "artifacts": 5,
-        "research_summary_artifacts": 2,
+        "artifacts": 7,
+        "research_summary_artifacts": 3,
         "figure_artifacts": 1,
-        "metadata_tracked_artifacts": 5,
+        "metadata_tracked_artifacts": 7,
+        "manifest_audit_artifacts": 1,
         "transition_verification_artifacts": 1,
-        "families": 4,
+        "lcri_release_evidence_artifacts": 1,
+        "owner_readiness_artifacts": 2,
+        "families": 6,
     }
 
 

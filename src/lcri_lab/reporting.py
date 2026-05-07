@@ -133,17 +133,22 @@ def artifact_coverage_summary(matrix: pd.DataFrame) -> dict[str, int]:
             "research_summary_artifacts": 0,
             "figure_artifacts": 0,
             "metadata_tracked_artifacts": 0,
+            "manifest_audit_artifacts": 0,
             "transition_verification_artifacts": 0,
+            "lcri_release_evidence_artifacts": 0,
+            "owner_readiness_artifacts": 0,
             "families": 0,
         }
+    role = matrix["verification_role"]
     return {
         "artifacts": len(matrix),
         "research_summary_artifacts": int(matrix["in_research_summary"].astype(bool).sum()),
         "figure_artifacts": int(matrix["is_figure"].astype(bool).sum()),
         "metadata_tracked_artifacts": int(matrix["has_manifest_metadata"].astype(bool).sum()),
-        "transition_verification_artifacts": int(
-            (matrix["verification_role"] == "transition_verification").sum()
-        ),
+        "manifest_audit_artifacts": int((role == "manifest_audit").sum()),
+        "transition_verification_artifacts": int((role == "transition_verification").sum()),
+        "lcri_release_evidence_artifacts": int((role == "lcri_release_evidence").sum()),
+        "owner_readiness_artifacts": int((role == "owner_readiness").sum()),
         "families": int(matrix["family"].nunique()),
     }
 
@@ -3477,10 +3482,10 @@ def _artifact_verification_role(artifact: str) -> str:
         "heldout_transition_robustness.json",
     }:
         return "transition_verification"
-    if artifact.startswith("lcri_") or artifact.startswith("heldout_lcri_"):
-        return "lcri_release_evidence"
     if artifact in {"research_summary.md", "lcri_owner_handoff_packet.md"}:
         return "owner_readiness"
+    if artifact.startswith("lcri_") or artifact.startswith("heldout_lcri_"):
+        return "lcri_release_evidence"
     return "supporting_evidence"
 
 
