@@ -29,6 +29,7 @@ def test_write_figures_keeps_heldout_outputs_optional(tmp_path: Path) -> None:
     assert not (tmp_path / "lcri_evidence_release_checklist.png").exists()
     assert not (tmp_path / "lcri_owner_handoff_packet.png").exists()
     assert not (tmp_path / "lcri_evidence_lineage_map.png").exists()
+    assert not (tmp_path / "lcri_calibration_fracture_pressure.png").exists()
 
 
 def test_write_figures_rejects_empty_inputs(tmp_path: Path) -> None:
@@ -192,6 +193,20 @@ def test_write_figures_writes_lcri_evidence_lineage_map_plot(tmp_path: Path) -> 
     assert (tmp_path / "lcri_evidence_lineage_map.png").exists()
 
 
+def test_write_figures_writes_lcri_calibration_fracture_pressure_plot(tmp_path: Path) -> None:
+    frame = _scored_frame()
+    regime_table = _regime_table()
+
+    write_figures(
+        frame,
+        regime_table,
+        tmp_path,
+        lcri_calibration_fracture_pressure=_calibration_fracture_pressure(),
+    )
+
+    assert (tmp_path / "lcri_calibration_fracture_pressure.png").exists()
+
+
 def test_write_figures_writes_lcri_gap_delta_scope_plot(tmp_path: Path) -> None:
     frame = _scored_frame()
     regime_table = _regime_table()
@@ -261,6 +276,17 @@ def _regime_table() -> pd.DataFrame:
             "regime": ["thick", "thick"],
             "signal": ["raw_imbalance", "lcri"],
             "directional_accuracy": [0.5, 0.75],
+        }
+    )
+
+
+def _calibration_fracture_pressure() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "quantile": [0, 1, 2],
+            "calibration_residual": [0.01, -0.05, -0.2],
+            "fracture_pressure": [0.0, 0.03, 0.12],
+            "pressure_label": ["aligned", "fractured_shape_only", "fractured_miscalibrated"],
         }
     )
 

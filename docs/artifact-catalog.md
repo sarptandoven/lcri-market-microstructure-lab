@@ -119,6 +119,8 @@ for reviewers who receive a report directory without the surrounding run logs.
   markers.
 - `figures/lcri_evidence_lineage_map.png`: visual lineage health map ranked by
   stale source references, missing owner surfaces, and evidence score.
+- `figures/lcri_calibration_fracture_pressure.png`: visual rank of the highest
+  residual-weighted calibration-monotonicity fracture-pressure buckets.
 
 ## Figures
 
@@ -149,6 +151,8 @@ aids.
   decision urgency, with release-blocker and CI/gate priority overlays.
 - `figures/lcri_evidence_lineage_map.png`: evidence-to-checklist-to-handoff
   chain health, with stale-reference and missing-surface markers.
+- `figures/lcri_calibration_fracture_pressure.png`: calibration-shape fracture
+  pressure ranked by quantile, with residual signs annotated on the bars.
 
 Use the figures to spot obvious concentration before opening the corresponding
 CSV files for exact values.

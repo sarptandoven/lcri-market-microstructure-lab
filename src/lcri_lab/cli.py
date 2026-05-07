@@ -477,6 +477,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "figures/lcri_evidence_release_checklist.png",
         "figures/lcri_owner_handoff_packet.png",
         "figures/lcri_evidence_lineage_map.png",
+        "figures/lcri_calibration_fracture_pressure.png",
     ]
 
     model.save(output / "lcri-model.json")
@@ -622,6 +623,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         lcri_evidence_release_checklist=lcri_release_checklist,
         lcri_owner_handoff_packet=lcri_owner_handoff,
         lcri_evidence_lineage_map=lcri_lineage_map,
+        lcri_calibration_fracture_pressure=lcri_calibration_fracture_pressure,
     )
 
     heldout_rows = len(books) - len(train)

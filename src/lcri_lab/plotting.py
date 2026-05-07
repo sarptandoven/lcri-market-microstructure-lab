@@ -32,6 +32,7 @@ def write_figures(
     lcri_evidence_release_checklist: pd.DataFrame | None = None,
     lcri_owner_handoff_packet: pd.DataFrame | None = None,
     lcri_evidence_lineage_map: pd.DataFrame | None = None,
+    lcri_calibration_fracture_pressure: pd.DataFrame | None = None,
 ) -> None:
     if frame.empty:
         raise ValueError("cannot write figures from an empty frame")
@@ -144,6 +145,11 @@ def write_figures(
             lcri_evidence_lineage_map,
             output_dir / "lcri_evidence_lineage_map.png",
         )
+    if lcri_calibration_fracture_pressure is not None:
+        _lcri_calibration_fracture_pressure_bars(
+            lcri_calibration_fracture_pressure,
+            output_dir / "lcri_calibration_fracture_pressure.png",
+        )
 
 
 def _scatter(frame: pd.DataFrame, path: Path) -> None:
@@ -155,6 +161,32 @@ def _scatter(frame: pd.DataFrame, path: Path) -> None:
     ax.set_title("Raw imbalance vs liquidity-conditioned residual imbalance")
     ax.set_xlabel("Raw imbalance")
     ax.set_ylabel("LCRI")
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+
+
+def _lcri_calibration_fracture_pressure_bars(table: pd.DataFrame, path: Path) -> None:
+    required = {"quantile", "fracture_pressure", "calibration_residual", "pressure_label"}
+    if table.empty or not required.issubset(table.columns):
+        return
+    plot = table.sort_values("fracture_pressure", ascending=False).head(12).copy()
+    colors = plot["pressure_label"].map(
+        {
+            "fractured_miscalibrated": "#e45756",
+            "fractured_shape_only": "#f58518",
+            "aligned": "#72b7b2",
+        }
+    ).fillna("#4c78a8")
+    labels = [f"q{quantile}" for quantile in plot["quantile"].astype(str)]
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.bar(labels, plot["fracture_pressure"].astype(float), color=colors)
+    ax.axhline(0.0, color="black", linewidth=0.8)
+    ax.set_title("LCRI calibration-monotonicity fracture pressure")
+    ax.set_xlabel("Signal quantile")
+    ax.set_ylabel("Residual-weighted fracture pressure")
+    for index, residual in enumerate(plot["calibration_residual"].astype(float)):
+        ax.text(index, 0.0, f"resid {residual:+.2f}", rotation=90, va="bottom", ha="center", fontsize=8)
     fig.tight_layout()
     fig.savefig(path, dpi=160)
     plt.close(fig)
