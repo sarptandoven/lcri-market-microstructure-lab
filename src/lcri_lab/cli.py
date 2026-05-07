@@ -100,6 +100,7 @@ from lcri_lab.reporting import (
     verify_generalization_stability_confidence_consistency,
     verify_generalization_stability_confidence_intervals,
     verify_generalization_stability_confidence_summary,
+    verify_hidden_resiliency_asymmetry_summary,
     verify_lcri_fragility_gate_alignment,
     verify_lcri_fragility_gate_scorecard,
     verify_lcri_fracture_reversal_gate,
@@ -970,6 +971,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_pressure_memory_decay_summary.csv"
             )
             if "heldout_pressure_memory_decay_summary.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_hidden_resiliency_asymmetry_summary(report_dir)
+            if "hidden_resiliency_asymmetry_summary.json" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_hidden_resiliency_asymmetry_summary(
+                report_dir, "heldout_hidden_resiliency_asymmetry_summary.json"
+            )
+            if "heldout_hidden_resiliency_asymmetry_summary.json" in manifest_artifacts
             else []
         ),
         *verify_generalization_fragility_diagnostics(report_dir),

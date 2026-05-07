@@ -22,6 +22,7 @@ from lcri_lab.reporting import (
     verify_generalization_stability_confidence_consistency,
     verify_generalization_stability_confidence_intervals,
     verify_generalization_stability_confidence_summary,
+    verify_hidden_resiliency_asymmetry_summary,
     verify_lcri_gap_delta_consistency,
     verify_lcri_gap_delta_dominant_scopes,
     verify_lcri_gap_delta_flags,
@@ -166,6 +167,24 @@ def test_collect_artifact_metadata_records_size_and_digest(tmp_path) -> None:
     assert set(metadata) == {"metrics.csv"}
     assert metadata["metrics.csv"]["size_bytes"] == len("signal,value\n")
     assert len(metadata["metrics.csv"]["sha256"]) == 64
+
+
+def test_verify_hidden_resiliency_asymmetry_summary_checks_schema(tmp_path) -> None:
+    write_json(
+        tmp_path / "hidden_resiliency_asymmetry_summary.json",
+        {
+            "fast_decay_mean_fracture": 2.0,
+            "slow_or_persistent_mean_fracture": 1.0,
+            "fast_minus_slow_fracture": 1.0,
+            "fast_minus_slow_velocity": 0.5,
+            "hidden_resiliency_asymmetry_score": 1.5,
+            "interpretation": "fast_release_masks_fracture",
+        },
+    )
+
+    assert verify_hidden_resiliency_asymmetry_summary(tmp_path) == []
+    write_json(tmp_path / "hidden_resiliency_asymmetry_summary.json", {"interpretation": "x"})
+    assert "incomplete hidden resiliency" in verify_hidden_resiliency_asymmetry_summary(tmp_path)[0]
 
 
 def test_verify_pressure_memory_decay_summary_checks_bounds(tmp_path) -> None:
