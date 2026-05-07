@@ -199,6 +199,72 @@ def reversal_stress_concentration_summary(
     }
 
 
+def fracture_reversal_release_gate(
+    reversal_summary: dict[str, float | int | str | bool],
+    fracture_gate: dict[str, float | int | str | bool],
+    *,
+    heldout_reversal_summary: dict[str, float | int | str | bool] | None = None,
+) -> dict[str, float | int | str | bool]:
+    """Combine calibration fracture pressure with queue-reversal stress.
+
+    Calibration fracture pressure says the model's probability shape is broken.
+    Reversal stress says that broken shape is concentrated in a microstructure
+    regime where transmitted pressure is followed by queue snapback. Either one
+    deserves review; both together are stronger evidence that the LCRI artifact
+    is describing a latent-liquidity failure mode rather than harmless noise.
+    """
+    _require_reversal_summary(reversal_summary, label="reversal stress summary")
+    if heldout_reversal_summary:
+        _require_reversal_summary(heldout_reversal_summary, label="heldout reversal stress summary")
+    missing_fracture = sorted({"decision", "max_fracture_pressure", "worst_pressure_quantile"} - set(fracture_gate))
+    if missing_fracture:
+        raise ValueError(f"missing fracture gate columns: {missing_fracture}")
+
+    heldout_reversal_summary = heldout_reversal_summary or {}
+    fracture_blocks = str(fracture_gate["decision"]) == "block" or fracture_gate.get("passes") is False
+    reversal_reviews = str(reversal_summary["gate_decision"]) == "review"
+    heldout_reversal_reviews = str(heldout_reversal_summary.get("gate_decision", "pass")) == "review"
+    any_reversal_review = reversal_reviews or heldout_reversal_reviews
+    decision = "pass"
+    if fracture_blocks and any_reversal_review:
+        decision = "block"
+    elif fracture_blocks or any_reversal_review:
+        decision = "review"
+
+    max_reversal_ratio = max(
+        float(reversal_summary["max_stress_concentration_ratio"]),
+        float(heldout_reversal_summary.get("max_stress_concentration_ratio", 0.0)),
+    )
+    return {
+        "decision": decision,
+        "passes": decision == "pass",
+        "fracture_decision": str(fracture_gate["decision"]),
+        "reversal_gate_decision": str(reversal_summary["gate_decision"]),
+        "heldout_reversal_gate_decision": str(heldout_reversal_summary.get("gate_decision", "pass")),
+        "max_fracture_pressure": float(fracture_gate["max_fracture_pressure"]),
+        "worst_pressure_quantile": str(fracture_gate["worst_pressure_quantile"]),
+        "max_reversal_stress_concentration_ratio": max_reversal_ratio,
+        "top_reversal_regime": str(reversal_summary["top_regime"]),
+        "reason": _fracture_reversal_gate_reason(fracture_blocks, any_reversal_review),
+    }
+
+
+def _require_reversal_summary(summary: dict[str, float | int | str | bool], *, label: str) -> None:
+    missing = sorted({"gate_decision", "max_stress_concentration_ratio", "top_regime"} - set(summary))
+    if missing:
+        raise ValueError(f"missing {label} columns: {missing}")
+
+
+def _fracture_reversal_gate_reason(fracture_blocks: bool, reversal_reviews: bool) -> str:
+    if fracture_blocks and reversal_reviews:
+        return "calibration fracture is reinforced by concentrated queue-reversal stress"
+    if fracture_blocks:
+        return "calibration fracture requires review without confirming reversal concentration"
+    if reversal_reviews:
+        return "queue-reversal concentration requires review without calibration fracture"
+    return "no calibration fracture or concentrated queue-reversal stress detected"
+
+
 _REGIME_STRESS_COLUMNS = [
     "regime",
     "rows",

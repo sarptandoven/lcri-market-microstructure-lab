@@ -89,6 +89,7 @@ from lcri_lab.publishability import (
 from lcri_lab.reversal import (
     add_queue_reversal_risk,
     add_reversal_lead_lag_coupling,
+    fracture_reversal_release_gate,
     reversal_coupling_regime_stress,
     reversal_stress_concentration_summary,
 )
@@ -106,6 +107,7 @@ __all__ = [
     "add_publishability_gate",
     "add_queue_reversal_risk",
     "add_reversal_lead_lag_coupling",
+    "fracture_reversal_release_gate",
     "reversal_coupling_regime_stress",
     "reversal_stress_concentration_summary",
     "LCRIModel",

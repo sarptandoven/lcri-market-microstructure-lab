@@ -4,6 +4,7 @@ import pytest
 from lcri_lab.reversal import (
     add_queue_reversal_risk,
     add_reversal_lead_lag_coupling,
+    fracture_reversal_release_gate,
     reversal_coupling_regime_stress,
     reversal_stress_concentration_summary,
 )
@@ -127,3 +128,60 @@ def test_reversal_stress_concentration_summary_handles_empty_table() -> None:
 
     assert summary["top_regime"] == "none"
     assert summary["gate_decision"] == "pass"
+
+
+def test_fracture_reversal_release_gate_blocks_confirmed_failure_mode() -> None:
+    reversal_summary = {
+        "gate_decision": "review",
+        "max_stress_concentration_ratio": 2.6,
+        "top_regime": "thin",
+    }
+    heldout_reversal_summary = {
+        "gate_decision": "pass",
+        "max_stress_concentration_ratio": 1.1,
+        "top_regime": "thick",
+    }
+    fracture_gate = {
+        "decision": "block",
+        "passes": False,
+        "max_fracture_pressure": 0.18,
+        "worst_pressure_quantile": "q8",
+    }
+
+    gate = fracture_reversal_release_gate(
+        reversal_summary,
+        fracture_gate,
+        heldout_reversal_summary=heldout_reversal_summary,
+    )
+
+    assert gate["decision"] == "block"
+    assert gate["passes"] is False
+    assert gate["top_reversal_regime"] == "thin"
+    assert gate["max_reversal_stress_concentration_ratio"] == pytest.approx(2.6)
+    assert "reinforced" in str(gate["reason"])
+
+
+def test_fracture_reversal_release_gate_reviews_unconfirmed_fracture() -> None:
+    reversal_summary = {
+        "gate_decision": "pass",
+        "max_stress_concentration_ratio": 1.0,
+        "top_regime": "none",
+    }
+    fracture_gate = {
+        "decision": "block",
+        "max_fracture_pressure": 0.12,
+        "worst_pressure_quantile": "q5",
+    }
+
+    gate = fracture_reversal_release_gate(reversal_summary, fracture_gate)
+
+    assert gate["decision"] == "review"
+    assert "without confirming" in str(gate["reason"])
+
+
+def test_fracture_reversal_release_gate_rejects_incomplete_inputs() -> None:
+    with pytest.raises(ValueError, match="missing reversal stress summary columns"):
+        fracture_reversal_release_gate(
+            {"gate_decision": "pass"},
+            {"decision": "pass", "max_fracture_pressure": 0.0, "worst_pressure_quantile": "none"},
+        )
