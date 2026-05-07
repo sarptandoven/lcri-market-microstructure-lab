@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from lcri_lab.memory import add_pressure_memory
+from lcri_lab.memory import add_liquidity_memory_half_life, add_pressure_memory
 
 
 def test_pressure_memory_adds_persistence_features() -> None:
@@ -48,4 +48,33 @@ def test_pressure_memory_rejects_invalid_window() -> None:
         add_pressure_memory(
             pd.DataFrame({"lcri": [1.0], "imbalance_fracture": [0.1]}),
             window=2.5,
+        )
+
+
+def test_liquidity_memory_half_life_marks_local_decay_events() -> None:
+    frame = pd.DataFrame({"pressure_memory": [0.0, 4.0, 3.0, 1.9, -5.0, -2.0]})
+
+    output = add_liquidity_memory_half_life(frame, window=4)
+
+    assert output["pressure_memory_decay_event"].tolist() == [False, False, False, True, False, True]
+    assert output["pressure_memory_half_life"].tolist() == [0.0, 0.0, 0.0, 2.0, 0.0, 1.0]
+    assert output["pressure_memory_decay_ratio"].iloc[3] == pytest.approx(1.9 / 4.0)
+
+
+def test_liquidity_memory_half_life_respects_groups() -> None:
+    frame = pd.DataFrame(
+        {"venue": ["a", "b", "a", "b"], "pressure_memory": [4.0, 4.0, 1.0, 3.0]}
+    )
+
+    output = add_liquidity_memory_half_life(frame, window=3, group_col="venue")
+
+    assert output["pressure_memory_decay_event"].tolist() == [False, False, True, False]
+
+
+def test_liquidity_memory_half_life_rejects_bad_inputs() -> None:
+    with pytest.raises(ValueError, match="missing half-life columns"):
+        add_liquidity_memory_half_life(pd.DataFrame({"x": [1.0]}))
+    with pytest.raises(ValueError, match="decay_fraction"):
+        add_liquidity_memory_half_life(
+            pd.DataFrame({"pressure_memory": [1.0]}), decay_fraction=1.0
         )
