@@ -197,7 +197,7 @@ def test_verify_adverse_selection_phase_shift_summary_checks_schema(tmp_path) ->
         columns=[
             "pressure_memory_decay_state",
             "observations",
-            "active_observations",
+            "active_pressure_observations",
             "adverse_selection_phase_shift_rate",
             "mean_release_velocity",
             "mean_latent_liquidity_fracture",
