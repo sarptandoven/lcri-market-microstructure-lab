@@ -78,7 +78,9 @@ def test_liquidity_memory_half_life_marks_local_decay_events() -> None:
 
 
 def test_pressure_memory_decay_summary_counts_state_release_speed() -> None:
-    frame = pd.DataFrame({"pressure_memory": [0.0, 4.0, 3.0, 1.9, -5.0, -2.0]})
+    frame = pd.DataFrame(
+        {"pressure_memory": [0.0, 4.0, 3.0, 1.9, -5.0, -2.0], "latent_liquidity_fracture": [0.0, 2.0, 1.5, 1.0, 3.0, 1.2]}
+    )
     output = add_liquidity_memory_half_life(frame, window=4)
 
     summary = pressure_memory_decay_summary(output).set_index("pressure_memory_decay_state")
@@ -86,6 +88,7 @@ def test_pressure_memory_decay_summary_counts_state_release_speed() -> None:
     assert summary.loc["fast_decay", "observations"] == 1
     assert summary.loc["fast_decay", "event_rate"] == pytest.approx(1.0)
     assert summary.loc["fast_decay", "mean_release_velocity"] == pytest.approx(0.6)
+    assert summary.loc["fast_decay", "mean_latent_liquidity_fracture"] == pytest.approx(1.2)
     assert summary.loc["persistent", "decay_events"] == 0
 
 

@@ -113,6 +113,7 @@ def pressure_memory_decay_summary(
     state_col: str = "pressure_memory_decay_state",
     half_life_col: str = "pressure_memory_half_life",
     velocity_col: str = "pressure_memory_release_velocity",
+    fracture_col: str = "latent_liquidity_fracture",
 ) -> pd.DataFrame:
     """Summarize decay-state frequency and release speed diagnostics."""
     required = [state_col, half_life_col, velocity_col]
@@ -120,10 +121,14 @@ def pressure_memory_decay_summary(
     if missing:
         raise ValueError(f"missing pressure memory summary columns: {missing}")
 
-    data = frame[required].copy()
+    optional = [fracture_col] if fracture_col in frame.columns else []
+    data = frame[required + optional].copy()
     data[half_life_col] = data[half_life_col].astype(float)
     data[velocity_col] = data[velocity_col].astype(float)
-    if not np.isfinite(data[[half_life_col, velocity_col]].to_numpy()).all():
+    if optional:
+        data[fracture_col] = data[fracture_col].astype(float)
+    finite_cols = [half_life_col, velocity_col, *optional]
+    if not np.isfinite(data[finite_cols].to_numpy()).all():
         raise ValueError("pressure memory summary inputs must be finite")
 
     rows = []
@@ -132,17 +137,18 @@ def pressure_memory_decay_summary(
         decay_events = group[half_life_col].gt(0.0)
         event_half_life = group.loc[decay_events, half_life_col]
         event_velocity = group.loc[decay_events, velocity_col]
-        rows.append(
-            {
-                "pressure_memory_decay_state": state,
-                "observations": int(len(group)),
-                "share": float(len(group) / total),
-                "decay_events": int(decay_events.sum()),
-                "event_rate": float(decay_events.mean()),
-                "mean_half_life": _finite_mean_or_zero(event_half_life),
-                "mean_release_velocity": _finite_mean_or_zero(event_velocity),
-            }
-        )
+        row = {
+            "pressure_memory_decay_state": state,
+            "observations": int(len(group)),
+            "share": float(len(group) / total),
+            "decay_events": int(decay_events.sum()),
+            "event_rate": float(decay_events.mean()),
+            "mean_half_life": _finite_mean_or_zero(event_half_life),
+            "mean_release_velocity": _finite_mean_or_zero(event_velocity),
+        }
+        if optional:
+            row["mean_latent_liquidity_fracture"] = _finite_mean_or_zero(group[fracture_col])
+        rows.append(row)
     return pd.DataFrame(rows)
 
 
