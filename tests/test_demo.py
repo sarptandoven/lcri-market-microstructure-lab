@@ -47,6 +47,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "lcri_gap_delta_summary.json").exists()
     assert (tmp_path / "transition_lift.csv").exists()
     assert (tmp_path / "heldout_transition_lift.csv").exists()
+    assert (tmp_path / "pressure_memory_decay_summary.csv").exists()
+    assert (tmp_path / "heldout_pressure_memory_decay_summary.csv").exists()
     assert (tmp_path / "lcri_signal_monotonicity.csv").exists()
     assert (tmp_path / "heldout_lcri_signal_monotonicity.csv").exists()
     assert (tmp_path / "lcri_signal_monotonicity_summary.json").exists()
@@ -148,6 +150,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["lcri_evidence_release_checklist.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_evidence_release_checklist_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_dominant_scopes.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["pressure_memory_decay_summary.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_pressure_memory_decay_summary.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_flags.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_improvements.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_regressions.csv"]["size_bytes"] > 0

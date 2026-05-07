@@ -74,7 +74,11 @@ from lcri_lab.evaluation import (
 from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.features import add_regime_transition_features
 from lcri_lab.ingest import normalize_l2_snapshots
-from lcri_lab.memory import add_liquidity_memory_half_life, add_pressure_memory
+from lcri_lab.memory import (
+    add_liquidity_memory_half_life,
+    add_pressure_memory,
+    pressure_memory_decay_summary,
+)
 from lcri_lab.model import ARTIFACT_VERSION, LCRIModel, ModelConfig
 from lcri_lab.plotting import write_figures
 from lcri_lab.reporting import (
@@ -357,6 +361,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     lcri_lineage_map_summary = lcri_evidence_lineage_map_summary(lcri_lineage_map)
     transition_lift = transition_signal_lift(scored)
     heldout_transition_lift = transition_signal_lift(heldout_scored)
+    memory_decay_summary = pressure_memory_decay_summary(scored)
+    heldout_memory_decay_summary = pressure_memory_decay_summary(heldout_scored)
     lcri_monotonicity = signal_quantile_monotonicity(scored, "lcri")
     heldout_lcri_monotonicity = signal_quantile_monotonicity(heldout_scored, "lcri")
     lcri_monotonicity_summary = signal_quantile_monotonicity_summary(lcri_monotonicity)
@@ -466,6 +472,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "lcri_evidence_lineage_map_summary.json",
         "transition_lift.csv",
         "heldout_transition_lift.csv",
+        "pressure_memory_decay_summary.csv",
+        "heldout_pressure_memory_decay_summary.csv",
         "lcri_signal_monotonicity.csv",
         "heldout_lcri_signal_monotonicity.csv",
         "lcri_signal_monotonicity_summary.json",
@@ -609,6 +617,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     write_json(output / "lcri_evidence_lineage_map_summary.json", lcri_lineage_map_summary)
     transition_lift.to_csv(output / "transition_lift.csv", index=False)
     heldout_transition_lift.to_csv(output / "heldout_transition_lift.csv", index=False)
+    memory_decay_summary.to_csv(output / "pressure_memory_decay_summary.csv", index=False)
+    heldout_memory_decay_summary.to_csv(
+        output / "heldout_pressure_memory_decay_summary.csv", index=False
+    )
     lcri_monotonicity.to_csv(output / "lcri_signal_monotonicity.csv", index=False)
     heldout_lcri_monotonicity.to_csv(
         output / "heldout_lcri_signal_monotonicity.csv", index=False
@@ -878,6 +890,11 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"lcri evidence lineage map figure: {output / 'figures' / 'lcri_evidence_lineage_map.png'}")
     print(f"transition lift: {output / 'transition_lift.csv'}")
     print(f"heldout transition lift: {output / 'heldout_transition_lift.csv'}")
+    print(f"pressure memory decay summary: {output / 'pressure_memory_decay_summary.csv'}")
+    print(
+        "heldout pressure memory decay summary: "
+        f"{output / 'heldout_pressure_memory_decay_summary.csv'}"
+    )
     print(f"lcri reversal stress concentration: {output / 'lcri_reversal_stress_concentration.csv'}")
     print(
         "lcri reversal stress concentration summary: "
