@@ -5,6 +5,7 @@ from lcri_lab.memory import (
     add_liquidity_memory_half_life,
     add_pressure_memory,
     classify_pressure_memory_artifacts,
+    hidden_resiliency_asymmetry_summary,
     pressure_memory_decay_summary,
 )
 
@@ -115,6 +116,28 @@ def test_classify_pressure_memory_artifacts_flags_fractured_release() -> None:
 def test_classify_pressure_memory_artifacts_rejects_bad_inputs() -> None:
     with pytest.raises(ValueError, match="missing pressure memory artifact columns"):
         classify_pressure_memory_artifacts(pd.DataFrame({"pressure_memory_decay_state": ["x"]}))
+
+
+def test_hidden_resiliency_asymmetry_flags_fast_release_fracture() -> None:
+    frame = pd.DataFrame(
+        {
+            "pressure_memory_decay_state": ["fast_decay", "fast_decay", "persistent", "slow_decay"],
+            "pressure_memory_release_velocity": [0.8, 0.6, 0.0, 0.2],
+            "latent_liquidity_fracture": [4.0, 5.0, 1.0, 2.0],
+        }
+    )
+
+    summary = hidden_resiliency_asymmetry_summary(frame)
+
+    assert summary["fast_decay_mean_fracture"] == pytest.approx(4.5)
+    assert summary["slow_or_persistent_mean_fracture"] == pytest.approx(1.5)
+    assert summary["hidden_resiliency_asymmetry_score"] == pytest.approx(4.8)
+    assert summary["interpretation"] == "fast_release_masks_fracture"
+
+
+def test_hidden_resiliency_asymmetry_rejects_bad_inputs() -> None:
+    with pytest.raises(ValueError, match="missing hidden resiliency columns"):
+        hidden_resiliency_asymmetry_summary(pd.DataFrame({"pressure_memory_decay_state": ["x"]}))
 
 
 def test_liquidity_memory_half_life_respects_groups() -> None:

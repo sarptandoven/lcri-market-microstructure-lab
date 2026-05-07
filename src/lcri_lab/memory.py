@@ -204,6 +204,54 @@ def classify_pressure_memory_artifacts(
     return pd.DataFrame(rows)
 
 
+def hidden_resiliency_asymmetry_summary(
+    frame: pd.DataFrame,
+    *,
+    state_col: str = "pressure_memory_decay_state",
+    velocity_col: str = "pressure_memory_release_velocity",
+    fracture_col: str = "latent_liquidity_fracture",
+) -> dict[str, float | str]:
+    """Summarize whether apparent resiliency hides persistent fracture.
+
+    Fast release can look healthy if judged only by pressure decay. This compact
+    diagnostic compares fast-release fracture with slow/persistent fracture so a
+    report can flag cases where resiliency is mostly pressure unloading while
+    latent liquidity damage remains elevated.
+    """
+    required = [state_col, velocity_col, fracture_col]
+    missing = sorted(set(required) - set(frame.columns))
+    if missing:
+        raise ValueError(f"missing hidden resiliency columns: {missing}")
+
+    data = frame[required].copy()
+    data[velocity_col] = data[velocity_col].astype(float)
+    data[fracture_col] = data[fracture_col].astype(float)
+    if not np.isfinite(data[[velocity_col, fracture_col]].to_numpy()).all():
+        raise ValueError("hidden resiliency inputs must be finite")
+
+    fast = data[data[state_col].astype(str) == "fast_decay"]
+    slow = data[data[state_col].astype(str).isin(["slow_decay", "persistent"])]
+    fast_fracture = _finite_mean_or_zero(fast[fracture_col])
+    slow_fracture = _finite_mean_or_zero(slow[fracture_col])
+    fast_velocity = _finite_mean_or_zero(fast[velocity_col])
+    slow_velocity = _finite_mean_or_zero(slow[velocity_col])
+    score = (fast_fracture - slow_fracture) * (1.0 + max(fast_velocity - slow_velocity, 0.0))
+    if score > 0.0:
+        interpretation = "fast_release_masks_fracture"
+    elif slow_fracture > fast_fracture:
+        interpretation = "slow_memory_carries_fracture"
+    else:
+        interpretation = "balanced_resiliency"
+    return {
+        "fast_decay_mean_fracture": fast_fracture,
+        "slow_or_persistent_mean_fracture": slow_fracture,
+        "fast_minus_slow_fracture": float(fast_fracture - slow_fracture),
+        "fast_minus_slow_velocity": float(fast_velocity - slow_velocity),
+        "hidden_resiliency_asymmetry_score": float(score),
+        "interpretation": interpretation,
+    }
+
+
 def _finite_mean_or_zero(value: pd.Series) -> float:
     mean = float(value.mean()) if len(value) else 0.0
     return mean if math.isfinite(mean) else 0.0
