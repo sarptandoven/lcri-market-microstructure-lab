@@ -17,8 +17,8 @@ for reviewers who receive a report directory without the surrounding run logs.
   family, extension, research-summary exposure, figure status, metadata
   tracking, and verification role.
 - `artifact_coverage_summary.json`: compact counts for total artifacts,
-  summary-backed artifacts, figures, metadata tracking, families, and the
-  verification roles used by release review.
+  summary-backed artifacts, figures, metadata tracking, families, and every
+  verification role used by release review.
 
 ## Verification roles
 

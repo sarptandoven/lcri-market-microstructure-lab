@@ -137,6 +137,8 @@ def artifact_coverage_summary(matrix: pd.DataFrame) -> dict[str, int]:
             "transition_verification_artifacts": 0,
             "lcri_release_evidence_artifacts": 0,
             "owner_readiness_artifacts": 0,
+            "visual_evidence_artifacts": 0,
+            "supporting_evidence_artifacts": 0,
             "families": 0,
         }
     role = matrix["verification_role"]
@@ -149,6 +151,8 @@ def artifact_coverage_summary(matrix: pd.DataFrame) -> dict[str, int]:
         "transition_verification_artifacts": int((role == "transition_verification").sum()),
         "lcri_release_evidence_artifacts": int((role == "lcri_release_evidence").sum()),
         "owner_readiness_artifacts": int((role == "owner_readiness").sum()),
+        "visual_evidence_artifacts": int((role == "visual_evidence").sum()),
+        "supporting_evidence_artifacts": int((role == "supporting_evidence").sum()),
         "families": int(matrix["family"].nunique()),
     }
 

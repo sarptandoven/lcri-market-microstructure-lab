@@ -195,9 +195,10 @@ verification, LCRI release evidence, owner readiness, and ordinary supporting
 evidence.
 
 The summary counts total artifacts, summary-backed artifacts, figures,
-metadata-tracked artifacts, distinct families, and the review-critical role
-counts. In particular, transition verification artifacts are counted separately
-from owner-readiness markdown and release-evidence tables, so a report can show
+metadata-tracked artifacts, distinct families, and every verification role. In
+particular, transition verification artifacts are counted separately from
+owner-readiness markdown, release-evidence tables, visual evidence, and ordinary
+supporting evidence, so a report can show
 whether the latent-liquidity-fracture, transmitted-pressure, reversal-stress, and
 transition-gate chain has enough machine-readable support before reviewers read
 the narrative. Verification recomputes both from the manifest so stale coverage
