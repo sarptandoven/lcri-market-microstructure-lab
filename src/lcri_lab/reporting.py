@@ -2751,6 +2751,10 @@ def write_research_summary(
     heldout_lcri_calibration_curve: pd.DataFrame | None = None,
     lcri_calibration_gate: dict[str, Any] | None = None,
     heldout_lcri_calibration_gate: dict[str, Any] | None = None,
+    lcri_calibration_fracture_pressure: pd.DataFrame | None = None,
+    heldout_lcri_calibration_fracture_pressure: pd.DataFrame | None = None,
+    lcri_calibration_fracture_pressure_summary: dict[str, Any] | None = None,
+    heldout_lcri_calibration_fracture_pressure_summary: dict[str, Any] | None = None,
     heldout_transition_robustness: dict[str, Any] | None = None,
 ) -> None:
     """Write a compact markdown summary of the demo artifacts."""
@@ -3076,6 +3080,20 @@ def write_research_summary(
                 ],
                 "" if lcri_calibration_gate else "_Not generated._",
                 "",
+                "## LCRI calibration fracture pressure",
+                "",
+                _markdown_table(lcri_calibration_fracture_pressure)
+                if lcri_calibration_fracture_pressure is not None
+                else "_Not generated._",
+                "",
+                "## LCRI calibration fracture pressure summary",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (lcri_calibration_fracture_pressure_summary or {}).items()
+                ],
+                "" if lcri_calibration_fracture_pressure_summary else "_Not generated._",
+                "",
                 "## Heldout LCRI signal monotonicity",
                 "",
                 _markdown_table(heldout_lcri_signal_monotonicity)
@@ -3103,6 +3121,20 @@ def write_research_summary(
                     for key, value in (heldout_lcri_calibration_gate or {}).items()
                 ],
                 "" if heldout_lcri_calibration_gate else "_Not generated._",
+                "",
+                "## Heldout LCRI calibration fracture pressure",
+                "",
+                _markdown_table(heldout_lcri_calibration_fracture_pressure)
+                if heldout_lcri_calibration_fracture_pressure is not None
+                else "_Not generated._",
+                "",
+                "## Heldout LCRI calibration fracture pressure summary",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (heldout_lcri_calibration_fracture_pressure_summary or {}).items()
+                ],
+                "" if heldout_lcri_calibration_fracture_pressure_summary else "_Not generated._",
                 "",
             ]
         )
@@ -3216,8 +3248,12 @@ _RESEARCH_SUMMARY_ARTIFACT_SECTIONS = {
     "Heldout LCRI signal monotonicity summary": "heldout_lcri_signal_monotonicity_summary.json",
     "LCRI calibration curve": "lcri_calibration_curve.csv",
     "LCRI calibration gate": "lcri_calibration_gate.json",
+    "LCRI calibration fracture pressure": "lcri_calibration_fracture_pressure.csv",
+    "LCRI calibration fracture pressure summary": "lcri_calibration_fracture_pressure_summary.json",
     "Heldout LCRI calibration curve": "heldout_lcri_calibration_curve.csv",
     "Heldout LCRI calibration gate": "heldout_lcri_calibration_gate.json",
+    "Heldout LCRI calibration fracture pressure": "heldout_lcri_calibration_fracture_pressure.csv",
+    "Heldout LCRI calibration fracture pressure summary": "heldout_lcri_calibration_fracture_pressure_summary.json",
 }
 
 
