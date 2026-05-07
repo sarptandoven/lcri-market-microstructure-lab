@@ -77,6 +77,7 @@ from lcri_lab.ingest import normalize_l2_snapshots
 from lcri_lab.memory import (
     add_liquidity_memory_half_life,
     add_pressure_memory,
+    hidden_resiliency_asymmetry_summary,
     pressure_memory_decay_summary,
 )
 from lcri_lab.model import ARTIFACT_VERSION, LCRIModel, ModelConfig
@@ -364,6 +365,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_transition_lift = transition_signal_lift(heldout_scored)
     memory_decay_summary = pressure_memory_decay_summary(scored)
     heldout_memory_decay_summary = pressure_memory_decay_summary(heldout_scored)
+    resiliency_asymmetry = hidden_resiliency_asymmetry_summary(scored)
+    heldout_resiliency_asymmetry = hidden_resiliency_asymmetry_summary(heldout_scored)
     lcri_monotonicity = signal_quantile_monotonicity(scored, "lcri")
     heldout_lcri_monotonicity = signal_quantile_monotonicity(heldout_scored, "lcri")
     lcri_monotonicity_summary = signal_quantile_monotonicity_summary(lcri_monotonicity)
@@ -475,6 +478,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "heldout_transition_lift.csv",
         "pressure_memory_decay_summary.csv",
         "heldout_pressure_memory_decay_summary.csv",
+        "hidden_resiliency_asymmetry_summary.json",
+        "heldout_hidden_resiliency_asymmetry_summary.json",
         "lcri_signal_monotonicity.csv",
         "heldout_lcri_signal_monotonicity.csv",
         "lcri_signal_monotonicity_summary.json",
@@ -622,6 +627,11 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_memory_decay_summary.to_csv(
         output / "heldout_pressure_memory_decay_summary.csv", index=False
     )
+    write_json(output / "hidden_resiliency_asymmetry_summary.json", resiliency_asymmetry)
+    write_json(
+        output / "heldout_hidden_resiliency_asymmetry_summary.json",
+        heldout_resiliency_asymmetry,
+    )
     lcri_monotonicity.to_csv(output / "lcri_signal_monotonicity.csv", index=False)
     heldout_lcri_monotonicity.to_csv(
         output / "heldout_lcri_signal_monotonicity.csv", index=False
@@ -764,6 +774,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         lcri_reversal_transition_gate=reversal_transition_gate,
         heldout_lcri_reversal_transition_gate=heldout_reversal_transition_gate,
         heldout_transition_robustness=heldout_transition_robustness,
+        hidden_resiliency_asymmetry_summary=resiliency_asymmetry,
+        heldout_hidden_resiliency_asymmetry_summary=heldout_resiliency_asymmetry,
     )
     coverage_matrix = artifact_coverage_matrix(artifact_paths)
     coverage_matrix.to_csv(output / "artifact_coverage_matrix.csv", index=False)
@@ -895,6 +907,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(
         "heldout pressure memory decay summary: "
         f"{output / 'heldout_pressure_memory_decay_summary.csv'}"
+    )
+    print(
+        "hidden resiliency asymmetry summary: "
+        f"{output / 'hidden_resiliency_asymmetry_summary.json'}"
     )
     print(f"lcri reversal stress concentration: {output / 'lcri_reversal_stress_concentration.csv'}")
     print(
