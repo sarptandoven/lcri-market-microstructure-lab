@@ -172,6 +172,7 @@ def test_artifact_coverage_matrix_classifies_manifest_artifacts() -> None:
             "lcri_generalization_severity.csv",
             "lcri_gap_delta_summary.json",
             "lcri_ci_confidence_coverage_scorecard.csv",
+            "lcri_calibration_fracture_gate.json",
             "figures/generalization_gap.png",
             "artifact_manifest.json",
             "lcri_owner_handoff_packet.md",
@@ -184,6 +185,7 @@ def test_artifact_coverage_matrix_classifies_manifest_artifacts() -> None:
     assert by_artifact.loc["lcri_generalization_severity.csv", "family"] == "lcri_gate"
     assert by_artifact.loc["lcri_gap_delta_summary.json", "family"] == "lcri_gap_delta"
     assert by_artifact.loc["lcri_ci_confidence_coverage_scorecard.csv", "family"] == "lcri_gate"
+    assert by_artifact.loc["lcri_calibration_fracture_gate.json", "family"] == "lcri_gate"
     assert bool(by_artifact.loc["figures/generalization_gap.png", "is_figure"])
     assert by_artifact.loc["artifact_manifest.json", "family"] == "audit"
     assert by_artifact.loc["lcri_owner_handoff_packet.md", "family"] == "lcri_gate"

@@ -3283,6 +3283,10 @@ def _artifact_family(artifact: str) -> str:
         return "lcri_gap_delta"
     if artifact.startswith("lcri_ci_gate_contradiction") or artifact.startswith("lcri_ci_confidence"):
         return "lcri_gate"
+    if artifact.startswith("lcri_calibration_fracture") or artifact.startswith(
+        "heldout_lcri_calibration_fracture"
+    ):
+        return "lcri_gate"
     if artifact in {
         "lcri_contradiction_review_packet.csv",
         "lcri_contradiction_review_packet_summary.json",
