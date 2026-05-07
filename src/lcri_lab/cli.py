@@ -158,6 +158,7 @@ from lcri_lab.reporting import (
 from lcri_lab.reversal import (
     add_queue_reversal_risk,
     add_reversal_lead_lag_coupling,
+    fracture_reversal_release_gate,
     reversal_coupling_regime_stress,
     reversal_stress_concentration_summary,
 )
@@ -387,6 +388,11 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_reversal_stress = reversal_coupling_regime_stress(heldout_scored)
     reversal_stress_summary = reversal_stress_concentration_summary(reversal_stress)
     heldout_reversal_stress_summary = reversal_stress_concentration_summary(heldout_reversal_stress)
+    fracture_reversal_gate = fracture_reversal_release_gate(
+        reversal_stress_summary,
+        lcri_calibration_fracture_gate,
+        heldout_reversal_summary=heldout_reversal_stress_summary,
+    )
     transition_robustness = transition_robustness_summary(scored)
     heldout_transition_robustness = transition_robustness_summary(heldout_scored)
 
@@ -471,6 +477,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "heldout_lcri_reversal_stress_concentration.csv",
         "lcri_reversal_stress_concentration_summary.json",
         "heldout_lcri_reversal_stress_concentration_summary.json",
+        "lcri_fracture_reversal_gate.json",
         "transition_robustness.json",
         "heldout_transition_robustness.json",
         "research_summary.md",
@@ -630,6 +637,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         output / "heldout_lcri_reversal_stress_concentration_summary.json",
         heldout_reversal_stress_summary,
     )
+    write_json(output / "lcri_fracture_reversal_gate.json", fracture_reversal_gate)
     write_json(output / "transition_robustness.json", transition_robustness)
     write_json(output / "heldout_transition_robustness.json", heldout_transition_robustness)
     write_figures(
@@ -720,6 +728,9 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         lcri_calibration_fracture_pressure_summary=lcri_calibration_fracture_pressure_summary,
         heldout_lcri_calibration_fracture_pressure_summary=heldout_lcri_calibration_fracture_pressure_summary,
         lcri_calibration_fracture_gate=lcri_calibration_fracture_gate,
+        lcri_reversal_stress_summary=reversal_stress_summary,
+        heldout_lcri_reversal_stress_summary=heldout_reversal_stress_summary,
+        lcri_fracture_reversal_gate=fracture_reversal_gate,
         heldout_transition_robustness=heldout_transition_robustness,
     )
     coverage_matrix = artifact_coverage_matrix(artifact_paths)
@@ -853,6 +864,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "lcri reversal stress concentration summary: "
         f"{output / 'lcri_reversal_stress_concentration_summary.json'}"
     )
+    print(f"lcri fracture reversal gate: {output / 'lcri_fracture_reversal_gate.json'}")
     print(f"transition robustness: {output / 'transition_robustness.json'}")
     print(f"heldout transition robustness: {output / 'heldout_transition_robustness.json'}")
     print(f"summary: {output / 'research_summary.md'}")

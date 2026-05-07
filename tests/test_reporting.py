@@ -173,6 +173,8 @@ def test_artifact_coverage_matrix_classifies_manifest_artifacts() -> None:
             "lcri_gap_delta_summary.json",
             "lcri_ci_confidence_coverage_scorecard.csv",
             "lcri_calibration_fracture_gate.json",
+            "lcri_reversal_stress_concentration_summary.json",
+            "lcri_fracture_reversal_gate.json",
             "figures/generalization_gap.png",
             "artifact_manifest.json",
             "lcri_owner_handoff_packet.md",
@@ -186,6 +188,8 @@ def test_artifact_coverage_matrix_classifies_manifest_artifacts() -> None:
     assert by_artifact.loc["lcri_gap_delta_summary.json", "family"] == "lcri_gap_delta"
     assert by_artifact.loc["lcri_ci_confidence_coverage_scorecard.csv", "family"] == "lcri_gate"
     assert by_artifact.loc["lcri_calibration_fracture_gate.json", "family"] == "lcri_gate"
+    assert by_artifact.loc["lcri_reversal_stress_concentration_summary.json", "family"] == "lcri_gate"
+    assert by_artifact.loc["lcri_fracture_reversal_gate.json", "family"] == "lcri_gate"
     assert bool(by_artifact.loc["figures/generalization_gap.png", "is_figure"])
     assert by_artifact.loc["artifact_manifest.json", "family"] == "audit"
     assert by_artifact.loc["lcri_owner_handoff_packet.md", "family"] == "lcri_gate"
@@ -2988,6 +2992,17 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
         transition_robustness={"passes_transition_robustness": True},
         heldout_transition_lift=transition_lift,
         heldout_transition_robustness={"passes_transition_robustness": True},
+        lcri_reversal_stress_summary={
+            "gate_decision": "review",
+            "top_regime": "thin",
+            "max_stress_concentration_ratio": 2.4,
+        },
+        heldout_lcri_reversal_stress_summary={
+            "gate_decision": "pass",
+            "top_regime": "thick",
+            "max_stress_concentration_ratio": 1.1,
+        },
+        lcri_fracture_reversal_gate={"decision": "review", "passes": False},
     )
 
     text = path.read_text()
@@ -3020,3 +3035,8 @@ def test_write_research_summary_includes_metrics_and_robustness(tmp_path) -> Non
     assert "## Heldout transition lift" in text
     assert "## Heldout transition robustness" in text
     assert "- passes_transition_robustness: true" in text
+    assert "## LCRI reversal stress concentration summary" in text
+    assert "- max_stress_concentration_ratio: 2.400000" in text
+    assert "## Heldout LCRI reversal stress concentration summary" in text
+    assert "## LCRI fracture reversal gate" in text
+    assert "- decision: review" in text
