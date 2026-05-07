@@ -92,6 +92,7 @@ from lcri_lab.reversal import (
     fracture_reversal_release_gate,
     reversal_coupling_regime_stress,
     reversal_stress_concentration_summary,
+    reversal_transition_gate_diagnostics,
 )
 from lcri_lab.schema import snapshot_required_columns
 from lcri_lab.sensitivity import publishability_latency_sweep
@@ -110,6 +111,7 @@ __all__ = [
     "fracture_reversal_release_gate",
     "reversal_coupling_regime_stress",
     "reversal_stress_concentration_summary",
+    "reversal_transition_gate_diagnostics",
     "LCRIModel",
     "LiquidityBaseline",
     "ModelConfig",
