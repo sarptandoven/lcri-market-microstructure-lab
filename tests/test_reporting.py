@@ -55,6 +55,7 @@ from lcri_lab.reporting import (
     verify_lcri_fragility_gate_alignment,
     verify_lcri_fragility_gate_scorecard,
     verify_lcri_fracture_reversal_gate,
+    verify_lcri_reversal_transition_gate_consistency,
     verify_lcri_generalization_blocker_summary,
     verify_lcri_generalization_critical_contexts,
     verify_lcri_generalization_gate_decision,
@@ -241,6 +242,22 @@ def test_verify_lcri_fracture_reversal_gate_detects_stale_gate(tmp_path) -> None
     assert any("incomplete LCRI fracture reversal gate" in error for error in errors)
     assert any("fracture_reversal_gate.decision" in error for error in errors)
 
+
+def test_verify_lcri_reversal_transition_gate_consistency_detects_stale_release(tmp_path) -> None:
+    write_json(tmp_path / "lcri_fracture_reversal_gate.json", {"decision": "pass", "passes": True})
+    pd.DataFrame(
+        {
+            "transition": ["thin->thick"],
+            "transition_stress_share": [0.75],
+            "release_gate_decision": ["review"],
+            "transition_gate_decision": ["review"],
+        }
+    ).to_csv(tmp_path / "lcri_reversal_transition_gate.csv", index=False)
+
+    errors = verify_lcri_reversal_transition_gate_consistency(tmp_path)
+
+    assert any("transition gate release mismatch" in error for error in errors)
+    assert any("inactive release gate has review transitions" in error for error in errors)
 
 def test_verify_artifact_coverage_matrix_accepts_matching_audit(tmp_path) -> None:
     artifacts = ["metrics.csv", "research_summary.md", "figures/generalization_gap.png"]

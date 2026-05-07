@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from lcri_lab.evaluation import (
@@ -1456,6 +1457,59 @@ def verify_lcri_fracture_reversal_gate(output_dir: Path) -> list[str]:
         errors.append(f"incomplete LCRI fracture reversal gate: {missing}")
     for key, expected_value in expected.items():
         _append_lcri_gate_mismatch(errors, f"fracture_reversal_gate.{key}", expected_value, gate.get(key))
+    return errors
+
+
+def verify_lcri_reversal_transition_gate_consistency(output_dir: Path) -> list[str]:
+    """Return errors when transition-local gates contradict the release gate."""
+    release_path = output_dir / "lcri_fracture_reversal_gate.json"
+    if not release_path.exists():
+        return []
+
+    release_gate = json.loads(release_path.read_text())
+    release_decision = str(release_gate.get("decision", ""))
+    release_active = release_decision in {"review", "block"} or release_gate.get("passes") is False
+    errors: list[str] = []
+    required = {
+        "transition",
+        "transition_stress_share",
+        "release_gate_decision",
+        "transition_gate_decision",
+    }
+    for artifact in [
+        "lcri_reversal_transition_gate.csv",
+        "heldout_lcri_reversal_transition_gate.csv",
+    ]:
+        path = output_dir / artifact
+        if not path.exists():
+            continue
+        table = pd.read_csv(path)
+        missing = sorted(required - set(table.columns))
+        if missing:
+            errors.append(f"incomplete LCRI reversal transition gate {artifact}: {missing}")
+            continue
+        if table.empty:
+            continue
+
+        decisions = set(table["transition_gate_decision"].astype(str))
+        invalid_decisions = sorted(decisions - {"pass", "review"})
+        if invalid_decisions:
+            errors.append(f"invalid transition gate decision in {artifact}: {invalid_decisions}")
+
+        recorded_release = set(table["release_gate_decision"].astype(str))
+        if recorded_release != {release_decision}:
+            errors.append(
+                f"transition gate release mismatch in {artifact}: "
+                f"expected {release_decision!r}, found {sorted(recorded_release)!r}"
+            )
+
+        stress_share = table["transition_stress_share"].astype(float)
+        if not np.isfinite(stress_share.to_numpy()).all():
+            errors.append(f"non-finite transition stress share in {artifact}")
+        if ((stress_share < 0.0) | (stress_share > 1.0)).any():
+            errors.append(f"transition stress share outside [0, 1] in {artifact}")
+        if not release_active and "review" in decisions:
+            errors.append(f"inactive release gate has review transitions in {artifact}")
     return errors
 
 
