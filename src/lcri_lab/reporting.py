@@ -342,6 +342,38 @@ def verify_pressure_memory_decay_summary(
     return errors
 
 
+def verify_hidden_resiliency_asymmetry_summary(
+    output_dir: Path, artifact: str = "hidden_resiliency_asymmetry_summary.json"
+) -> list[str]:
+    """Return errors for incomplete hidden-resiliency asymmetry diagnostics."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing hidden resiliency asymmetry summary: {artifact}"]
+    payload = json.loads(path.read_text())
+    required = {
+        "fast_decay_mean_fracture",
+        "slow_or_persistent_mean_fracture",
+        "fast_minus_slow_fracture",
+        "fast_minus_slow_velocity",
+        "hidden_resiliency_asymmetry_score",
+        "interpretation",
+    }
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete hidden resiliency asymmetry summary {artifact}: {missing}"]
+    numeric = [payload[key] for key in required - {"interpretation"}]
+    errors: list[str] = []
+    if not np.isfinite(numeric).all():
+        errors.append(f"non-finite hidden resiliency asymmetry values in {artifact}")
+    if payload["interpretation"] not in {
+        "fast_release_masks_fracture",
+        "slow_memory_carries_fracture",
+        "balanced_resiliency",
+    }:
+        errors.append(f"unknown hidden resiliency interpretation in {artifact}")
+    return errors
+
+
 def verify_figure_artifacts(output_dir: Path, manifest: dict[str, Any]) -> list[str]:
     """Return errors for manifest-listed PNG figures that are unreadable.
 
