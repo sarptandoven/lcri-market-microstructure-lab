@@ -20,6 +20,8 @@ Half-life state is a compact artifact label. Fast decay marks transient pressure
 
 `classify_pressure_memory_artifacts` turns those state/exposure shapes into a small review catalog. A fast release with elevated latent fracture is not just mean reversion, it can indicate pressure has moved from visible imbalance into hidden ladder fragility. Persistent states with high fracture exposure are separated from benign decay so review workflows can prioritize adverse-selection phase shifts instead of treating all pressure relaxation as healthy.
 
+`hidden_resiliency_asymmetry_summary` is the report-level guardrail for this failure mode. It compares fast-decay fracture against slow/persistent fracture and scales positive gaps by the fast-vs-slow release-velocity advantage. A positive score means apparent resiliency is asymmetric: displayed pressure unloaded quickly, but latent fracture stayed higher in the fast-release bucket. That is a warning against calling the event healthy purely because pressure memory decayed.
+
 Artifact families:
 
 - `fractured_fast_release`: visible pressure clears quickly while fracture stays elevated
