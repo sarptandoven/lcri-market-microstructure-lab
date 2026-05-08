@@ -31,3 +31,15 @@ def test_evaluate_cost_aware_signals_rejects_all_abstain_frame() -> None:
 
     with pytest.raises(ValueError, match="no tradable rows"):
         evaluate_cost_aware_signals(frame)
+
+
+def test_evaluate_cost_aware_signals_rejects_duplicate_signals() -> None:
+    frame = pd.DataFrame(
+        {
+            "raw_imbalance": [0.1, -0.2],
+            "cost_aware_direction": [1, 0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="unique"):
+        evaluate_cost_aware_signals(frame, signals=["raw_imbalance", "raw_imbalance"])

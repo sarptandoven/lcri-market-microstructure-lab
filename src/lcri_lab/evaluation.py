@@ -9,9 +9,7 @@ import pandas as pd
 def evaluate_signals(frame: pd.DataFrame, signals: list[str] | None = None) -> pd.DataFrame:
     if frame.empty:
         raise ValueError("cannot evaluate an empty frame")
-    signals = signals or ["raw_imbalance", "lcri"]
-    if len(set(signals)) != len(signals):
-        raise ValueError("signal names must be unique")
+    signals = _resolve_signals(signals)
     _require_columns(frame, [*signals, "future_direction"])
     rows = []
     for signal in signals:
@@ -161,6 +159,12 @@ def _validate_limit(limit: int) -> None:
     if limit < 1:
         raise ValueError("limit must be at least 1")
 
+
+def _resolve_signals(signals: list[str] | None) -> list[str]:
+    resolved = signals or ["raw_imbalance", "lcri"]
+    if len(set(resolved)) != len(resolved):
+        raise ValueError("signal names must be unique")
+    return resolved
 
 
 def generalization_fragility_diagnostics(
@@ -2314,7 +2318,7 @@ def transition_conditioned_metrics(
     """Evaluate signals separately around stable and transitioning liquidity states."""
     if frame.empty:
         raise ValueError("cannot evaluate an empty frame")
-    signals = signals or ["raw_imbalance", "lcri"]
+    signals = _resolve_signals(signals)
     _require_columns(frame, [*signals, "future_direction", transition_col])
 
     transition = frame[transition_col].to_numpy(dtype=float) > 0.0
@@ -2425,7 +2429,7 @@ def evaluate_cost_aware_signals(
     """Evaluate signals only where transaction-cost labels choose a side."""
     if frame.empty:
         raise ValueError("cannot evaluate an empty frame")
-    signals = signals or ["raw_imbalance", "lcri"]
+    signals = _resolve_signals(signals)
     _require_columns(frame, [*signals, "cost_aware_direction"])
 
     tradable = frame["cost_aware_direction"].to_numpy(dtype=float) != -1.0
