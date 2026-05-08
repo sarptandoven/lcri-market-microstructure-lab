@@ -251,6 +251,15 @@ def test_generalization_gap_leaderboard_rejects_invalid_limit() -> None:
             generalization_gap_leaderboard(pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), limit=limit)
 
 
+def test_generalization_gap_leaderboard_rejects_missing_context_column() -> None:
+    regime_gap = pd.DataFrame(
+        {"signal": ["lcri"], "directional_accuracy_gap": [0.08]}
+    )
+
+    with pytest.raises(ValueError, match="regime"):
+        generalization_gap_leaderboard(pd.DataFrame(), regime_gap, pd.DataFrame())
+
+
 def test_lcri_generalization_gap_leaderboard_filters_other_signals() -> None:
     signal_gap = pd.DataFrame(
         {
