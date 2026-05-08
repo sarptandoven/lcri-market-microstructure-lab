@@ -71,6 +71,17 @@ def test_normalize_l2_snapshots_rejects_non_integer_levels() -> None:
         normalize_l2_snapshots(_raw_snapshots(), tick_size=0.01, levels=1.5)
 
 
+def test_normalize_l2_snapshots_rejects_non_numeric_tick_size() -> None:
+    with pytest.raises(ValueError, match="tick_size must be numeric"):
+        normalize_l2_snapshots(_raw_snapshots(), tick_size="0.01", levels=1)
+
+
+@pytest.mark.parametrize("tick_size", [False, True])
+def test_normalize_l2_snapshots_rejects_boolean_tick_size(tick_size: bool) -> None:
+    with pytest.raises(ValueError, match="tick_size must be numeric"):
+        normalize_l2_snapshots(_raw_snapshots(), tick_size=tick_size, levels=1)
+
+
 def test_add_l2_state_features_rejects_non_integer_volatility_window() -> None:
     with pytest.raises(ValueError, match="integer"):
         add_l2_state_features(_raw_snapshots().assign(mid=[100.0, 100.01]), levels=1, volatility_window=2.5)
