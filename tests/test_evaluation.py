@@ -211,6 +211,18 @@ def test_evaluate_signals_rejects_non_finite_inputs() -> None:
         evaluate_signals(frame, signals=["raw_imbalance"])
 
 
+def test_evaluate_signals_rejects_duplicate_signals() -> None:
+    frame = pd.DataFrame(
+        {
+            "raw_imbalance": [0.1, -0.2],
+            "future_direction": [1.0, 0.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="unique"):
+        evaluate_signals(frame, signals=["raw_imbalance", "raw_imbalance"])
+
+
 def test_generalization_gap_leaderboard_ranks_all_scopes() -> None:
     signal_gap = pd.DataFrame(
         {"signal": ["lcri"], "directional_accuracy_gap": [0.05]}
