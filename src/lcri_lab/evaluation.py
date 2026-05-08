@@ -10,6 +10,8 @@ def evaluate_signals(frame: pd.DataFrame, signals: list[str] | None = None) -> p
     if frame.empty:
         raise ValueError("cannot evaluate an empty frame")
     signals = signals or ["raw_imbalance", "lcri"]
+    if len(set(signals)) != len(signals):
+        raise ValueError("signal names must be unique")
     _require_columns(frame, [*signals, "future_direction"])
     rows = []
     for signal in signals:
