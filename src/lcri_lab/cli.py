@@ -1268,6 +1268,8 @@ def score_model(
     scored = model.score_frame(frame)
     if columns is not None:
         columns = [column.strip() for column in columns if column.strip()]
+        if not columns:
+            raise ValueError("requested score output columns must include at least one column")
         missing = sorted(set(columns) - set(scored.columns))
         if missing:
             raise ValueError(f"requested score output columns are unavailable: {missing}")
