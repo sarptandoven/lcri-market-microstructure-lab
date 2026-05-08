@@ -28,6 +28,8 @@ def normalize_l2_snapshots(
         raise ValueError("levels must be an integer")
     if levels < 1:
         raise ValueError("levels must be at least 1")
+    if not isinstance(tick_size, (int, float)) or isinstance(tick_size, bool):
+        raise ValueError("tick_size must be numeric")
     if not math.isfinite(tick_size) or tick_size <= 0.0:
         raise ValueError("tick_size must be a finite positive value")
 
