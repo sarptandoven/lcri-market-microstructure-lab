@@ -53,6 +53,19 @@ def test_transition_conditioned_metrics_rejects_missing_transition_column() -> N
         transition_conditioned_metrics(frame, signals=["lcri"])
 
 
+def test_transition_conditioned_metrics_rejects_duplicate_signals() -> None:
+    frame = pd.DataFrame(
+        {
+            "lcri": [0.1, -0.2],
+            "future_direction": [1, 0],
+            "regime_changed": [0, 1],
+        }
+    )
+
+    with pytest.raises(ValueError, match="unique"):
+        transition_conditioned_metrics(frame, signals=["lcri", "lcri"])
+
+
 def test_transition_generalization_gap_compares_matching_segment_signals() -> None:
     metrics = pd.DataFrame(
         {
