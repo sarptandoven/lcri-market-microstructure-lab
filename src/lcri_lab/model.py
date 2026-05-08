@@ -101,6 +101,11 @@ class LCRIModel:
         model.baseline.coefficients = np.array(payload["coefficients"], dtype=float)
         model.baseline.mean_ = np.array(payload["mean"], dtype=float)
         model.baseline.scale_ = np.array(payload["scale"], dtype=float)
+        expected_shapes = {
+            "coefficients": (len(expected_features) + 1,),
+            "mean": (len(expected_features),),
+            "scale": (len(expected_features),),
+        }
         for name, values in {
             "coefficients": model.baseline.coefficients,
             "mean": model.baseline.mean_,
@@ -108,6 +113,8 @@ class LCRIModel:
         }.items():
             if not np.isfinite(values).all():
                 raise ValueError(f"model artifact contains non-finite {name}")
+            if values.shape != expected_shapes[name]:
+                raise ValueError(f"model artifact contains invalid {name} shape")
         model.baseline.residual_scale_by_regime = {
             str(key): float(value)
             for key, value in payload["residual_scale_by_regime"].items()

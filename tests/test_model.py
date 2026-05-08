@@ -84,6 +84,15 @@ def test_model_load_rejects_non_finite_artifact_values(tmp_path) -> None:
         LCRIModel.load(path)
 
 
+def test_model_load_rejects_invalid_artifact_vector_shapes(tmp_path) -> None:
+    books = simulate_order_books(SimulationConfig(rows=120, seed=18))
+    path = tmp_path / "model.json"
+    LCRIModel().fit(books).save(path)
+    path.write_text(path.read_text().replace('"coefficients": [', '"coefficients": [0.0, ', 1))
+
+    with pytest.raises(ValueError, match="invalid coefficients shape"):
+        LCRIModel.load(path)
+
 def test_model_load_rejects_invalid_residual_scales(tmp_path) -> None:
     books = simulate_order_books(SimulationConfig(rows=120, seed=17))
     path = tmp_path / "model.json"
