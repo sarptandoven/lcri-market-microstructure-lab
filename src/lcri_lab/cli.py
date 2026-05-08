@@ -1270,6 +1270,9 @@ def score_model(
         columns = [column.strip() for column in columns if column.strip()]
         if not columns:
             raise ValueError("requested score output columns must include at least one column")
+        duplicate_columns = sorted({column for column in columns if columns.count(column) > 1})
+        if duplicate_columns:
+            raise ValueError(f"requested score output columns must be unique: {duplicate_columns}")
         missing = sorted(set(columns) - set(scored.columns))
         if missing:
             raise ValueError(f"requested score output columns are unavailable: {missing}")

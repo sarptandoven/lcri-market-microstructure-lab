@@ -81,6 +81,17 @@ def test_score_model_rejects_empty_column_selection(tmp_path: Path) -> None:
         score_model(snapshots, model_path, output_path, columns=[" ", ""])
 
 
+def test_score_model_rejects_duplicate_column_selection(tmp_path: Path) -> None:
+    snapshots = tmp_path / "snapshots.csv"
+    model_path = tmp_path / "model.json"
+    output_path = tmp_path / "scores.csv"
+    _write_snapshots(snapshots)
+    fit_model(snapshots, model_path, levels=5)
+
+    with pytest.raises(ValueError, match="must be unique"):
+        score_model(snapshots, model_path, output_path, columns=["timestamp", "lcri", " timestamp "])
+
+
 def test_verify_report_accepts_intact_manifest(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
