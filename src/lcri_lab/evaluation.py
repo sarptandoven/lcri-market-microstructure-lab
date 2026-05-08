@@ -3216,6 +3216,10 @@ def _gap_rows(
 ) -> list[dict[str, float | str]]:
     if frame.empty or "directional_accuracy_gap" not in frame.columns:
         return []
+    required_columns = ["signal", "directional_accuracy_gap"]
+    if context_column:
+        required_columns.append(context_column)
+    _require_columns(frame, required_columns)
 
     rows = []
     for row in frame.to_dict("records"):
