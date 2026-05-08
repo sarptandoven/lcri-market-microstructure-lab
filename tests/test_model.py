@@ -40,6 +40,18 @@ def test_model_config_rejects_invalid_values() -> None:
         ModelConfig(probability_scale=0.0)
 
 
+@pytest.mark.parametrize("ridge", ["0.001", False, True])
+def test_model_config_rejects_non_numeric_ridge(ridge: object) -> None:
+    with pytest.raises(ValueError, match="ridge must be numeric"):
+        ModelConfig(ridge=ridge)
+
+
+@pytest.mark.parametrize("probability_scale", ["1.0", False, True])
+def test_model_config_rejects_non_numeric_probability_scale(probability_scale: object) -> None:
+    with pytest.raises(ValueError, match="probability_scale must be numeric"):
+        ModelConfig(probability_scale=probability_scale)
+
+
 def test_model_rejects_non_finite_probability_scores() -> None:
     with pytest.raises(ValueError, match="scores"):
         LCRIModel().predict_proba_from_scores(np.array([float("nan")]))

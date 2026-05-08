@@ -27,8 +27,14 @@ class ModelConfig:
             raise ValueError("levels must be an integer")
         if self.levels < 1:
             raise ValueError("levels must be at least 1")
+        if not isinstance(self.ridge, (int, float)) or isinstance(self.ridge, bool):
+            raise ValueError("ridge must be numeric")
         if not math.isfinite(self.ridge) or self.ridge < 0.0:
             raise ValueError("ridge must be a finite non-negative value")
+        if not isinstance(self.probability_scale, (int, float)) or isinstance(
+            self.probability_scale, bool
+        ):
+            raise ValueError("probability_scale must be numeric")
         if not math.isfinite(self.probability_scale) or self.probability_scale <= 0.0:
             raise ValueError("probability_scale must be a finite positive value")
 
