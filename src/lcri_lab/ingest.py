@@ -76,6 +76,8 @@ def add_l2_state_features(
         raise ValueError("levels must be an integer")
     if levels < 1:
         raise ValueError("levels must be at least 1")
+    if not isinstance(volatility_window, int) or isinstance(volatility_window, bool):
+        raise ValueError("volatility_window must be an integer")
     if volatility_window < 2:
         raise ValueError("volatility_window must be at least 2")
 

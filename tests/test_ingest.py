@@ -47,8 +47,15 @@ def test_normalize_l2_snapshots_rejects_non_integer_levels() -> None:
         normalize_l2_snapshots(_raw_snapshots(), tick_size=0.01, levels=1.5)
 
 
+def test_add_l2_state_features_rejects_non_integer_volatility_window() -> None:
+    with pytest.raises(ValueError, match="integer"):
+        add_l2_state_features(_raw_snapshots().assign(mid=[100.0, 100.01]), levels=1, volatility_window=2.5)
+
+
 def test_add_l2_state_features_rejects_non_finite_inputs() -> None:
-    frame = pd.DataFrame({"mid": [100.0, float("nan")], "bid_sz_1": [1.0, 1.0], "ask_sz_1": [1.0, 1.0]})
+    frame = pd.DataFrame(
+        {"mid": [100.0, float("nan")], "bid_sz_1": [1.0, 1.0], "ask_sz_1": [1.0, 1.0]}
+    )
 
     with pytest.raises(ValueError, match="finite"):
         add_l2_state_features(frame, levels=1)
