@@ -49,6 +49,7 @@ def normalize_l2_snapshots(
     spread = best_ask - best_bid
     if (spread <= 0.0).to_numpy().any():
         raise ValueError("best ask must be greater than best bid")
+    _validate_price_ladder(output, levels=levels)
 
     if "mid" not in output:
         output["mid"] = (best_bid + best_ask) / 2.0
@@ -63,6 +64,16 @@ def normalize_l2_snapshots(
     if derive_state:
         output = add_l2_state_features(output, levels=levels, volatility_window=volatility_window)
     return output
+
+
+def _validate_price_ladder(frame: pd.DataFrame, *, levels: int) -> None:
+    """Reject L2 snapshots with inverted same-side price levels."""
+    for level in range(2, levels + 1):
+        previous = level - 1
+        if (frame[f"bid_px_{level}"] > frame[f"bid_px_{previous}"]).to_numpy().any():
+            raise ValueError("bid prices must be non-increasing across levels")
+        if (frame[f"ask_px_{level}"] < frame[f"ask_px_{previous}"]).to_numpy().any():
+            raise ValueError("ask prices must be non-decreasing across levels")
 
 
 def add_l2_state_features(
