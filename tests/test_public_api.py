@@ -172,6 +172,11 @@ def test_public_api_exports_cost_aware_evaluation() -> None:
     assert "evaluate_cost_aware_signals" in lcri_lab.__all__
 
 
+def test_public_api_exports_phase_shift_artifact_classifier() -> None:
+    assert callable(lcri_lab.classify_phase_shift_artifacts)
+    assert "classify_phase_shift_artifacts" in lcri_lab.__all__
+
+
 def test_public_api_exports_transition_conditioned_metrics() -> None:
     assert callable(lcri_lab.transition_conditioned_metrics)
     assert "transition_conditioned_metrics" in lcri_lab.__all__
