@@ -42,6 +42,30 @@ def test_normalize_l2_snapshots_rejects_crossed_quotes() -> None:
         normalize_l2_snapshots(frame, tick_size=0.01, levels=1)
 
 
+def test_normalize_l2_snapshots_rejects_inverted_price_ladder() -> None:
+    frame = _raw_snapshots().assign(
+        bid_px_2=[100.0, 99.99],
+        ask_px_2=[100.02, 100.04],
+        bid_sz_2=[8.0, 8.0],
+        ask_sz_2=[7.0, 7.0],
+    )
+
+    with pytest.raises(ValueError, match="bid prices"):
+        normalize_l2_snapshots(frame, tick_size=0.01, levels=2)
+
+
+def test_normalize_l2_snapshots_rejects_inverted_ask_ladder() -> None:
+    frame = _raw_snapshots().assign(
+        bid_px_2=[99.98, 99.99],
+        ask_px_2=[100.0, 100.04],
+        bid_sz_2=[8.0, 8.0],
+        ask_sz_2=[7.0, 7.0],
+    )
+
+    with pytest.raises(ValueError, match="ask prices"):
+        normalize_l2_snapshots(frame, tick_size=0.01, levels=2)
+
+
 def test_normalize_l2_snapshots_rejects_non_integer_levels() -> None:
     with pytest.raises(ValueError, match="integer"):
         normalize_l2_snapshots(_raw_snapshots(), tick_size=0.01, levels=1.5)
