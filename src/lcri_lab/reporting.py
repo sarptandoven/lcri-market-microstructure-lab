@@ -194,6 +194,8 @@ def verify_artifact_manifest(output_dir: Path, manifest: dict[str, Any]) -> list
     artifacts = raw_artifacts
     artifact_set = set(artifacts)
     metadata = manifest.get("artifact_metadata", {})
+    if not isinstance(metadata, dict):
+        return ["manifest artifact_metadata must be an object"]
     metadata_artifacts = set(metadata)
     duplicate_artifacts = sorted({artifact for artifact in artifacts if artifacts.count(artifact) > 1})
     errors = [f"duplicate manifest artifact: {artifact}" for artifact in duplicate_artifacts]
