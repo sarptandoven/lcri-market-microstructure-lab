@@ -188,7 +188,10 @@ def verify_artifact_coverage_matrix(output_dir: Path, manifest: dict[str, Any]) 
 
 def verify_artifact_manifest(output_dir: Path, manifest: dict[str, Any]) -> list[str]:
     """Return manifest verification errors for missing or changed artifacts."""
-    artifacts = list(manifest.get("artifacts", []))
+    raw_artifacts = manifest.get("artifacts", [])
+    if not isinstance(raw_artifacts, list):
+        return ["manifest artifacts must be a list"]
+    artifacts = raw_artifacts
     artifact_set = set(artifacts)
     metadata = manifest.get("artifact_metadata", {})
     metadata_artifacts = set(metadata)

@@ -485,6 +485,14 @@ def test_verify_artifact_manifest_reports_checksum_mismatch(tmp_path) -> None:
     assert "sha256 mismatch: metrics.csv" in errors
 
 
+def test_verify_artifact_manifest_rejects_non_list_artifacts(tmp_path) -> None:
+    manifest = {"artifacts": "metrics.csv"}
+
+    errors = verify_artifact_manifest(tmp_path, manifest)
+
+    assert errors == ["manifest artifacts must be a list"]
+
+
 def test_verify_artifact_manifest_reports_partial_metadata_coverage(tmp_path) -> None:
     (tmp_path / "metrics.csv").write_text("signal,value\n")
     (tmp_path / "summary.json").write_text("{}\n")
