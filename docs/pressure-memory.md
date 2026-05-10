@@ -38,3 +38,15 @@ Useful hypotheses:
 - persistent positive pressure with low decay risk should behave differently from a single positive print
 - pressure aligned with persistent fracture should be more fragile than pressure in a coherent book
 - high decay risk should reduce confidence in publishable-edge gates
+
+## Microstructure alpha stack
+
+The pressure-memory artifacts now support a direct alpha-research layer. The stack treats LCRI as a path-dependent residual process rather than a point-in-time imbalance score:
+
+- `toxic_pressure_resonance` measures residual pressure that persists while latent liquidity fracture remains elevated.
+- `phase_shift_alpha` isolates the adverse-selection pocket where pressure-memory sign disagrees with future return sign.
+- `resiliency_adjusted_alpha` discounts pressure by spread cost and optional depth instability, so apparent alpha is not overstated when execution quality deteriorates.
+- `crowding_exhaustion` penalizes pressure runs whose slope stalls, a simple proxy for crowded queue pressure losing marginal information.
+- `microstructure_alpha_score` combines the investable and toxic components into a regime-level triage input.
+
+The gate is intentionally conservative. A regime can have high alpha concentration and still land in `review` when phase-shift alpha is too large, because that is the state where the signal may be identifying toxic flow rather than a tradable edge.
