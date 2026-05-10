@@ -192,11 +192,13 @@ def verify_artifact_manifest(output_dir: Path, manifest: dict[str, Any]) -> list
     artifact_set = set(artifacts)
     metadata = manifest.get("artifact_metadata", {})
     metadata_artifacts = set(metadata)
-    errors = [
+    duplicate_artifacts = sorted({artifact for artifact in artifacts if artifacts.count(artifact) > 1})
+    errors = [f"duplicate manifest artifact: {artifact}" for artifact in duplicate_artifacts]
+    errors.extend(
         f"unsafe artifact path: {artifact}"
         for artifact in artifacts
         if not _is_safe_artifact_path(artifact)
-    ]
+    )
     errors.extend(f"missing artifact: {artifact}" for artifact in missing_artifacts(output_dir, artifacts))
 
     if metadata:

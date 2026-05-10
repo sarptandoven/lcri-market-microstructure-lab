@@ -498,6 +498,18 @@ def test_verify_artifact_manifest_reports_partial_metadata_coverage(tmp_path) ->
     assert errors == ["missing manifest metadata for artifact: summary.json"]
 
 
+def test_verify_artifact_manifest_reports_duplicate_artifacts(tmp_path) -> None:
+    (tmp_path / "metrics.csv").write_text("signal,value\n")
+    manifest = {
+        "artifacts": ["metrics.csv", "metrics.csv"],
+        "artifact_metadata": collect_artifact_metadata(tmp_path, ["metrics.csv"]),
+    }
+
+    errors = verify_artifact_manifest(tmp_path, manifest)
+
+    assert errors == ["duplicate manifest artifact: metrics.csv"]
+
+
 def test_verify_artifact_manifest_reports_unlisted_and_incomplete_metadata(tmp_path) -> None:
     (tmp_path / "metrics.csv").write_text("signal,value\n")
     manifest = {
