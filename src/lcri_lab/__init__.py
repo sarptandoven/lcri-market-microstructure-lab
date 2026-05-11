@@ -3,6 +3,7 @@
 from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.alpha import (
     add_microstructure_alpha_stack,
+    alpha_event_window_diagnostics,
     alpha_research_gate,
     alpha_toxicity_review_summary,
     alpha_toxicity_review_table,
@@ -118,6 +119,7 @@ __all__ = [
     "absorption_regime_metrics",
     "add_transaction_cost_labels",
     "add_microstructure_alpha_stack",
+    "alpha_event_window_diagnostics",
     "alpha_research_gate",
     "alpha_toxicity_review_summary",
     "alpha_toxicity_review_table",

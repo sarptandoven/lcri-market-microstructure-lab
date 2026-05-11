@@ -245,6 +245,70 @@ def alpha_toxicity_review_table(
     ).reset_index(drop=True)
 
 
+def alpha_event_window_diagnostics(
+    frame: pd.DataFrame,
+    *,
+    event_col: str = "phase_shift_alpha",
+    score_col: str = "microstructure_alpha_score",
+    return_col: str = "gross_return_ticks",
+    window: int = 3,
+    threshold: float = 0.0,
+) -> pd.DataFrame:
+    """Measure pre/post return drift around alpha-toxicity events.
+
+    Events are rows where ``event_col`` exceeds ``threshold``. The diagnostic
+    keeps a compact, deterministic event table so researchers can inspect
+    whether alpha pockets are preceded by pressure buildup, followed by adverse
+    returns, or both.
+    """
+    _validate_window(window)
+    if not np.isfinite(threshold):
+        raise ValueError("threshold must be finite")
+    required = [event_col, score_col, return_col]
+    _require_columns(frame, required, label="alpha event window")
+    if frame.empty:
+        return pd.DataFrame(
+            columns=[
+                "event_index",
+                "event_value",
+                "event_score",
+                "pre_return_sum",
+                "post_return_sum",
+                "post_minus_pre_return",
+                "window_rows",
+            ]
+        )
+
+    data = frame[required].copy()
+    for column in required:
+        data[column] = data[column].astype(float)
+    _require_finite([data[column] for column in required], label="alpha event window inputs")
+
+    returns = data[return_col].reset_index(drop=True)
+    events = data.index[data[event_col] > threshold].tolist()
+    rows = []
+    for event_index in events:
+        position = data.index.get_loc(event_index)
+        pre_start = max(0, position - window)
+        post_end = min(len(data), position + window + 1)
+        pre = returns.iloc[pre_start:position]
+        post = returns.iloc[position + 1 : post_end]
+        pre_sum = float(pre.sum()) if len(pre) else 0.0
+        post_sum = float(post.sum()) if len(post) else 0.0
+        rows.append(
+            {
+                "event_index": event_index,
+                "event_value": float(data.at[event_index, event_col]),
+                "event_score": float(data.at[event_index, score_col]),
+                "pre_return_sum": pre_sum,
+                "post_return_sum": post_sum,
+                "post_minus_pre_return": float(post_sum - pre_sum),
+                "window_rows": int(len(pre) + len(post) + 1),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def alpha_toxicity_review_summary(review_table: pd.DataFrame) -> dict[str, float | int | str]:
     """Summarize the highest-priority alpha toxicity review row."""
     if review_table.empty:

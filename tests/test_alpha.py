@@ -3,6 +3,7 @@ import pytest
 
 from lcri_lab.alpha import (
     add_microstructure_alpha_stack,
+    alpha_event_window_diagnostics,
     alpha_research_gate,
     alpha_toxicity_review_summary,
     alpha_toxicity_review_table,
@@ -120,3 +121,35 @@ def test_alpha_toxicity_review_summary_reports_top_regime() -> None:
         "top_review_label": "toxic_concentration",
         "top_toxicity_score": 1.5,
     }
+
+
+def test_alpha_event_window_diagnostics_measures_post_event_drift() -> None:
+    frame = pd.DataFrame(
+        {
+            "phase_shift_alpha": [0.0, 0.2, 1.4, 0.0, 0.3, 1.1],
+            "microstructure_alpha_score": [0.1, 0.4, 2.0, 0.6, 0.5, 1.7],
+            "gross_return_ticks": [1.0, 1.0, -2.0, -1.0, -1.0, -3.0],
+        }
+    )
+
+    diagnostics = alpha_event_window_diagnostics(frame, window=2, threshold=1.0)
+
+    assert diagnostics["event_index"].tolist() == [2, 5]
+    first = diagnostics.iloc[0]
+    assert first["pre_return_sum"] == pytest.approx(2.0)
+    assert first["post_return_sum"] == pytest.approx(-2.0)
+    assert first["post_minus_pre_return"] == pytest.approx(-4.0)
+    assert first["window_rows"] == 5
+
+
+def test_alpha_event_window_diagnostics_rejects_nonfinite_threshold() -> None:
+    frame = pd.DataFrame(
+        {
+            "phase_shift_alpha": [0.0],
+            "microstructure_alpha_score": [1.0],
+            "gross_return_ticks": [0.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="threshold"):
+        alpha_event_window_diagnostics(frame, threshold=float("nan"))
