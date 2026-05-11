@@ -101,7 +101,9 @@ from lcri_lab.reporting import (
     missing_artifacts,
     summarize_artifact_metadata,
     summarize_verification_errors,
+    alpha_event_review_verification_summary,
     verify_alpha_event_review_artifacts,
+    verify_alpha_event_review_verification_summary,
     verify_artifact_coverage_matrix,
     verify_artifact_manifest,
     verify_artifact_metadata_summary,
@@ -556,6 +558,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "alpha_event_score_weighted_drift.json",
         "alpha_event_drift_gate.json",
         "alpha_event_release_review_packet.csv",
+        "alpha_event_review_verification_summary.json",
         "research_summary.md",
         "artifact_coverage_matrix.csv",
         "artifact_coverage_summary.json",
@@ -745,6 +748,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     write_json(output / "alpha_event_score_weighted_drift.json", alpha_weighted_drift)
     write_json(output / "alpha_event_drift_gate.json", alpha_drift_gate)
     alpha_release_packet.to_csv(output / "alpha_event_release_review_packet.csv", index=False)
+    alpha_event_verification_summary = alpha_event_review_verification_summary(output)
+    write_json(output / "alpha_event_review_verification_summary.json", alpha_event_verification_summary)
     write_figures(
         scored,
         by_regime,
@@ -843,6 +848,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         alpha_event_release_review_packet=alpha_release_packet_for_summary,
         alpha_event_window_summary=alpha_event_summary,
         alpha_event_drift_gate=alpha_drift_gate,
+        alpha_event_review_verification_summary=alpha_event_verification_summary,
         hidden_resiliency_asymmetry_summary=resiliency_asymmetry,
         heldout_hidden_resiliency_asymmetry_summary=heldout_resiliency_asymmetry,
         adverse_selection_phase_shift_summary=adverse_phase_shift,
@@ -1096,6 +1102,11 @@ def verify_report(report_dir: Path) -> None:
                 "alpha_event_score_weighted_drift.json",
                 "alpha_event_regime_summary.csv",
             }.issubset(manifest_artifacts)
+            else []
+        ),
+        *(
+            verify_alpha_event_review_verification_summary(report_dir)
+            if "alpha_event_review_verification_summary.json" in manifest_artifacts
             else []
         ),
         *verify_generalization_fragility_diagnostics(report_dir),

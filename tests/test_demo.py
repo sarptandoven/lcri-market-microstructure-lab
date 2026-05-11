@@ -103,6 +103,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "alpha_event_score_weighted_drift.json").exists()
     assert (tmp_path / "alpha_event_drift_gate.json").exists()
     assert (tmp_path / "alpha_event_release_review_packet.csv").exists()
+    assert (tmp_path / "alpha_event_review_verification_summary.json").exists()
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
     assert "passes_monotonicity_gate" in monotonicity

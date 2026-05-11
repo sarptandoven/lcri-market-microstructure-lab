@@ -10,6 +10,7 @@ from lcri_lab.reporting import (
     summarize_artifact_metadata,
     summarize_verification_errors,
     verify_alpha_event_review_artifacts,
+    verify_alpha_event_review_verification_summary,
     build_artifact_manifest,
     collect_artifact_metadata,
     missing_artifacts,
@@ -332,6 +333,20 @@ def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
     assert summary["errors"] == 1
     assert summary["passes_verification"] is False
     assert summary["owner_action"] == "rerun alpha event review artifact generation before owner review"
+
+
+def test_verify_alpha_event_review_verification_summary_checks_staleness(tmp_path) -> None:
+    test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
+    summary = alpha_event_review_verification_summary(tmp_path)
+    write_json(tmp_path / "alpha_event_review_verification_summary.json", summary)
+
+    assert verify_alpha_event_review_verification_summary(tmp_path) == []
+
+    stale = dict(summary, review_priority=99)
+    write_json(tmp_path / "alpha_event_review_verification_summary.json", stale)
+    assert verify_alpha_event_review_verification_summary(tmp_path) == [
+        "alpha event review verification summary mismatch for review_priority"
+    ]
 
 
 def test_alpha_event_review_verification_summary_reports_missing_artifacts(tmp_path) -> None:

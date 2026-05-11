@@ -116,6 +116,9 @@ surfaces without opening every file:
 - `alpha_event_drift_gate.json`: release gate for adverse alpha event drift.
 - `alpha_event_release_review_packet.csv`: one-row reviewer packet joining the
   drift gate, score-weighted diagnostic, worst regime, and release note.
+- `alpha_event_review_verification_summary.json`: compact verification health
+  payload with present/missing counts, pass/fail status, release decision,
+  review priority, and next owner action for dashboard triage.
 - `lcri_uncertainty_weighted_review_priority.csv`: owner-review queue that
   combines contradiction packet priority with CI coverage width, CI/gate
   disagreement counts, and fragility uncertainty.

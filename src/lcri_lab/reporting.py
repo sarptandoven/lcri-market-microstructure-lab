@@ -581,6 +581,35 @@ def alpha_event_review_verification_summary(output_dir: Path) -> dict[str, Any]:
     }
 
 
+def verify_alpha_event_review_verification_summary(output_dir: Path) -> list[str]:
+    """Return errors when the compact alpha-event verification summary is stale."""
+    path = output_dir / "alpha_event_review_verification_summary.json"
+    if not path.exists():
+        return ["missing alpha event review verification summary: alpha_event_review_verification_summary.json"]
+    try:
+        found = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        return [f"invalid alpha event review verification summary JSON: {exc.msg}"]
+
+    expected = alpha_event_review_verification_summary(output_dir)
+    errors: list[str] = []
+    missing_keys = sorted(set(expected) - set(found))
+    if missing_keys:
+        errors.append(f"incomplete alpha event review verification summary: {missing_keys}")
+        return errors
+    for key, expected_value in expected.items():
+        found_value = found[key]
+        if isinstance(expected_value, bool):
+            mismatch = bool(found_value) != expected_value
+        elif isinstance(expected_value, (int, float)):
+            mismatch = not math.isclose(float(found_value), float(expected_value), rel_tol=1e-9, abs_tol=1e-9)
+        else:
+            mismatch = found_value != expected_value
+        if mismatch:
+            errors.append(f"alpha event review verification summary mismatch for {key}")
+    return errors
+
+
 def _read_alpha_event_packet_payload(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -3205,6 +3234,7 @@ def write_research_summary(
     alpha_event_release_review_packet: pd.DataFrame | None = None,
     alpha_event_window_summary: dict[str, Any] | None = None,
     alpha_event_drift_gate: dict[str, Any] | None = None,
+    alpha_event_review_verification_summary: dict[str, Any] | None = None,
     hidden_resiliency_asymmetry_summary: dict[str, Any] | None = None,
     heldout_hidden_resiliency_asymmetry_summary: dict[str, Any] | None = None,
     adverse_selection_phase_shift_summary: pd.DataFrame | None = None,
@@ -3446,6 +3476,14 @@ def write_research_summary(
                     for key, value in (alpha_event_drift_gate or {}).items()
                 ],
                 "" if alpha_event_drift_gate else "_Not generated._",
+                "",
+                "## Alpha event review verification summary",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (alpha_event_review_verification_summary or {}).items()
+                ],
+                "" if alpha_event_review_verification_summary else "_Not generated._",
                 "",
                 "## LCRI uncertainty-weighted review priority",
                 "",
@@ -3778,6 +3816,7 @@ _RESEARCH_SUMMARY_ARTIFACT_SECTIONS = {
     "Alpha event release review packet": "alpha_event_release_review_packet.csv",
     "Alpha event window summary": "alpha_event_window_summary.json",
     "Alpha event drift gate": "alpha_event_drift_gate.json",
+    "Alpha event review verification summary": "alpha_event_review_verification_summary.json",
     "LCRI uncertainty-weighted review priority": "lcri_uncertainty_weighted_review_priority.csv",
     "LCRI uncertainty-weighted review priority summary": "lcri_uncertainty_weighted_review_priority_summary.json",
     "LCRI cross-artifact evidence index": "lcri_cross_artifact_evidence_index.csv",
