@@ -468,15 +468,21 @@ def verify_phase_shift_artifact_review(
     return errors
 
 
+_ALPHA_EVENT_REVIEW_ARTIFACTS = {
+    "events": "alpha_event_windows.csv",
+    "summary": "alpha_event_window_summary.json",
+    "packet": "alpha_event_release_review_packet.csv",
+    "gate": "alpha_event_drift_gate.json",
+    "weighted": "alpha_event_score_weighted_drift.json",
+    "regimes": "alpha_event_regime_summary.csv",
+}
+
+
 def verify_alpha_event_review_artifacts(output_dir: Path) -> list[str]:
     """Return errors when alpha event review artifacts are incomplete or stale."""
     paths = {
-        "events": output_dir / "alpha_event_windows.csv",
-        "summary": output_dir / "alpha_event_window_summary.json",
-        "packet": output_dir / "alpha_event_release_review_packet.csv",
-        "gate": output_dir / "alpha_event_drift_gate.json",
-        "weighted": output_dir / "alpha_event_score_weighted_drift.json",
-        "regimes": output_dir / "alpha_event_regime_summary.csv",
+        label: output_dir / artifact
+        for label, artifact in _ALPHA_EVENT_REVIEW_ARTIFACTS.items()
     }
     missing = [path.name for path in paths.values() if not path.exists()]
     if missing:
@@ -547,6 +553,52 @@ def verify_alpha_event_review_artifacts(output_dir: Path) -> list[str]:
         if mismatch:
             errors.append(f"alpha event release review packet mismatch for {column}")
     return errors
+
+
+def alpha_event_review_verification_summary(output_dir: Path) -> dict[str, Any]:
+    """Summarize alpha-event artifact verification for release-owner triage.
+
+    The detailed verifier returns actionable error strings. This companion payload
+    gives dashboards a stable, compact health row without needing to parse those
+    messages or reopen every source artifact.
+    """
+    artifact_paths = {
+        label: output_dir / artifact
+        for label, artifact in _ALPHA_EVENT_REVIEW_ARTIFACTS.items()
+    }
+    missing = [path.name for path in artifact_paths.values() if not path.exists()]
+    errors = verify_alpha_event_review_artifacts(output_dir)
+    packet_payload = _read_alpha_event_packet_payload(artifact_paths["packet"])
+    return {
+        "artifacts_expected": len(artifact_paths),
+        "artifacts_present": len(artifact_paths) - len(missing),
+        "missing_artifacts": missing,
+        "errors": len(errors),
+        "passes_verification": len(errors) == 0,
+        "decision": packet_payload.get("decision", "unknown"),
+        "review_priority": packet_payload.get("review_priority", "unknown"),
+        "owner_action": _alpha_event_owner_action(errors, missing),
+    }
+
+
+def _read_alpha_event_packet_payload(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        packet = pd.read_csv(path)
+    except (OSError, pd.errors.ParserError):
+        return {}
+    if len(packet) != 1:
+        return {}
+    return packet.iloc[0].to_dict()
+
+
+def _alpha_event_owner_action(errors: list[str], missing: list[str]) -> str:
+    if missing:
+        return "regenerate missing alpha event review artifacts"
+    if errors:
+        return "rerun alpha event review artifact generation before owner review"
+    return "alpha event review artifacts are ready for owner review"
 
 
 def _compare_alpha_event_mapping(
@@ -3052,6 +3104,7 @@ def summarize_verification_errors(errors: list[str]) -> dict[str, Any]:
         "manifest": 0,
         "generalization": 0,
         "lcri_gate": 0,
+        "alpha_event": 0,
         "figures": 0,
         "other": 0,
     }
@@ -3066,6 +3119,8 @@ def summarize_verification_errors(errors: list[str]) -> dict[str, Any]:
             families["manifest"] += 1
         elif "lcri" in lower and ("gate" in lower or "severity" in lower or "blocker" in lower):
             families["lcri_gate"] += 1
+        elif "alpha event" in lower:
+            families["alpha_event"] += 1
         elif "figure" in lower or ".png" in lower:
             families["figures"] += 1
         elif "generalization" in lower:

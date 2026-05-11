@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from lcri_lab.reporting import (
+    alpha_event_review_verification_summary,
     artifact_coverage_matrix,
     artifact_coverage_summary,
     summarize_artifact_metadata,
@@ -304,6 +305,16 @@ def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
     ).to_csv(tmp_path / "alpha_event_release_review_packet.csv", index=False)
 
     assert verify_alpha_event_review_artifacts(tmp_path) == []
+    assert alpha_event_review_verification_summary(tmp_path) == {
+        "artifacts_expected": 6,
+        "artifacts_present": 6,
+        "missing_artifacts": [],
+        "errors": 0,
+        "passes_verification": True,
+        "decision": "review",
+        "review_priority": 2,
+        "owner_action": "alpha event review artifacts are ready for owner review",
+    }
     stale_summary = dict(window_summary, max_event_score=999.0)
     write_json(tmp_path / "alpha_event_window_summary.json", stale_summary)
     assert verify_alpha_event_review_artifacts(tmp_path) == [
@@ -317,6 +328,30 @@ def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
     assert verify_alpha_event_review_artifacts(tmp_path) == [
         "alpha event release review packet mismatch for review_priority"
     ]
+    summary = alpha_event_review_verification_summary(tmp_path)
+    assert summary["errors"] == 1
+    assert summary["passes_verification"] is False
+    assert summary["owner_action"] == "rerun alpha event review artifact generation before owner review"
+
+
+def test_alpha_event_review_verification_summary_reports_missing_artifacts(tmp_path) -> None:
+    assert alpha_event_review_verification_summary(tmp_path) == {
+        "artifacts_expected": 6,
+        "artifacts_present": 0,
+        "missing_artifacts": [
+            "alpha_event_windows.csv",
+            "alpha_event_window_summary.json",
+            "alpha_event_release_review_packet.csv",
+            "alpha_event_drift_gate.json",
+            "alpha_event_score_weighted_drift.json",
+            "alpha_event_regime_summary.csv",
+        ],
+        "errors": 1,
+        "passes_verification": False,
+        "decision": "unknown",
+        "review_priority": "unknown",
+        "owner_action": "regenerate missing alpha event review artifacts",
+    }
 
 
 def test_verify_pressure_memory_decay_summary_checks_bounds(tmp_path) -> None:
@@ -955,15 +990,17 @@ def test_summarize_verification_errors_groups_artifact_families() -> None:
             "sha256 mismatch: metrics.csv",
             "missing LCRI blocker summary: lcri_generalization_blocker_summary.json",
             "missing generalization overview: generalization_overview.json",
+            "alpha event release review packet mismatch for review_priority",
             "missing artifact: figures/lcri_generalization_gap_delta.png",
             "missing metrics.csv",
         ]
     )
 
-    assert output["errors"] == 5
+    assert output["errors"] == 6
     assert output["manifest"] == 1
     assert output["lcri_gate"] == 1
     assert output["generalization"] == 1
+    assert output["alpha_event"] == 1
     assert output["figures"] == 1
     assert output["other"] == 1
     assert output["passes_verification"] is False
@@ -975,6 +1012,7 @@ def test_summarize_verification_errors_passes_without_errors() -> None:
         "manifest": 0,
         "generalization": 0,
         "lcri_gate": 0,
+        "alpha_event": 0,
         "figures": 0,
         "other": 0,
         "passes_verification": True,
