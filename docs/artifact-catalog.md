@@ -118,7 +118,8 @@ surfaces without opening every file:
   drift gate, score-weighted diagnostic, worst regime, and release note.
 - `alpha_event_review_verification_summary.json`: compact verification health
   payload with present/missing counts, pass/fail status, release decision,
-  review priority, and next owner action for dashboard triage.
+  review priority, categorized blocking-error excerpts, and next owner action
+  for dashboard triage.
 - `lcri_uncertainty_weighted_review_priority.csv`: owner-review queue that
   combines contradiction packet priority with CI coverage width, CI/gate
   disagreement counts, and fragility uncertainty.

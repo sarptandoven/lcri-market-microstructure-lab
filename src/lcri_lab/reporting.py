@@ -568,12 +568,19 @@ def alpha_event_review_verification_summary(output_dir: Path) -> dict[str, Any]:
     }
     missing = [path.name for path in artifact_paths.values() if not path.exists()]
     errors = verify_alpha_event_review_artifacts(output_dir)
+    error_summary = summarize_verification_errors(errors)
     packet_payload = _read_alpha_event_packet_payload(artifact_paths["packet"])
     return {
         "artifacts_expected": len(artifact_paths),
         "artifacts_present": len(artifact_paths) - len(missing),
         "missing_artifacts": missing,
         "errors": len(errors),
+        "error_families": {
+            family: count
+            for family, count in error_summary.items()
+            if family not in {"errors", "passes_verification"} and count
+        },
+        "blocking_errors": errors[:3],
         "passes_verification": len(errors) == 0,
         "decision": packet_payload.get("decision", "unknown"),
         "review_priority": packet_payload.get("review_priority", "unknown"),

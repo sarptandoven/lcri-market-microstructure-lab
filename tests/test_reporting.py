@@ -311,6 +311,8 @@ def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
         "artifacts_present": 6,
         "missing_artifacts": [],
         "errors": 0,
+        "error_families": {},
+        "blocking_errors": [],
         "passes_verification": True,
         "decision": "review",
         "review_priority": 2,
@@ -331,6 +333,10 @@ def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
     ]
     summary = alpha_event_review_verification_summary(tmp_path)
     assert summary["errors"] == 1
+    assert summary["error_families"] == {"alpha_event": 1}
+    assert summary["blocking_errors"] == [
+        "alpha event release review packet mismatch for review_priority"
+    ]
     assert summary["passes_verification"] is False
     assert summary["owner_action"] == "rerun alpha event review artifact generation before owner review"
 
@@ -362,6 +368,13 @@ def test_alpha_event_review_verification_summary_reports_missing_artifacts(tmp_p
             "alpha_event_regime_summary.csv",
         ],
         "errors": 1,
+        "error_families": {"alpha_event": 1},
+        "blocking_errors": [
+            "missing alpha event review artifacts: ['alpha_event_windows.csv', "
+            "'alpha_event_window_summary.json', 'alpha_event_release_review_packet.csv', "
+            "'alpha_event_drift_gate.json', 'alpha_event_score_weighted_drift.json', "
+            "'alpha_event_regime_summary.csv']"
+        ],
         "passes_verification": False,
         "decision": "unknown",
         "review_priority": "unknown",
