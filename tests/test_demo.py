@@ -97,6 +97,12 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "lcri_owner_handoff_packet.md").exists()
     assert (tmp_path / "lcri_evidence_release_checklist.csv").exists()
     assert (tmp_path / "lcri_evidence_release_checklist_summary.json").exists()
+    assert (tmp_path / "alpha_event_windows.csv").exists()
+    assert (tmp_path / "alpha_event_regime_summary.csv").exists()
+    assert (tmp_path / "alpha_event_window_summary.json").exists()
+    assert (tmp_path / "alpha_event_score_weighted_drift.json").exists()
+    assert (tmp_path / "alpha_event_drift_gate.json").exists()
+    assert (tmp_path / "alpha_event_release_review_packet.csv").exists()
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
     assert "passes_monotonicity_gate" in monotonicity
@@ -170,6 +176,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["artifact_metadata_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["lcri_gap_delta_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_transition_lift.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["alpha_event_release_review_packet.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["alpha_event_drift_gate.json"]["size_bytes"] > 0
     assert len(manifest["artifact_metadata"]["metrics.csv"]["sha256"]) == 64
     summary = (tmp_path / "research_summary.md").read_text()
     assert "# LCRI Research Summary" in summary
@@ -196,6 +204,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## LCRI gap delta summary" in summary
     assert "## LCRI evidence release checklist" in summary
     assert "## LCRI evidence release checklist summary" in summary
+    assert "## Alpha event release review packet" in summary
+    assert "## Alpha event drift gate" in summary
     assert "## Transition robustness" in summary
     assert "## Heldout transition lift" in summary
     assert "## Hidden resiliency asymmetry summary" in summary

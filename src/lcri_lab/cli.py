@@ -72,6 +72,15 @@ from lcri_lab.evaluation import (
     transition_signal_lift,
 )
 from lcri_lab.absorption import add_shadow_absorption
+from lcri_lab.alpha import (
+    add_microstructure_alpha_stack,
+    alpha_event_drift_gate,
+    alpha_event_regime_summary,
+    alpha_event_release_review_packet,
+    alpha_event_score_weighted_drift,
+    alpha_event_window_diagnostics,
+    alpha_event_window_summary,
+)
 from lcri_lab.features import add_regime_transition_features
 from lcri_lab.ingest import normalize_l2_snapshots
 from lcri_lab.memory import (
@@ -424,6 +433,27 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     )
     transition_robustness = transition_robustness_summary(scored)
     heldout_transition_robustness = transition_robustness_summary(heldout_scored)
+    alpha_events = alpha_event_window_diagnostics(
+        scored,
+        return_col="future_return_ticks",
+        regime_col="pressure_memory_decay_state",
+    )
+    alpha_event_regimes = alpha_event_regime_summary(alpha_events)
+    alpha_event_summary = alpha_event_window_summary(alpha_events)
+    alpha_weighted_drift = alpha_event_score_weighted_drift(alpha_events)
+    alpha_drift_gate = alpha_event_drift_gate(alpha_event_summary)
+    alpha_release_packet = alpha_event_release_review_packet(
+        alpha_drift_gate,
+        alpha_weighted_drift,
+        alpha_event_regimes,
+    )
+    alpha_release_packet_for_summary = alpha_release_packet.copy()
+    try:
+        alpha_release_packet_for_summary["top_weighted_event_index"] = pd.to_numeric(
+            alpha_release_packet_for_summary["top_weighted_event_index"],
+        )
+    except (TypeError, ValueError):
+        pass
 
     artifact_paths = [
         "lcri-model.json",
@@ -519,6 +549,12 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "heldout_lcri_reversal_transition_gate.csv",
         "transition_robustness.json",
         "heldout_transition_robustness.json",
+        "alpha_event_windows.csv",
+        "alpha_event_regime_summary.csv",
+        "alpha_event_window_summary.json",
+        "alpha_event_score_weighted_drift.json",
+        "alpha_event_drift_gate.json",
+        "alpha_event_release_review_packet.csv",
         "research_summary.md",
         "artifact_coverage_matrix.csv",
         "artifact_coverage_summary.json",
@@ -702,6 +738,12 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     )
     write_json(output / "transition_robustness.json", transition_robustness)
     write_json(output / "heldout_transition_robustness.json", heldout_transition_robustness)
+    alpha_events.to_csv(output / "alpha_event_windows.csv", index=False)
+    alpha_event_regimes.to_csv(output / "alpha_event_regime_summary.csv", index=False)
+    write_json(output / "alpha_event_window_summary.json", alpha_event_summary)
+    write_json(output / "alpha_event_score_weighted_drift.json", alpha_weighted_drift)
+    write_json(output / "alpha_event_drift_gate.json", alpha_drift_gate)
+    alpha_release_packet.to_csv(output / "alpha_event_release_review_packet.csv", index=False)
     write_figures(
         scored,
         by_regime,
@@ -797,6 +839,9 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         lcri_reversal_transition_gate=reversal_transition_gate,
         heldout_lcri_reversal_transition_gate=heldout_reversal_transition_gate,
         heldout_transition_robustness=heldout_transition_robustness,
+        alpha_event_release_review_packet=alpha_release_packet_for_summary,
+        alpha_event_window_summary=alpha_event_summary,
+        alpha_event_drift_gate=alpha_drift_gate,
         hidden_resiliency_asymmetry_summary=resiliency_asymmetry,
         heldout_hidden_resiliency_asymmetry_summary=heldout_resiliency_asymmetry,
         adverse_selection_phase_shift_summary=adverse_phase_shift,
@@ -927,6 +972,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     print(f"lcri evidence lineage map: {output / 'lcri_evidence_lineage_map.csv'}")
     print(f"lcri evidence lineage map figure: {output / 'figures' / 'lcri_evidence_lineage_map.png'}")
     print(f"transition lift: {output / 'transition_lift.csv'}")
+    print(f"alpha event release review packet: {output / 'alpha_event_release_review_packet.csv'}")
     print(f"heldout transition lift: {output / 'heldout_transition_lift.csv'}")
     print(f"pressure memory decay summary: {output / 'pressure_memory_decay_summary.csv'}")
     print(
@@ -959,9 +1005,14 @@ def _add_reversal_pressure_stack(frame: pd.DataFrame) -> pd.DataFrame:
         add_pressure_memory(frame),
         group_col="regime",
     )
-    return add_reversal_lead_lag_coupling(
+    reversal_stack = add_reversal_lead_lag_coupling(
         add_queue_reversal_risk(add_shadow_absorption(pressure_stack)),
         group_col="regime",
+    )
+    return add_microstructure_alpha_stack(
+        reversal_stack,
+        return_col="future_return_ticks",
+        depth_col="total_depth",
     )
 
 

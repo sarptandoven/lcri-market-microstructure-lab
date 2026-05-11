@@ -73,7 +73,7 @@ def add_microstructure_alpha_stack(
         + output["toxic_pressure_resonance"].abs()
         + output["phase_shift_alpha"]
         - output["crowding_exhaustion"].clip(lower=0.0)
-    ).astype(float)
+    ).clip(lower=0.0).astype(float)
     return output
 
 

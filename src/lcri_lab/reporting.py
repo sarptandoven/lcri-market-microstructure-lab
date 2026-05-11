@@ -3037,6 +3037,9 @@ def write_research_summary(
     lcri_reversal_transition_gate: pd.DataFrame | None = None,
     heldout_lcri_reversal_transition_gate: pd.DataFrame | None = None,
     heldout_transition_robustness: dict[str, Any] | None = None,
+    alpha_event_release_review_packet: pd.DataFrame | None = None,
+    alpha_event_window_summary: dict[str, Any] | None = None,
+    alpha_event_drift_gate: dict[str, Any] | None = None,
     hidden_resiliency_asymmetry_summary: dict[str, Any] | None = None,
     heldout_hidden_resiliency_asymmetry_summary: dict[str, Any] | None = None,
     adverse_selection_phase_shift_summary: pd.DataFrame | None = None,
@@ -3256,6 +3259,28 @@ def write_research_summary(
                     for key, value in (lcri_contradiction_review_packet_summary or {}).items()
                 ],
                 "" if lcri_contradiction_review_packet_summary else "_Not generated._",
+                "",
+                "## Alpha event release review packet",
+                "",
+                _markdown_table(alpha_event_release_review_packet)
+                if alpha_event_release_review_packet is not None
+                else "_Not generated._",
+                "",
+                "## Alpha event window summary",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (alpha_event_window_summary or {}).items()
+                ],
+                "" if alpha_event_window_summary else "_Not generated._",
+                "",
+                "## Alpha event drift gate",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (alpha_event_drift_gate or {}).items()
+                ],
+                "" if alpha_event_drift_gate else "_Not generated._",
                 "",
                 "## LCRI uncertainty-weighted review priority",
                 "",
@@ -3585,6 +3610,9 @@ _RESEARCH_SUMMARY_ARTIFACT_SECTIONS = {
     "LCRI scope stability contradiction summary": "lcri_scope_stability_contradiction_summary.json",
     "LCRI contradiction review packet": "lcri_contradiction_review_packet.csv",
     "LCRI contradiction review packet summary": "lcri_contradiction_review_packet_summary.json",
+    "Alpha event release review packet": "alpha_event_release_review_packet.csv",
+    "Alpha event window summary": "alpha_event_window_summary.json",
+    "Alpha event drift gate": "alpha_event_drift_gate.json",
     "LCRI uncertainty-weighted review priority": "lcri_uncertainty_weighted_review_priority.csv",
     "LCRI uncertainty-weighted review priority summary": "lcri_uncertainty_weighted_review_priority_summary.json",
     "LCRI cross-artifact evidence index": "lcri_cross_artifact_evidence_index.csv",

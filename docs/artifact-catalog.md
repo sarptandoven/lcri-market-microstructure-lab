@@ -105,6 +105,17 @@ surfaces without opening every file:
   worst relative LCRI-vs-raw delta row, and worst fragility/gate review row.
 - `lcri_contradiction_review_packet_summary.json`: compact priority counts and
   worst-scope pointers derived from the contradiction review packet.
+- `alpha_event_windows.csv`: deterministic event-window table for phase-shift
+  alpha threshold crossings, including pre/post return drift and event regime.
+- `alpha_event_regime_summary.csv`: regime aggregation of alpha event drift,
+  sorted by adverse post-event drift share and worst tail drift.
+- `alpha_event_window_summary.json`: compact event count, adverse share, mean
+  drift, worst event, and max score for release review.
+- `alpha_event_score_weighted_drift.json`: score-weighted companion diagnostic
+  that checks whether high-score alpha events carry adverse drift.
+- `alpha_event_drift_gate.json`: release gate for adverse alpha event drift.
+- `alpha_event_release_review_packet.csv`: one-row reviewer packet joining the
+  drift gate, score-weighted diagnostic, worst regime, and release note.
 - `lcri_uncertainty_weighted_review_priority.csv`: owner-review queue that
   combines contradiction packet priority with CI coverage width, CI/gate
   disagreement counts, and fragility uncertainty.
