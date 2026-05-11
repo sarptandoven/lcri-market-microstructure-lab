@@ -637,6 +637,36 @@ def alpha_event_review_blocker_diagnostics(output_dir: Path) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=_ALPHA_EVENT_BLOCKER_COLUMNS)
 
 
+def alpha_event_review_blocker_summary(output_dir: Path) -> dict[str, Any]:
+    """Summarize alpha-event blocker diagnostics for release dashboards."""
+    blockers = alpha_event_review_blocker_diagnostics(output_dir)
+    if blockers.empty:
+        return {
+            "blocker_rows": 0,
+            "severity_counts": {},
+            "affected_artifacts": [],
+            "check_counts": {},
+            "top_artifact": "none",
+            "owner_action": "alpha event review artifacts have no verification blockers",
+        }
+
+    top_artifact = blockers["artifact"].astype(str).iloc[0]
+    return {
+        "blocker_rows": int(len(blockers)),
+        "severity_counts": {
+            str(key): int(value)
+            for key, value in blockers["severity"].astype(str).value_counts().sort_index().items()
+        },
+        "affected_artifacts": sorted(set(blockers["artifact"].astype(str))),
+        "check_counts": {
+            str(key): int(value)
+            for key, value in blockers["check"].astype(str).value_counts().sort_index().items()
+        },
+        "top_artifact": str(top_artifact),
+        "owner_action": str(blockers["owner_action"].astype(str).iloc[0]),
+    }
+
+
 def verify_alpha_event_review_verification_summary(output_dir: Path) -> list[str]:
     """Return errors when the compact alpha-event verification summary is stale."""
     path = output_dir / "alpha_event_review_verification_summary.json"

@@ -92,8 +92,9 @@ release decisions:
   score-weighted drift JSON, drift gate JSON, and one-row release packet from
   `alpha_event_windows.csv`, so partial regeneration cannot leave stale owner
   notes or high-score adverse-drift flags in place; the companion verification
-  summary exposes expected/present artifact counts, pass/fail status, release
-  decision, priority, and the next owner action for dashboard triage
+  summary and blocker summary expose expected/present artifact counts, grouped
+  blockers, pass/fail status, release decision, priority, and the next owner
+  action for dashboard triage
 
 ## Heldout fragility artifacts
 

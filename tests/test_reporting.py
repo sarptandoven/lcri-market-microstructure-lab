@@ -5,6 +5,7 @@ import pytest
 
 from lcri_lab.reporting import (
     alpha_event_review_blocker_diagnostics,
+    alpha_event_review_blocker_summary,
     alpha_event_review_verification_summary,
     artifact_coverage_matrix,
     artifact_coverage_summary,
@@ -422,6 +423,34 @@ def test_alpha_event_review_blocker_diagnostics_groups_missing_and_stale_artifac
             "owner_action": "rerun alpha event review artifact generation before owner review",
         }
     ]
+
+
+def test_alpha_event_review_blocker_summary_compacts_owner_actions(tmp_path) -> None:
+    assert alpha_event_review_blocker_summary(tmp_path) == {
+        "blocker_rows": 6,
+        "severity_counts": {"block": 6},
+        "affected_artifacts": [
+            "alpha_event_drift_gate.json",
+            "alpha_event_regime_summary.csv",
+            "alpha_event_release_review_packet.csv",
+            "alpha_event_score_weighted_drift.json",
+            "alpha_event_window_summary.json",
+            "alpha_event_windows.csv",
+        ],
+        "check_counts": {"missing_artifact": 6},
+        "top_artifact": "alpha_event_windows.csv",
+        "owner_action": "regenerate missing alpha event review artifacts",
+    }
+
+    test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
+    assert alpha_event_review_blocker_summary(tmp_path) == {
+        "blocker_rows": 1,
+        "severity_counts": {"block": 1},
+        "affected_artifacts": ["alpha_event_release_review_packet.csv"],
+        "check_counts": {"stale_artifact": 1},
+        "top_artifact": "alpha_event_release_review_packet.csv",
+        "owner_action": "rerun alpha event review artifact generation before owner review",
+    }
 
 
 def test_verify_pressure_memory_decay_summary_checks_bounds(tmp_path) -> None:
