@@ -5,6 +5,7 @@ from lcri_lab.alpha import (
     add_microstructure_alpha_stack,
     alpha_event_drift_gate,
     alpha_event_regime_summary,
+    alpha_event_score_weighted_drift,
     alpha_event_window_diagnostics,
     alpha_event_window_summary,
     alpha_research_gate,
@@ -212,6 +213,40 @@ def test_alpha_event_window_summary_handles_empty_events() -> None:
     assert summary["worst_event_index"] == "none"
     assert summary["adverse_post_drift_share"] == 0.0
     assert summary["max_event_score"] == 0.0
+
+
+def test_alpha_event_score_weighted_drift_surfaces_high_score_toxic_events() -> None:
+    events = pd.DataFrame(
+        {
+            "event_index": ["t2", "t5", "t8"],
+            "event_score": [3.0, 1.0, 2.0],
+            "post_minus_pre_return": [-4.0, 2.0, -1.0],
+        }
+    )
+
+    summary = alpha_event_score_weighted_drift(events)
+
+    assert summary == {
+        "events": 3,
+        "total_event_score": 6.0,
+        "score_weighted_post_minus_pre_return": pytest.approx(-2.0),
+        "score_weighted_adverse_share": pytest.approx(5.0 / 6.0),
+        "top_weighted_event_index": "t2",
+        "top_weighted_adverse_drift": 12.0,
+    }
+
+
+def test_alpha_event_score_weighted_drift_rejects_negative_scores() -> None:
+    events = pd.DataFrame(
+        {
+            "event_index": ["t2"],
+            "event_score": [-1.0],
+            "post_minus_pre_return": [-2.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="event_score must be non-negative"):
+        alpha_event_score_weighted_drift(events)
 
 
 def test_alpha_event_drift_gate_blocks_common_adverse_drift() -> None:

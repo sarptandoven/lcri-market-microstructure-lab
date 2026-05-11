@@ -398,6 +398,54 @@ def alpha_event_window_summary(events: pd.DataFrame) -> dict[str, float | int | 
     }
 
 
+def alpha_event_score_weighted_drift(events: pd.DataFrame) -> dict[str, float | int | str]:
+    """Summarize event drift weighted by alpha-event score.
+
+    The unweighted event gate treats every threshold crossing equally. This
+    companion diagnostic asks whether the largest alpha events carry the
+    adverse drift, which is the failure mode that matters most for release
+    review when low-score events are noisy but high-score events are toxic.
+    """
+    if events.empty:
+        return {
+            "events": 0,
+            "total_event_score": 0.0,
+            "score_weighted_post_minus_pre_return": 0.0,
+            "score_weighted_adverse_share": 0.0,
+            "top_weighted_event_index": "none",
+            "top_weighted_adverse_drift": 0.0,
+        }
+    required = ["event_index", "event_score", "post_minus_pre_return"]
+    _require_columns(events, required, label="alpha event score-weighted drift")
+    data = events[required].copy()
+    for column in ["event_score", "post_minus_pre_return"]:
+        data[column] = data[column].astype(float)
+    _require_finite(
+        [data["event_score"], data["post_minus_pre_return"]],
+        label="alpha event score-weighted drift inputs",
+    )
+    if (data["event_score"] < 0.0).any():
+        raise ValueError("event_score must be non-negative")
+
+    weights = data["event_score"]
+    drift = data["post_minus_pre_return"]
+    total_weight = float(weights.sum())
+    adverse_weight = float(weights[drift < 0.0].sum())
+    weighted_drift = _safe_divide(float((weights * drift).sum()), total_weight)
+    adverse_drift = (-drift).clip(lower=0.0)
+    weighted_adverse_drift = weights * adverse_drift
+    top_position = weighted_adverse_drift.idxmax()
+    top = data.loc[top_position]
+    return {
+        "events": int(len(data)),
+        "total_event_score": total_weight,
+        "score_weighted_post_minus_pre_return": weighted_drift,
+        "score_weighted_adverse_share": _safe_divide(adverse_weight, total_weight),
+        "top_weighted_event_index": str(top["event_index"]),
+        "top_weighted_adverse_drift": float(weighted_adverse_drift.loc[top_position]),
+    }
+
+
 def alpha_event_drift_gate(
     summary: dict[str, float | int | str],
     *,

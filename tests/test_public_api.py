@@ -195,3 +195,8 @@ def test_public_api_exports_transition_robustness_summary() -> None:
 def test_public_api_exports_reversal_transition_gate_diagnostics() -> None:
     assert callable(lcri_lab.reversal_transition_gate_diagnostics)
     assert "reversal_transition_gate_diagnostics" in lcri_lab.__all__
+
+
+def test_public_api_exports_alpha_event_score_weighted_drift() -> None:
+    assert callable(lcri_lab.alpha_event_score_weighted_drift)
+    assert "alpha_event_score_weighted_drift" in lcri_lab.__all__
