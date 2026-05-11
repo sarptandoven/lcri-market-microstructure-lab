@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from lcri_lab.alpha import alpha_event_release_review_packet
 from lcri_lab.evaluation import (
     lcri_ci_confidence_coverage_scorecard,
     lcri_ci_confidence_coverage_summary,
@@ -459,6 +460,61 @@ def verify_phase_shift_artifact_review(
     unknown = sorted(set(frame["phase_shift_artifact"].astype(str)) - known)
     if unknown:
         errors.append(f"unknown phase-shift artifact labels in {artifact}: {unknown}")
+    return errors
+
+
+def verify_alpha_event_review_artifacts(output_dir: Path) -> list[str]:
+    """Return errors when alpha event review artifacts are incomplete or stale."""
+    paths = {
+        "packet": output_dir / "alpha_event_release_review_packet.csv",
+        "gate": output_dir / "alpha_event_drift_gate.json",
+        "weighted": output_dir / "alpha_event_score_weighted_drift.json",
+        "regimes": output_dir / "alpha_event_regime_summary.csv",
+    }
+    missing = [path.name for path in paths.values() if not path.exists()]
+    if missing:
+        return [f"missing alpha event review artifacts: {missing}"]
+
+    packet = pd.read_csv(paths["packet"])
+    gate = json.loads(paths["gate"].read_text())
+    weighted = json.loads(paths["weighted"].read_text())
+    regimes = pd.read_csv(paths["regimes"])
+    required_packet = {
+        "decision",
+        "passes",
+        "review_priority",
+        "events",
+        "adverse_post_drift_share",
+        "score_weighted_adverse_share",
+        "score_weighted_post_minus_pre_return",
+        "top_weighted_event_index",
+        "worst_event_regime",
+        "release_note",
+        "gate_reason",
+    }
+    missing_packet = sorted(required_packet - set(packet.columns))
+    if missing_packet or len(packet) != 1:
+        errors = []
+        if missing_packet:
+            errors.append(f"incomplete alpha event release review packet: {missing_packet}")
+        if len(packet) != 1:
+            errors.append("alpha event release review packet must contain exactly one row")
+        return errors
+
+    expected = alpha_event_release_review_packet(gate, weighted, regimes).iloc[0]
+    found = packet.iloc[0]
+    errors: list[str] = []
+    for column in required_packet:
+        expected_value = expected[column]
+        found_value = found[column]
+        if isinstance(expected_value, bool):
+            mismatch = bool(found_value) != expected_value
+        elif isinstance(expected_value, (int, float, np.integer, np.floating)):
+            mismatch = not math.isclose(float(found_value), float(expected_value), rel_tol=1e-9, abs_tol=1e-9)
+        else:
+            mismatch = str(found_value) != str(expected_value)
+        if mismatch:
+            errors.append(f"alpha event release review packet mismatch for {column}")
     return errors
 
 

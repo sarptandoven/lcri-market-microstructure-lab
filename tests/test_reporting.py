@@ -8,6 +8,7 @@ from lcri_lab.reporting import (
     artifact_coverage_summary,
     summarize_artifact_metadata,
     summarize_verification_errors,
+    verify_alpha_event_review_artifacts,
     build_artifact_manifest,
     collect_artifact_metadata,
     missing_artifacts,
@@ -235,6 +236,61 @@ def test_verify_phase_shift_artifact_review_checks_schema_and_labels(tmp_path) -
         tmp_path / "phase_shift_artifact_review.csv", index=False
     )
     assert "incomplete phase-shift artifact" in verify_phase_shift_artifact_review(tmp_path)[0]
+
+
+def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path) -> None:
+    write_json(
+        tmp_path / "alpha_event_drift_gate.json",
+        {
+            "passes": True,
+            "decision": "pass",
+            "events": 2,
+            "adverse_post_drift_share": 0.5,
+            "mean_post_minus_pre_return": 0.1,
+            "worst_event_index": "12",
+            "worst_post_minus_pre_return": -0.2,
+            "reason": "alpha event drift stayed within release thresholds",
+        },
+    )
+    write_json(
+        tmp_path / "alpha_event_score_weighted_drift.json",
+        {
+            "events": 2,
+            "total_event_score": 3.0,
+            "score_weighted_post_minus_pre_return": -0.05,
+            "score_weighted_adverse_share": 2.0 / 3.0,
+            "top_weighted_event_index": "12",
+            "top_weighted_adverse_drift": 0.4,
+        },
+    )
+    pd.DataFrame(
+        [{"event_regime": "thin", "adverse_post_drift_share": 0.5, "worst_post_minus_pre_return": -0.2}]
+    ).to_csv(tmp_path / "alpha_event_regime_summary.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "decision": "review",
+                "passes": False,
+                "review_priority": 2,
+                "events": 2,
+                "adverse_post_drift_share": 0.5,
+                "score_weighted_adverse_share": 2.0 / 3.0,
+                "score_weighted_post_minus_pre_return": -0.05,
+                "top_weighted_event_index": "12",
+                "worst_event_regime": "thin",
+                "release_note": "owner review needed because high-score alpha events carry adverse drift; inspect thin regime",
+                "gate_reason": "alpha event drift stayed within release thresholds",
+            }
+        ]
+    ).to_csv(tmp_path / "alpha_event_release_review_packet.csv", index=False)
+
+    assert verify_alpha_event_review_artifacts(tmp_path) == []
+    packet = pd.read_csv(tmp_path / "alpha_event_release_review_packet.csv")
+    packet.loc[0, "review_priority"] = 1
+    packet.to_csv(tmp_path / "alpha_event_release_review_packet.csv", index=False)
+    assert verify_alpha_event_review_artifacts(tmp_path) == [
+        "alpha event release review packet mismatch for review_priority"
+    ]
 
 
 def test_verify_pressure_memory_decay_summary_checks_bounds(tmp_path) -> None:

@@ -101,6 +101,7 @@ from lcri_lab.reporting import (
     missing_artifacts,
     summarize_artifact_metadata,
     summarize_verification_errors,
+    verify_alpha_event_review_artifacts,
     verify_artifact_coverage_matrix,
     verify_artifact_manifest,
     verify_artifact_metadata_summary,
@@ -1083,6 +1084,16 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_phase_shift_artifact_review.csv"
             )
             if "heldout_phase_shift_artifact_review.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_alpha_event_review_artifacts(report_dir)
+            if {
+                "alpha_event_release_review_packet.csv",
+                "alpha_event_drift_gate.json",
+                "alpha_event_score_weighted_drift.json",
+                "alpha_event_regime_summary.csv",
+            }.issubset(manifest_artifacts)
             else []
         ),
         *verify_generalization_fragility_diagnostics(report_dir),
