@@ -9,7 +9,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from lcri_lab.alpha import alpha_event_release_review_packet
+from lcri_lab.alpha import (
+    alpha_event_drift_gate,
+    alpha_event_release_review_packet,
+    alpha_event_score_weighted_drift,
+    alpha_event_window_summary,
+)
 from lcri_lab.evaluation import (
     lcri_ci_confidence_coverage_scorecard,
     lcri_ci_confidence_coverage_summary,
@@ -466,6 +471,8 @@ def verify_phase_shift_artifact_review(
 def verify_alpha_event_review_artifacts(output_dir: Path) -> list[str]:
     """Return errors when alpha event review artifacts are incomplete or stale."""
     paths = {
+        "events": output_dir / "alpha_event_windows.csv",
+        "summary": output_dir / "alpha_event_window_summary.json",
         "packet": output_dir / "alpha_event_release_review_packet.csv",
         "gate": output_dir / "alpha_event_drift_gate.json",
         "weighted": output_dir / "alpha_event_score_weighted_drift.json",
@@ -475,6 +482,8 @@ def verify_alpha_event_review_artifacts(output_dir: Path) -> list[str]:
     if missing:
         return [f"missing alpha event review artifacts: {missing}"]
 
+    events = pd.read_csv(paths["events"])
+    summary = json.loads(paths["summary"].read_text())
     packet = pd.read_csv(paths["packet"])
     gate = json.loads(paths["gate"].read_text())
     weighted = json.loads(paths["weighted"].read_text())
@@ -501,9 +510,31 @@ def verify_alpha_event_review_artifacts(output_dir: Path) -> list[str]:
             errors.append("alpha event release review packet must contain exactly one row")
         return errors
 
-    expected = alpha_event_release_review_packet(gate, weighted, regimes).iloc[0]
-    found = packet.iloc[0]
+    expected_summary = alpha_event_window_summary(events)
+    expected_weighted = alpha_event_score_weighted_drift(events)
+    expected_gate = alpha_event_drift_gate(expected_summary)
     errors: list[str] = []
+    _compare_alpha_event_mapping(
+        errors,
+        label="alpha event window summary",
+        expected=expected_summary,
+        found=summary,
+    )
+    _compare_alpha_event_mapping(
+        errors,
+        label="alpha event score-weighted drift",
+        expected=expected_weighted,
+        found=weighted,
+    )
+    _compare_alpha_event_mapping(
+        errors,
+        label="alpha event drift gate",
+        expected=expected_gate,
+        found=gate,
+    )
+
+    expected = alpha_event_release_review_packet(expected_gate, expected_weighted, regimes).iloc[0]
+    found = packet.iloc[0]
     for column in required_packet:
         expected_value = expected[column]
         found_value = found[column]
@@ -516,6 +547,29 @@ def verify_alpha_event_review_artifacts(output_dir: Path) -> list[str]:
         if mismatch:
             errors.append(f"alpha event release review packet mismatch for {column}")
     return errors
+
+
+def _compare_alpha_event_mapping(
+    errors: list[str],
+    *,
+    label: str,
+    expected: dict[str, float | int | str | bool],
+    found: dict[str, Any],
+) -> None:
+    missing = sorted(set(expected) - set(found))
+    if missing:
+        errors.append(f"incomplete {label}: {missing}")
+        return
+    for key, expected_value in expected.items():
+        found_value = found[key]
+        if isinstance(expected_value, bool):
+            mismatch = bool(found_value) != expected_value
+        elif isinstance(expected_value, (int, float, np.integer, np.floating)):
+            mismatch = not math.isclose(float(found_value), float(expected_value), rel_tol=1e-9, abs_tol=1e-9)
+        else:
+            mismatch = str(found_value) != str(expected_value)
+        if mismatch:
+            errors.append(f"{label} mismatch for {key}")
 
 
 def verify_figure_artifacts(output_dir: Path, manifest: dict[str, Any]) -> list[str]:

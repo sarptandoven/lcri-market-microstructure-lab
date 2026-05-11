@@ -88,6 +88,10 @@ release decisions:
 - CI/gate contradiction diagnostics must recompute from LCRI severity rows and
   heldout confidence interval flags, including review priorities and summary counts
   plus a ranked visual audit figure
+- alpha event release review artifacts must recompute the window summary,
+  score-weighted drift JSON, drift gate JSON, and one-row release packet from
+  `alpha_event_windows.csv`, so partial regeneration cannot leave stale owner
+  notes or high-score adverse-drift flags in place
 
 ## Heldout fragility artifacts
 

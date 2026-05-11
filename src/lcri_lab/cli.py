@@ -1089,6 +1089,8 @@ def verify_report(report_dir: Path) -> None:
         *(
             verify_alpha_event_review_artifacts(report_dir)
             if {
+                "alpha_event_windows.csv",
+                "alpha_event_window_summary.json",
                 "alpha_event_release_review_packet.csv",
                 "alpha_event_drift_gate.json",
                 "alpha_event_score_weighted_drift.json",

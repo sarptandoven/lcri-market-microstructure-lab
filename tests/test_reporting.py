@@ -239,6 +239,22 @@ def test_verify_phase_shift_artifact_review_checks_schema_and_labels(tmp_path) -
 
 
 def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {"event_index": 11, "event_score": 1.0, "post_minus_pre_return": 0.25},
+            {"event_index": 12, "event_score": 2.0, "post_minus_pre_return": -0.2},
+        ]
+    ).to_csv(tmp_path / "alpha_event_windows.csv", index=False)
+    window_summary = {
+        "events": 2,
+        "adverse_post_drift_events": 1,
+        "adverse_post_drift_share": 0.5,
+        "mean_post_minus_pre_return": 0.025,
+        "worst_event_index": "12.0",
+        "worst_post_minus_pre_return": -0.2,
+        "max_event_score": 2.0,
+    }
+    write_json(tmp_path / "alpha_event_window_summary.json", window_summary)
     write_json(
         tmp_path / "alpha_event_drift_gate.json",
         {
@@ -246,10 +262,13 @@ def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
             "decision": "pass",
             "events": 2,
             "adverse_post_drift_share": 0.5,
-            "mean_post_minus_pre_return": 0.1,
-            "worst_event_index": "12",
+            "mean_post_minus_pre_return": 0.025,
+            "worst_event_index": "12.0",
             "worst_post_minus_pre_return": -0.2,
             "reason": "alpha event drift stayed within release thresholds",
+            "max_adverse_share": 0.5,
+            "min_mean_post_minus_pre_return": 0.0,
+            "max_worst_post_minus_pre_return": -2.0,
         },
     )
     write_json(
@@ -259,7 +278,7 @@ def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
             "total_event_score": 3.0,
             "score_weighted_post_minus_pre_return": -0.05,
             "score_weighted_adverse_share": 2.0 / 3.0,
-            "top_weighted_event_index": "12",
+            "top_weighted_event_index": "12.0",
             "top_weighted_adverse_drift": 0.4,
         },
     )
@@ -276,7 +295,7 @@ def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
                 "adverse_post_drift_share": 0.5,
                 "score_weighted_adverse_share": 2.0 / 3.0,
                 "score_weighted_post_minus_pre_return": -0.05,
-                "top_weighted_event_index": "12",
+                "top_weighted_event_index": "12.0",
                 "worst_event_regime": "thin",
                 "release_note": "owner review needed because high-score alpha events carry adverse drift; inspect thin regime",
                 "gate_reason": "alpha event drift stayed within release thresholds",
@@ -285,6 +304,13 @@ def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
     ).to_csv(tmp_path / "alpha_event_release_review_packet.csv", index=False)
 
     assert verify_alpha_event_review_artifacts(tmp_path) == []
+    stale_summary = dict(window_summary, max_event_score=999.0)
+    write_json(tmp_path / "alpha_event_window_summary.json", stale_summary)
+    assert verify_alpha_event_review_artifacts(tmp_path) == [
+        "alpha event window summary mismatch for max_event_score"
+    ]
+    write_json(tmp_path / "alpha_event_window_summary.json", window_summary)
+
     packet = pd.read_csv(tmp_path / "alpha_event_release_review_packet.csv")
     packet.loc[0, "review_priority"] = 1
     packet.to_csv(tmp_path / "alpha_event_release_review_packet.csv", index=False)
