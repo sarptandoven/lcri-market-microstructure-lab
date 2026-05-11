@@ -667,6 +667,29 @@ def alpha_event_review_blocker_summary(output_dir: Path) -> dict[str, Any]:
     }
 
 
+def alpha_event_review_owner_readiness(output_dir: Path) -> dict[str, Any]:
+    """Condense alpha-event verification into the next release-owner step."""
+    verification = alpha_event_review_verification_summary(output_dir)
+    blockers = alpha_event_review_blocker_summary(output_dir)
+    decision = str(verification.get("decision", "unknown"))
+    passes = bool(verification.get("passes_verification", False))
+    next_step = _alpha_event_next_review_step(
+        passes=passes,
+        decision=decision,
+        owner_action=str(verification.get("owner_action", "review alpha event artifacts")),
+    )
+    return {
+        "ready_for_owner_review": bool(passes and decision in {"pass", "review", "block"}),
+        "passes_verification": passes,
+        "decision": decision,
+        "review_priority": verification.get("review_priority", "unknown"),
+        "blocker_rows": int(blockers["blocker_rows"]),
+        "top_blocking_artifact": str(blockers["top_artifact"]),
+        "owner_action": str(blockers["owner_action"]),
+        "next_review_step": next_step,
+    }
+
+
 def verify_alpha_event_review_verification_summary(output_dir: Path) -> list[str]:
     """Return errors when the compact alpha-event verification summary is stale."""
     path = output_dir / "alpha_event_review_verification_summary.json"
@@ -714,6 +737,18 @@ def _alpha_event_owner_action(errors: list[str], missing: list[str]) -> str:
     if errors:
         return "rerun alpha event review artifact generation before owner review"
     return "alpha event review artifacts are ready for owner review"
+
+
+def _alpha_event_next_review_step(*, passes: bool, decision: str, owner_action: str) -> str:
+    if not passes:
+        return owner_action
+    if decision == "pass":
+        return "release owner can accept alpha event review evidence"
+    if decision == "review":
+        return "release owner should inspect high-priority alpha event drift before acceptance"
+    if decision == "block":
+        return "keep release blocked until alpha event drift improves or thresholds are waived"
+    return "review alpha event packet decision before acceptance"
 
 
 def _alpha_event_error_artifact(error: str) -> str:

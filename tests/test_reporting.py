@@ -6,6 +6,7 @@ import pytest
 from lcri_lab.reporting import (
     alpha_event_review_blocker_diagnostics,
     alpha_event_review_blocker_summary,
+    alpha_event_review_owner_readiness,
     alpha_event_review_verification_summary,
     artifact_coverage_matrix,
     artifact_coverage_summary,
@@ -357,6 +358,38 @@ def test_verify_alpha_event_review_verification_summary_checks_staleness(tmp_pat
     assert verify_alpha_event_review_verification_summary(tmp_path) == [
         "alpha event review verification summary mismatch for review_priority"
     ]
+
+
+def test_alpha_event_review_owner_readiness_routes_review_steps(tmp_path) -> None:
+    test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
+
+    stale = alpha_event_review_owner_readiness(tmp_path)
+    assert stale == {
+        "ready_for_owner_review": False,
+        "passes_verification": False,
+        "decision": "review",
+        "review_priority": 1,
+        "blocker_rows": 1,
+        "top_blocking_artifact": "alpha_event_release_review_packet.csv",
+        "owner_action": "rerun alpha event review artifact generation before owner review",
+        "next_review_step": "rerun alpha event review artifact generation before owner review",
+    }
+
+    packet = pd.read_csv(tmp_path / "alpha_event_release_review_packet.csv")
+    packet.loc[0, "review_priority"] = 2
+    packet.to_csv(tmp_path / "alpha_event_release_review_packet.csv", index=False)
+
+    ready = alpha_event_review_owner_readiness(tmp_path)
+    assert ready == {
+        "ready_for_owner_review": True,
+        "passes_verification": True,
+        "decision": "review",
+        "review_priority": 2,
+        "blocker_rows": 0,
+        "top_blocking_artifact": "none",
+        "owner_action": "alpha event review artifacts have no verification blockers",
+        "next_review_step": "release owner should inspect high-priority alpha event drift before acceptance",
+    }
 
 
 def test_alpha_event_review_verification_summary_reports_missing_artifacts(tmp_path) -> None:
