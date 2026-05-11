@@ -5,6 +5,7 @@ from lcri_lab.alpha import (
     add_microstructure_alpha_stack,
     alpha_event_drift_gate,
     alpha_event_regime_summary,
+    alpha_event_release_review_packet,
     alpha_event_score_weighted_drift,
     alpha_event_window_diagnostics,
     alpha_event_window_summary,
@@ -292,3 +293,45 @@ def test_alpha_event_drift_gate_passes_without_events() -> None:
 def test_alpha_event_drift_gate_rejects_missing_summary_keys() -> None:
     with pytest.raises(ValueError, match="missing alpha event drift summary keys"):
         alpha_event_drift_gate({"events": 1})
+
+
+def test_alpha_event_release_review_packet_escalates_weighted_drift() -> None:
+    drift_gate = {
+        "decision": "pass",
+        "passes": True,
+        "events": 3,
+        "adverse_post_drift_share": 1.0 / 3.0,
+        "reason": "alpha event drift stayed within release thresholds",
+    }
+    weighted = {
+        "score_weighted_post_minus_pre_return": -1.2,
+        "score_weighted_adverse_share": 0.75,
+        "top_weighted_event_index": "t2",
+    }
+    regimes = pd.DataFrame(
+        {
+            "event_regime": ["calm", "toxic"],
+            "adverse_post_drift_share": [0.0, 1.0],
+            "worst_post_minus_pre_return": [0.5, -4.0],
+        }
+    )
+
+    packet = alpha_event_release_review_packet(
+        drift_gate,
+        weighted,
+        regimes,
+        max_score_weighted_adverse_share=0.50,
+    )
+
+    row = packet.iloc[0]
+    assert row["decision"] == "review"
+    assert bool(row["passes"]) is False
+    assert row["review_priority"] == 2
+    assert row["top_weighted_event_index"] == "t2"
+    assert row["worst_event_regime"] == "toxic"
+    assert "high-score alpha events" in row["release_note"]
+
+
+def test_alpha_event_release_review_packet_rejects_missing_gate_keys() -> None:
+    with pytest.raises(ValueError, match="missing alpha event drift gate keys"):
+        alpha_event_release_review_packet({"decision": "pass"}, {})

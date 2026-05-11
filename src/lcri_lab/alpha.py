@@ -519,6 +519,86 @@ def alpha_event_drift_gate(
     }
 
 
+def alpha_event_release_review_packet(
+    drift_gate: dict[str, float | int | str | bool],
+    weighted_drift: dict[str, float | int | str],
+    regime_summary: pd.DataFrame | None = None,
+    *,
+    max_score_weighted_adverse_share: float = 0.50,
+) -> pd.DataFrame:
+    """Build a one-row release-review packet for alpha event drift.
+
+    The packet joins the deterministic drift gate with score-weighted drift and
+    the worst event regime so a release reviewer can see whether the decision is
+    driven by frequent drift, high-score toxic drift, or localized regime stress.
+    """
+    if not np.isfinite(max_score_weighted_adverse_share) or not 0.0 <= max_score_weighted_adverse_share <= 1.0:
+        raise ValueError("max_score_weighted_adverse_share must be finite and between 0 and 1")
+    missing_gate = sorted({"decision", "passes", "events", "reason", "adverse_post_drift_share"} - set(drift_gate))
+    if missing_gate:
+        raise ValueError(f"missing alpha event drift gate keys: {missing_gate}")
+    missing_weighted = sorted(
+        {"score_weighted_post_minus_pre_return", "score_weighted_adverse_share", "top_weighted_event_index"}
+        - set(weighted_drift)
+    )
+    if missing_weighted:
+        raise ValueError(f"missing alpha event score-weighted drift keys: {missing_weighted}")
+
+    decision = str(drift_gate["decision"])
+    weighted_adverse_share = float(weighted_drift["score_weighted_adverse_share"])
+    if not np.isfinite(weighted_adverse_share) or not 0.0 <= weighted_adverse_share <= 1.0:
+        raise ValueError("score_weighted_adverse_share must be finite and between 0 and 1")
+    weighted_review = weighted_adverse_share > max_score_weighted_adverse_share
+    events = int(drift_gate["events"])
+    priority = 3 if decision == "block" else 2 if decision == "review" or weighted_review else 1 if events else 0
+    worst_regime = "none"
+    if regime_summary is not None and not regime_summary.empty:
+        _require_columns(
+            regime_summary,
+            ["event_regime", "adverse_post_drift_share", "worst_post_minus_pre_return"],
+            label="alpha event regime release review",
+        )
+        regimes = regime_summary[
+            ["event_regime", "adverse_post_drift_share", "worst_post_minus_pre_return"]
+        ].copy()
+        for column in ["adverse_post_drift_share", "worst_post_minus_pre_return"]:
+            regimes[column] = regimes[column].astype(float)
+        _require_finite(
+            [regimes["adverse_post_drift_share"], regimes["worst_post_minus_pre_return"]],
+            label="alpha event regime release review inputs",
+        )
+        worst = regimes.sort_values(
+            ["adverse_post_drift_share", "worst_post_minus_pre_return"], ascending=[False, True]
+        ).iloc[0]
+        worst_regime = str(worst["event_regime"])
+    if decision == "block":
+        note = f"release blocked by alpha event drift; inspect {worst_regime} regime"
+    elif decision == "review":
+        note = f"owner review needed for alpha event drift; inspect {worst_regime} regime"
+    elif weighted_review:
+        note = f"owner review needed because high-score alpha events carry adverse drift; inspect {worst_regime} regime"
+    else:
+        note = "alpha event drift evidence is release-aligned"
+
+    return pd.DataFrame(
+        [
+            {
+                "decision": "review" if decision == "pass" and weighted_review else decision,
+                "passes": bool(drift_gate["passes"]) and not weighted_review,
+                "review_priority": priority,
+                "events": events,
+                "adverse_post_drift_share": float(drift_gate["adverse_post_drift_share"]),
+                "score_weighted_adverse_share": weighted_adverse_share,
+                "score_weighted_post_minus_pre_return": float(weighted_drift["score_weighted_post_minus_pre_return"]),
+                "top_weighted_event_index": str(weighted_drift["top_weighted_event_index"]),
+                "worst_event_regime": worst_regime,
+                "release_note": note,
+                "gate_reason": str(drift_gate["reason"]),
+            }
+        ]
+    )
+
+
 def alpha_toxicity_review_summary(review_table: pd.DataFrame) -> dict[str, float | int | str]:
     """Summarize the highest-priority alpha toxicity review row."""
     if review_table.empty:
