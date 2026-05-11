@@ -251,6 +251,7 @@ def alpha_event_window_diagnostics(
     event_col: str = "phase_shift_alpha",
     score_col: str = "microstructure_alpha_score",
     return_col: str = "gross_return_ticks",
+    regime_col: str | None = None,
     window: int = 3,
     threshold: float = 0.0,
 ) -> pd.DataFrame:
@@ -265,6 +266,8 @@ def alpha_event_window_diagnostics(
     if not np.isfinite(threshold):
         raise ValueError("threshold must be finite")
     required = [event_col, score_col, return_col]
+    if regime_col is not None:
+        required.append(regime_col)
     _require_columns(frame, required, label="alpha event window")
     if frame.empty:
         return pd.DataFrame(
@@ -272,6 +275,7 @@ def alpha_event_window_diagnostics(
                 "event_index",
                 "event_value",
                 "event_score",
+                "event_regime",
                 "pre_return_sum",
                 "post_return_sum",
                 "post_minus_pre_return",
@@ -280,9 +284,10 @@ def alpha_event_window_diagnostics(
         )
 
     data = frame[required].copy()
-    for column in required:
+    numeric_columns = [event_col, score_col, return_col]
+    for column in numeric_columns:
         data[column] = data[column].astype(float)
-    _require_finite([data[column] for column in required], label="alpha event window inputs")
+    _require_finite([data[column] for column in numeric_columns], label="alpha event window inputs")
 
     returns = data[return_col].reset_index(drop=True)
     events = data.index[data[event_col] > threshold].tolist()
@@ -300,6 +305,7 @@ def alpha_event_window_diagnostics(
                 "event_index": event_index,
                 "event_value": float(data.at[event_index, event_col]),
                 "event_score": float(data.at[event_index, score_col]),
+                "event_regime": str(data.at[event_index, regime_col]) if regime_col is not None else "all",
                 "pre_return_sum": pre_sum,
                 "post_return_sum": post_sum,
                 "post_minus_pre_return": float(post_sum - pre_sum),
@@ -307,6 +313,50 @@ def alpha_event_window_diagnostics(
             }
         )
     return pd.DataFrame(rows)
+
+
+def alpha_event_regime_summary(events: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate alpha event-window drift by event regime."""
+    columns = [
+        "event_regime",
+        "events",
+        "adverse_post_drift_events",
+        "adverse_post_drift_share",
+        "mean_post_minus_pre_return",
+        "worst_post_minus_pre_return",
+        "mean_event_score",
+    ]
+    if events.empty:
+        return pd.DataFrame(columns=columns)
+    required = ["event_regime", "event_score", "post_minus_pre_return"]
+    _require_columns(events, required, label="alpha event regime summary")
+    data = events[required].copy()
+    for column in ["event_score", "post_minus_pre_return"]:
+        data[column] = data[column].astype(float)
+    _require_finite(
+        [data["event_score"], data["post_minus_pre_return"]],
+        label="alpha event regime summary inputs",
+    )
+
+    rows = []
+    for regime, group in data.groupby("event_regime", sort=True):
+        drift = group["post_minus_pre_return"]
+        adverse = int((drift < 0.0).sum())
+        rows.append(
+            {
+                "event_regime": str(regime),
+                "events": int(len(group)),
+                "adverse_post_drift_events": adverse,
+                "adverse_post_drift_share": _safe_divide(float(adverse), float(len(group))),
+                "mean_post_minus_pre_return": _finite_mean(drift),
+                "worst_post_minus_pre_return": float(drift.min()),
+                "mean_event_score": _finite_mean(group["event_score"]),
+            }
+        )
+    return pd.DataFrame(rows)[columns].sort_values(
+        ["adverse_post_drift_share", "worst_post_minus_pre_return"],
+        ascending=[False, True],
+    ).reset_index(drop=True)
 
 
 def alpha_event_window_summary(events: pd.DataFrame) -> dict[str, float | int | str]:

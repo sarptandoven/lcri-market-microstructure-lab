@@ -3,6 +3,7 @@ import pytest
 
 from lcri_lab.alpha import (
     add_microstructure_alpha_stack,
+    alpha_event_regime_summary,
     alpha_event_window_diagnostics,
     alpha_event_window_summary,
     alpha_research_gate,
@@ -130,12 +131,19 @@ def test_alpha_event_window_diagnostics_measures_post_event_drift() -> None:
             "phase_shift_alpha": [0.0, 0.2, 1.4, 0.0, 0.3, 1.1],
             "microstructure_alpha_score": [0.1, 0.4, 2.0, 0.6, 0.5, 1.7],
             "gross_return_ticks": [1.0, 1.0, -2.0, -1.0, -1.0, -3.0],
+            "pressure_memory_decay_state": ["calm", "calm", "toxic", "toxic", "calm", "toxic"],
         }
     )
 
-    diagnostics = alpha_event_window_diagnostics(frame, window=2, threshold=1.0)
+    diagnostics = alpha_event_window_diagnostics(
+        frame,
+        regime_col="pressure_memory_decay_state",
+        window=2,
+        threshold=1.0,
+    )
 
     assert diagnostics["event_index"].tolist() == [2, 5]
+    assert diagnostics["event_regime"].tolist() == ["toxic", "toxic"]
     first = diagnostics.iloc[0]
     assert first["pre_return_sum"] == pytest.approx(2.0)
     assert first["post_return_sum"] == pytest.approx(-2.0)
@@ -154,6 +162,24 @@ def test_alpha_event_window_diagnostics_rejects_nonfinite_threshold() -> None:
 
     with pytest.raises(ValueError, match="threshold"):
         alpha_event_window_diagnostics(frame, threshold=float("nan"))
+
+
+def test_alpha_event_regime_summary_ranks_adverse_regimes() -> None:
+    events = pd.DataFrame(
+        {
+            "event_regime": ["toxic", "toxic", "calm"],
+            "event_score": [2.0, 1.0, 0.5],
+            "post_minus_pre_return": [-3.0, -1.0, 2.0],
+        }
+    )
+
+    summary = alpha_event_regime_summary(events)
+
+    assert summary.iloc[0]["event_regime"] == "toxic"
+    assert summary.iloc[0]["events"] == 2
+    assert summary.iloc[0]["adverse_post_drift_share"] == pytest.approx(1.0)
+    assert summary.iloc[0]["mean_post_minus_pre_return"] == pytest.approx(-2.0)
+    assert summary.iloc[0]["mean_event_score"] == pytest.approx(1.5)
 
 
 def test_alpha_event_window_summary_surfaces_adverse_drift() -> None:
