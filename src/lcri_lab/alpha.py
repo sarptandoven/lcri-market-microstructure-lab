@@ -398,6 +398,79 @@ def alpha_event_window_summary(events: pd.DataFrame) -> dict[str, float | int | 
     }
 
 
+def alpha_event_drift_gate(
+    summary: dict[str, float | int | str],
+    *,
+    max_adverse_share: float = 0.50,
+    min_mean_post_minus_pre_return: float = 0.0,
+    max_worst_post_minus_pre_return: float = -2.0,
+) -> dict[str, float | int | str | bool]:
+    """Gate alpha event windows by adverse post-event drift.
+
+    This converts compact event-window summaries into a release decision. A
+    concentrated alpha pocket can look strong in cross-section while still
+    becoming adverse immediately after the event. The gate blocks that failure
+    mode when adverse drift is common, mean post-minus-pre drift is negative, or
+    the worst event breaches the tail threshold.
+    """
+    _validate_alpha_event_drift_thresholds(
+        max_adverse_share,
+        min_mean_post_minus_pre_return,
+        max_worst_post_minus_pre_return,
+    )
+    required = {
+        "events",
+        "adverse_post_drift_share",
+        "mean_post_minus_pre_return",
+        "worst_event_index",
+        "worst_post_minus_pre_return",
+    }
+    missing = sorted(required - set(summary))
+    if missing:
+        raise ValueError(f"missing alpha event drift summary keys: {missing}")
+
+    events = int(summary["events"])
+    adverse_share = float(summary["adverse_post_drift_share"])
+    mean_drift = float(summary["mean_post_minus_pre_return"])
+    worst_drift = float(summary["worst_post_minus_pre_return"])
+    if events < 0:
+        raise ValueError("events must be non-negative")
+    if not np.isfinite([adverse_share, mean_drift, worst_drift]).all():
+        raise ValueError("alpha event drift summary values must be finite")
+    if not 0.0 <= adverse_share <= 1.0:
+        raise ValueError("adverse_post_drift_share must be between 0 and 1")
+
+    if events == 0:
+        decision = "pass"
+        reason = "no alpha events crossed the event threshold"
+    elif adverse_share > max_adverse_share:
+        decision = "block"
+        reason = "adverse post-event drift share breached threshold"
+    elif mean_drift < min_mean_post_minus_pre_return:
+        decision = "block"
+        reason = "mean post-event drift breached threshold"
+    elif worst_drift < max_worst_post_minus_pre_return:
+        decision = "review"
+        reason = "worst post-event drift breached review threshold"
+    else:
+        decision = "pass"
+        reason = "alpha event drift stayed within release thresholds"
+
+    return {
+        "passes": decision == "pass",
+        "decision": decision,
+        "events": events,
+        "adverse_post_drift_share": adverse_share,
+        "mean_post_minus_pre_return": mean_drift,
+        "worst_event_index": str(summary["worst_event_index"]),
+        "worst_post_minus_pre_return": worst_drift,
+        "max_adverse_share": float(max_adverse_share),
+        "min_mean_post_minus_pre_return": float(min_mean_post_minus_pre_return),
+        "max_worst_post_minus_pre_return": float(max_worst_post_minus_pre_return),
+        "reason": reason,
+    }
+
+
 def alpha_toxicity_review_summary(review_table: pd.DataFrame) -> dict[str, float | int | str]:
     """Summarize the highest-priority alpha toxicity review row."""
     if review_table.empty:
@@ -444,6 +517,19 @@ def _validate_alpha_review_thresholds(
         raise ValueError("max_phase_shift_alpha must be finite and non-negative")
     if not np.isfinite(min_score) or min_score < 0.0:
         raise ValueError("min_score must be finite and non-negative")
+
+
+def _validate_alpha_event_drift_thresholds(
+    max_adverse_share: float,
+    min_mean_post_minus_pre_return: float,
+    max_worst_post_minus_pre_return: float,
+) -> None:
+    if not np.isfinite(max_adverse_share) or not 0.0 <= max_adverse_share <= 1.0:
+        raise ValueError("max_adverse_share must be finite and between 0 and 1")
+    if not np.isfinite(min_mean_post_minus_pre_return):
+        raise ValueError("min_mean_post_minus_pre_return must be finite")
+    if not np.isfinite(max_worst_post_minus_pre_return):
+        raise ValueError("max_worst_post_minus_pre_return must be finite")
 
 
 def _require_columns(frame: pd.DataFrame, columns: list[str], *, label: str) -> None:

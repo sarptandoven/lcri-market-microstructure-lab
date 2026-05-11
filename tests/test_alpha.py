@@ -3,6 +3,7 @@ import pytest
 
 from lcri_lab.alpha import (
     add_microstructure_alpha_stack,
+    alpha_event_drift_gate,
     alpha_event_regime_summary,
     alpha_event_window_diagnostics,
     alpha_event_window_summary,
@@ -211,3 +212,48 @@ def test_alpha_event_window_summary_handles_empty_events() -> None:
     assert summary["worst_event_index"] == "none"
     assert summary["adverse_post_drift_share"] == 0.0
     assert summary["max_event_score"] == 0.0
+
+
+def test_alpha_event_drift_gate_blocks_common_adverse_drift() -> None:
+    summary = {
+        "events": 4,
+        "adverse_post_drift_share": 0.75,
+        "mean_post_minus_pre_return": 0.3,
+        "worst_event_index": "t2",
+        "worst_post_minus_pre_return": -1.0,
+    }
+
+    gate = alpha_event_drift_gate(summary, max_adverse_share=0.50)
+
+    assert gate["decision"] == "block"
+    assert gate["passes"] is False
+    assert gate["reason"] == "adverse post-event drift share breached threshold"
+
+
+def test_alpha_event_drift_gate_reviews_tail_event() -> None:
+    summary = {
+        "events": 3,
+        "adverse_post_drift_share": 1.0 / 3.0,
+        "mean_post_minus_pre_return": 0.2,
+        "worst_event_index": "t8",
+        "worst_post_minus_pre_return": -3.5,
+    }
+
+    gate = alpha_event_drift_gate(summary, max_worst_post_minus_pre_return=-2.0)
+
+    assert gate["decision"] == "review"
+    assert gate["passes"] is False
+    assert gate["worst_event_index"] == "t8"
+
+
+def test_alpha_event_drift_gate_passes_without_events() -> None:
+    gate = alpha_event_drift_gate(alpha_event_window_summary(pd.DataFrame()))
+
+    assert gate["decision"] == "pass"
+    assert gate["passes"] is True
+    assert gate["reason"] == "no alpha events crossed the event threshold"
+
+
+def test_alpha_event_drift_gate_rejects_missing_summary_keys() -> None:
+    with pytest.raises(ValueError, match="missing alpha event drift summary keys"):
+        alpha_event_drift_gate({"events": 1})

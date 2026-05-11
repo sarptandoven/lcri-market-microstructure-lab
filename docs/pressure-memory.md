@@ -50,3 +50,5 @@ The pressure-memory artifacts now support a direct alpha-research layer. The sta
 - `microstructure_alpha_score` combines the investable and toxic components into a regime-level triage input.
 
 The gate is intentionally conservative. A regime can have high alpha concentration and still land in `review` when phase-shift alpha is too large, because that is the state where the signal may be identifying toxic flow rather than a tradable edge.
+
+Event-window diagnostics add a second release check around the same failure mode. `alpha_event_window_diagnostics` measures pre-event and post-event return drift around phase-shift events, `alpha_event_window_summary` compresses the drift profile, and `alpha_event_drift_gate` blocks or reviews alpha pockets when post-event returns turn adverse too often, average drift is negative, or a single tail event breaches the worst-drift threshold.
