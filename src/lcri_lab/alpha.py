@@ -309,6 +309,45 @@ def alpha_event_window_diagnostics(
     return pd.DataFrame(rows)
 
 
+def alpha_event_window_summary(events: pd.DataFrame) -> dict[str, float | int | str]:
+    """Summarize alpha event-window drift for release review."""
+    if events.empty:
+        return {
+            "events": 0,
+            "adverse_post_drift_events": 0,
+            "adverse_post_drift_share": 0.0,
+            "mean_post_minus_pre_return": 0.0,
+            "worst_event_index": "none",
+            "worst_post_minus_pre_return": 0.0,
+            "max_event_score": 0.0,
+        }
+    required = [
+        "event_index",
+        "event_score",
+        "post_minus_pre_return",
+    ]
+    _require_columns(events, required, label="alpha event window summary")
+    data = events[required].copy()
+    for column in ["event_score", "post_minus_pre_return"]:
+        data[column] = data[column].astype(float)
+    _require_finite(
+        [data["event_score"], data["post_minus_pre_return"]],
+        label="alpha event window summary inputs",
+    )
+
+    drift = data["post_minus_pre_return"]
+    worst = data.loc[drift.idxmin()]
+    return {
+        "events": int(len(data)),
+        "adverse_post_drift_events": int((drift < 0.0).sum()),
+        "adverse_post_drift_share": _safe_divide(float((drift < 0.0).sum()), float(len(data))),
+        "mean_post_minus_pre_return": _finite_mean(drift),
+        "worst_event_index": str(worst["event_index"]),
+        "worst_post_minus_pre_return": float(worst["post_minus_pre_return"]),
+        "max_event_score": float(data["event_score"].max()),
+    }
+
+
 def alpha_toxicity_review_summary(review_table: pd.DataFrame) -> dict[str, float | int | str]:
     """Summarize the highest-priority alpha toxicity review row."""
     if review_table.empty:

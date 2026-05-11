@@ -4,6 +4,7 @@ import pytest
 from lcri_lab.alpha import (
     add_microstructure_alpha_stack,
     alpha_event_window_diagnostics,
+    alpha_event_window_summary,
     alpha_research_gate,
     alpha_toxicity_review_summary,
     alpha_toxicity_review_table,
@@ -153,3 +154,34 @@ def test_alpha_event_window_diagnostics_rejects_nonfinite_threshold() -> None:
 
     with pytest.raises(ValueError, match="threshold"):
         alpha_event_window_diagnostics(frame, threshold=float("nan"))
+
+
+def test_alpha_event_window_summary_surfaces_adverse_drift() -> None:
+    events = pd.DataFrame(
+        {
+            "event_index": ["t2", "t5", "t8"],
+            "event_score": [2.0, 1.7, 0.9],
+            "post_minus_pre_return": [-4.0, 1.0, -2.0],
+        }
+    )
+
+    summary = alpha_event_window_summary(events)
+
+    assert summary == {
+        "events": 3,
+        "adverse_post_drift_events": 2,
+        "adverse_post_drift_share": pytest.approx(2.0 / 3.0),
+        "mean_post_minus_pre_return": pytest.approx(-5.0 / 3.0),
+        "worst_event_index": "t2",
+        "worst_post_minus_pre_return": -4.0,
+        "max_event_score": 2.0,
+    }
+
+
+def test_alpha_event_window_summary_handles_empty_events() -> None:
+    summary = alpha_event_window_summary(pd.DataFrame())
+
+    assert summary["events"] == 0
+    assert summary["worst_event_index"] == "none"
+    assert summary["adverse_post_drift_share"] == 0.0
+    assert summary["max_event_score"] == 0.0
