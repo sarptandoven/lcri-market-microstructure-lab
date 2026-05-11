@@ -167,11 +167,130 @@ def alpha_research_gate(
     }
 
 
+def alpha_toxicity_review_table(
+    summary: pd.DataFrame,
+    *,
+    min_alpha_share: float = 0.20,
+    max_phase_shift_alpha: float = 1.00,
+    min_score: float = 0.0,
+) -> pd.DataFrame:
+    """Rank alpha regimes that need toxicity review before release.
+
+    The table separates investable concentration from toxic concentration and
+    points reviewers to pressure-memory regimes where alpha looks like adverse
+    selection rather than usable signal.
+    """
+    _validate_alpha_review_thresholds(min_alpha_share, max_phase_shift_alpha, min_score)
+    required = [
+        "pressure_memory_decay_state",
+        "observations",
+        "alpha_share",
+        "mean_microstructure_alpha_score",
+        "mean_phase_shift_alpha",
+        "mean_toxic_pressure_resonance",
+    ]
+    _require_columns(summary, required, label="alpha toxicity review")
+    if summary.empty:
+        return pd.DataFrame(
+            columns=[
+                "pressure_memory_decay_state",
+                "observations",
+                "alpha_share",
+                "mean_microstructure_alpha_score",
+                "mean_phase_shift_alpha",
+                "mean_toxic_pressure_resonance",
+                "toxicity_score",
+                "review_label",
+            ]
+        )
+
+    data = summary[required].copy()
+    numeric_columns = [
+        "observations",
+        "alpha_share",
+        "mean_microstructure_alpha_score",
+        "mean_phase_shift_alpha",
+        "mean_toxic_pressure_resonance",
+    ]
+    for column in numeric_columns:
+        data[column] = data[column].astype(float)
+    _require_finite([data[column] for column in numeric_columns], label="alpha toxicity inputs")
+    if not data["alpha_share"].between(0.0, 1.0).all():
+        raise ValueError("alpha_share must be between 0 and 1")
+    if (data["observations"] < 0.0).any():
+        raise ValueError("observations must be non-negative")
+
+    concentration_excess = (data["alpha_share"] - min_alpha_share).clip(lower=0.0)
+    phase_excess = (data["mean_phase_shift_alpha"] - max_phase_shift_alpha).clip(lower=0.0)
+    score_excess = (data["mean_microstructure_alpha_score"] - min_score).clip(lower=0.0)
+    data["toxicity_score"] = (
+        concentration_excess
+        * (1.0 + phase_excess)
+        * (1.0 + data["mean_toxic_pressure_resonance"].abs())
+        * (1.0 + score_excess)
+    ).astype(float)
+    data["review_label"] = np.select(
+        [
+            (concentration_excess > 0.0) & (phase_excess > 0.0),
+            concentration_excess > 0.0,
+            phase_excess > 0.0,
+        ],
+        ["toxic_concentration", "concentrated_alpha", "phase_shift_watch"],
+        default="clear",
+    )
+    data["observations"] = data["observations"].astype(int)
+    return data.sort_values(
+        ["toxicity_score", "alpha_share", "mean_phase_shift_alpha"],
+        ascending=[False, False, False],
+    ).reset_index(drop=True)
+
+
+def alpha_toxicity_review_summary(review_table: pd.DataFrame) -> dict[str, float | int | str]:
+    """Summarize the highest-priority alpha toxicity review row."""
+    if review_table.empty:
+        return {
+            "rows": 0,
+            "review_rows": 0,
+            "top_regime": "none",
+            "top_review_label": "clear",
+            "top_toxicity_score": 0.0,
+        }
+    _require_columns(
+        review_table,
+        ["pressure_memory_decay_state", "review_label", "toxicity_score"],
+        label="alpha toxicity review summary",
+    )
+    scores = review_table["toxicity_score"].astype(float)
+    _require_finite([scores], label="alpha toxicity review summary inputs")
+    top = review_table.loc[scores.idxmax()]
+    labels = review_table["review_label"].astype(str)
+    return {
+        "rows": int(len(review_table)),
+        "review_rows": int((labels != "clear").sum()),
+        "top_regime": str(top["pressure_memory_decay_state"]),
+        "top_review_label": str(top["review_label"]),
+        "top_toxicity_score": float(top["toxicity_score"]),
+    }
+
+
 def _validate_window(window: int) -> None:
     if not isinstance(window, int) or isinstance(window, bool):
         raise ValueError("window must be an integer")
     if window < 2:
         raise ValueError("window must be at least 2")
+
+
+def _validate_alpha_review_thresholds(
+    min_alpha_share: float,
+    max_phase_shift_alpha: float,
+    min_score: float,
+) -> None:
+    if not np.isfinite(min_alpha_share) or not 0.0 <= min_alpha_share <= 1.0:
+        raise ValueError("min_alpha_share must be finite and between 0 and 1")
+    if not np.isfinite(max_phase_shift_alpha) or max_phase_shift_alpha < 0.0:
+        raise ValueError("max_phase_shift_alpha must be finite and non-negative")
+    if not np.isfinite(min_score) or min_score < 0.0:
+        raise ValueError("min_score must be finite and non-negative")
 
 
 def _require_columns(frame: pd.DataFrame, columns: list[str], *, label: str) -> None:

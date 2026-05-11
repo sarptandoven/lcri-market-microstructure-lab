@@ -4,6 +4,8 @@ import pytest
 from lcri_lab.alpha import (
     add_microstructure_alpha_stack,
     alpha_research_gate,
+    alpha_toxicity_review_summary,
+    alpha_toxicity_review_table,
     microstructure_alpha_regime_summary,
 )
 
@@ -73,3 +75,48 @@ def test_alpha_research_gate_rejects_bad_alpha_share() -> None:
 
     with pytest.raises(ValueError, match="alpha_share"):
         alpha_research_gate(summary)
+
+
+def test_alpha_toxicity_review_table_ranks_toxic_concentration() -> None:
+    summary = pd.DataFrame(
+        {
+            "pressure_memory_decay_state": ["persistent", "fast_decay", "neutral"],
+            "observations": [20, 12, 5],
+            "alpha_share": [0.55, 0.30, 0.15],
+            "mean_microstructure_alpha_score": [2.0, 1.1, 0.2],
+            "mean_phase_shift_alpha": [1.4, 0.4, 1.3],
+            "mean_toxic_pressure_resonance": [0.8, 0.2, 0.1],
+        }
+    )
+
+    review = alpha_toxicity_review_table(
+        summary,
+        min_alpha_share=0.20,
+        max_phase_shift_alpha=1.0,
+        min_score=0.5,
+    )
+
+    assert review.iloc[0]["pressure_memory_decay_state"] == "persistent"
+    assert review.iloc[0]["review_label"] == "toxic_concentration"
+    assert review.iloc[-1]["review_label"] == "phase_shift_watch"
+    assert review["toxicity_score"].is_monotonic_decreasing
+
+
+def test_alpha_toxicity_review_summary_reports_top_regime() -> None:
+    review = pd.DataFrame(
+        {
+            "pressure_memory_decay_state": ["persistent", "fast_decay"],
+            "review_label": ["toxic_concentration", "clear"],
+            "toxicity_score": [1.5, 0.0],
+        }
+    )
+
+    summary = alpha_toxicity_review_summary(review)
+
+    assert summary == {
+        "rows": 2,
+        "review_rows": 1,
+        "top_regime": "persistent",
+        "top_review_label": "toxic_concentration",
+        "top_toxicity_score": 1.5,
+    }

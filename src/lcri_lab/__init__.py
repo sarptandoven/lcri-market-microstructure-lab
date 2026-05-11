@@ -4,6 +4,8 @@ from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.alpha import (
     add_microstructure_alpha_stack,
     alpha_research_gate,
+    alpha_toxicity_review_summary,
+    alpha_toxicity_review_table,
     microstructure_alpha_regime_summary,
 )
 from lcri_lab.baseline import LiquidityBaseline, compute_lcri, design_feature_names
@@ -117,6 +119,8 @@ __all__ = [
     "add_transaction_cost_labels",
     "add_microstructure_alpha_stack",
     "alpha_research_gate",
+    "alpha_toxicity_review_summary",
+    "alpha_toxicity_review_table",
     "microstructure_alpha_regime_summary",
     "add_pressure_memory",
     "add_liquidity_memory_half_life",
