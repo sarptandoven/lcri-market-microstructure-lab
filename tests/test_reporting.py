@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from lcri_lab.reporting import (
+    alpha_event_review_blocker_diagnostics,
     alpha_event_review_verification_summary,
     artifact_coverage_matrix,
     artifact_coverage_summary,
@@ -312,6 +313,7 @@ def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
         "missing_artifacts": [],
         "errors": 0,
         "error_families": {},
+        "blocking_artifacts": [],
         "blocking_errors": [],
         "passes_verification": True,
         "decision": "review",
@@ -334,6 +336,7 @@ def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
     summary = alpha_event_review_verification_summary(tmp_path)
     assert summary["errors"] == 1
     assert summary["error_families"] == {"alpha_event": 1}
+    assert summary["blocking_artifacts"] == ["alpha_event_release_review_packet.csv"]
     assert summary["blocking_errors"] == [
         "alpha event release review packet mismatch for review_priority"
     ]
@@ -369,6 +372,14 @@ def test_alpha_event_review_verification_summary_reports_missing_artifacts(tmp_p
         ],
         "errors": 1,
         "error_families": {"alpha_event": 1},
+        "blocking_artifacts": [
+            "alpha_event_drift_gate.json",
+            "alpha_event_regime_summary.csv",
+            "alpha_event_release_review_packet.csv",
+            "alpha_event_score_weighted_drift.json",
+            "alpha_event_window_summary.json",
+            "alpha_event_windows.csv",
+        ],
         "blocking_errors": [
             "missing alpha event review artifacts: ['alpha_event_windows.csv', "
             "'alpha_event_window_summary.json', 'alpha_event_release_review_packet.csv', "
@@ -380,6 +391,37 @@ def test_alpha_event_review_verification_summary_reports_missing_artifacts(tmp_p
         "review_priority": "unknown",
         "owner_action": "regenerate missing alpha event review artifacts",
     }
+
+
+def test_alpha_event_review_blocker_diagnostics_groups_missing_and_stale_artifacts(tmp_path) -> None:
+    missing = alpha_event_review_blocker_diagnostics(tmp_path)
+
+    assert missing["check"].tolist() == ["missing_artifact"] * 6
+    assert missing["artifact"].tolist() == [
+        "alpha_event_windows.csv",
+        "alpha_event_window_summary.json",
+        "alpha_event_release_review_packet.csv",
+        "alpha_event_drift_gate.json",
+        "alpha_event_score_weighted_drift.json",
+        "alpha_event_regime_summary.csv",
+    ]
+
+    test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path)
+    packet = pd.read_csv(tmp_path / "alpha_event_release_review_packet.csv")
+    packet.loc[0, "review_priority"] = 1
+    packet.to_csv(tmp_path / "alpha_event_release_review_packet.csv", index=False)
+
+    stale = alpha_event_review_blocker_diagnostics(tmp_path)
+
+    assert stale.to_dict("records") == [
+        {
+            "severity": "block",
+            "artifact": "alpha_event_release_review_packet.csv",
+            "check": "stale_artifact",
+            "message": "alpha event release review packet mismatch for review_priority",
+            "owner_action": "rerun alpha event review artifact generation before owner review",
+        }
+    ]
 
 
 def test_verify_pressure_memory_decay_summary_checks_bounds(tmp_path) -> None:

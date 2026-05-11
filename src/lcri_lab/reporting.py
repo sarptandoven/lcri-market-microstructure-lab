@@ -476,6 +476,14 @@ _ALPHA_EVENT_REVIEW_ARTIFACTS = {
     "weighted": "alpha_event_score_weighted_drift.json",
     "regimes": "alpha_event_regime_summary.csv",
 }
+_ALPHA_EVENT_BLOCKER_COLUMNS = ["severity", "artifact", "check", "message", "owner_action"]
+_ALPHA_EVENT_ERROR_ARTIFACT_HINTS = {
+    "window summary": "alpha_event_window_summary.json",
+    "score-weighted drift": "alpha_event_score_weighted_drift.json",
+    "drift gate": "alpha_event_drift_gate.json",
+    "release review packet": "alpha_event_release_review_packet.csv",
+    "regime": "alpha_event_regime_summary.csv",
+}
 
 
 def verify_alpha_event_review_artifacts(output_dir: Path) -> list[str]:
@@ -569,6 +577,7 @@ def alpha_event_review_verification_summary(output_dir: Path) -> dict[str, Any]:
     missing = [path.name for path in artifact_paths.values() if not path.exists()]
     errors = verify_alpha_event_review_artifacts(output_dir)
     error_summary = summarize_verification_errors(errors)
+    blocker_diagnostics = alpha_event_review_blocker_diagnostics(output_dir)
     packet_payload = _read_alpha_event_packet_payload(artifact_paths["packet"])
     return {
         "artifacts_expected": len(artifact_paths),
@@ -580,12 +589,52 @@ def alpha_event_review_verification_summary(output_dir: Path) -> dict[str, Any]:
             for family, count in error_summary.items()
             if family not in {"errors", "passes_verification"} and count
         },
+        "blocking_artifacts": sorted(set(blocker_diagnostics["artifact"].astype(str))),
         "blocking_errors": errors[:3],
         "passes_verification": len(errors) == 0,
         "decision": packet_payload.get("decision", "unknown"),
         "review_priority": packet_payload.get("review_priority", "unknown"),
         "owner_action": _alpha_event_owner_action(errors, missing),
     }
+
+
+def alpha_event_review_blocker_diagnostics(output_dir: Path) -> pd.DataFrame:
+    """Return one row per alpha-event review blocker for owner triage.
+
+    The verifier intentionally returns concise strings for CLI checks. This
+    diagnostic keeps the same source of truth but projects those strings into a
+    stable table that dashboards and markdown summaries can group by artifact.
+    """
+    artifact_paths = {
+        label: output_dir / artifact
+        for label, artifact in _ALPHA_EVENT_REVIEW_ARTIFACTS.items()
+    }
+    rows: list[dict[str, str]] = []
+    missing = [path.name for path in artifact_paths.values() if not path.exists()]
+    for artifact in missing:
+        rows.append(
+            {
+                "severity": "block",
+                "artifact": artifact,
+                "check": "missing_artifact",
+                "message": f"missing alpha event review artifact: {artifact}",
+                "owner_action": "regenerate missing alpha event review artifacts",
+            }
+        )
+    if missing:
+        return pd.DataFrame(rows, columns=_ALPHA_EVENT_BLOCKER_COLUMNS)
+
+    for error in verify_alpha_event_review_artifacts(output_dir):
+        rows.append(
+            {
+                "severity": "block",
+                "artifact": _alpha_event_error_artifact(error),
+                "check": _alpha_event_error_check(error),
+                "message": error,
+                "owner_action": "rerun alpha event review artifact generation before owner review",
+            }
+        )
+    return pd.DataFrame(rows, columns=_ALPHA_EVENT_BLOCKER_COLUMNS)
 
 
 def verify_alpha_event_review_verification_summary(output_dir: Path) -> list[str]:
@@ -635,6 +684,25 @@ def _alpha_event_owner_action(errors: list[str], missing: list[str]) -> str:
     if errors:
         return "rerun alpha event review artifact generation before owner review"
     return "alpha event review artifacts are ready for owner review"
+
+
+def _alpha_event_error_artifact(error: str) -> str:
+    lower = error.lower()
+    for hint, artifact in _ALPHA_EVENT_ERROR_ARTIFACT_HINTS.items():
+        if hint in lower:
+            return artifact
+    return "alpha_event_review"
+
+
+def _alpha_event_error_check(error: str) -> str:
+    lower = error.lower()
+    if "mismatch" in lower:
+        return "stale_artifact"
+    if "incomplete" in lower:
+        return "incomplete_artifact"
+    if "must contain exactly one row" in lower:
+        return "invalid_row_count"
+    return "verification_error"
 
 
 def _compare_alpha_event_mapping(
