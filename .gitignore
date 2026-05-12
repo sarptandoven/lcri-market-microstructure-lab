@@ -1,15 +1,22 @@
 .venv/
+.env
+.env.*
+*.env
 __pycache__/
+*.py[cod]
 .pytest_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 *.egg-info/
+build/
+dist/
 .DS_Store
-reports/*.csv
-reports/*.json
-reports/figures/*.png
-reports/example/
 
-# Local OpenClaw workspace files
+# Generated demo and evaluation artifacts
+/reports/
+
+# Local agent/workspace files
 .openclaw/
 .bootstrap-archive/
 state/
@@ -20,7 +27,25 @@ MEMORY.md
 SOUL.md
 TOOLS.md
 USER.md
-ltx23_ugc/
-ltx23_research/
+*.ipynb
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
 quant_pdf_extract.txt
-wananimate_colab.ipynb
+.cache/
+.ipynb_checkpoints/
+clips/
+media/
+outputs/
+artifacts/
+data/
+input_data/
+raw_data/
+processed_data/
+*.parquet
+*.feather
+*.pkl
+*.sqlite
+*.db
