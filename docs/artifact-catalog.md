@@ -126,9 +126,13 @@ surfaces without opening every file:
   publishability side with best execution side, fill probabilities, edge drag, and
   conflict priority.
 - `passive_fill_event_windows.csv`: high passive-fill-probability event windows
-  with side-specific pre/post realized edge drift by memory-decay regime.
+  with side-specific pre/post realized edge drift plus modal pre/post memory-decay
+  regime transitions.
 - `passive_fill_event_regime_summary.csv`: regime aggregation of passive-fill
   event-window drift, adverse-post-event share, and worst drift.
+- `passive_fill_event_transition_summary.csv`: transition-path aggregation of
+  passive-fill event toxicity, highlighting boundary states such as calm→thin or
+  thin→stress where fills may become adverse despite high predicted fill odds.
 - `passive_fill_calibration_curve.csv`: side-specific passive-fill calibration
   curve that bins predicted fill probability against realized fill proxy by regime.
 - `passive_fill_calibration_summary.json`: row-weighted passive-fill calibration

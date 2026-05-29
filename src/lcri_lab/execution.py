@@ -1123,11 +1123,19 @@ def passive_fill_event_window_diagnostics(
         post = realized.iloc[int(position) + 1 : post_end]
         pre_sum = float(pre.sum()) if len(pre) else 0.0
         post_sum = float(post.sum()) if len(post) else 0.0
+        event_regime = str(regimes.iloc[position])
+        pre_regime = _modal_window_regime(regimes.iloc[pre_start:position], fallback=event_regime)
+        post_regime = _modal_window_regime(
+            regimes.iloc[int(position) + 1 : post_end], fallback=event_regime
+        )
         rows.append(
             {
                 "event_index": original_index.iloc[position],
                 "event_side": str(event_side),
-                "event_regime": str(regimes.iloc[position]),
+                "event_regime": event_regime,
+                "pre_window_regime": pre_regime,
+                "post_window_regime": post_regime,
+                "regime_transition": f"{pre_regime}->{post_regime}",
                 "event_fill_probability": float(event_fill.iloc[position]),
                 "event_adverse_fill_probability": float(event_adverse.iloc[position]),
                 "event_edge_ticks": float(event_edge.iloc[position]),
@@ -1192,6 +1200,79 @@ def passive_fill_event_regime_summary(events: pd.DataFrame) -> pd.DataFrame:
         ascending=[False, True],
         ignore_index=True,
     )
+
+
+def passive_fill_event_transition_summary(events: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate passive-fill event toxicity by pre/post regime transition.
+
+    Event-window failures often appear at liquidity-state boundaries rather than
+    inside a single named regime. This table groups high-probability passive-fill
+    events by the modal pre-window to post-window regime path so reviewers can see
+    whether queue fills become toxic specifically during calm→thin or thin→stress
+    transitions.
+    """
+    columns = list(_empty_passive_fill_event_transition_summary().columns)
+    if events.empty:
+        return _empty_passive_fill_event_transition_summary()
+    required = {
+        "event_regime",
+        "regime_transition",
+        "event_fill_probability",
+        "event_adverse_fill_probability",
+        "event_edge_ticks",
+        "post_minus_pre_realized_edge",
+    }
+    _require_columns(events, required, "passive fill event transition summary")
+    values = _finite_values(
+        events,
+        [
+            "event_fill_probability",
+            "event_adverse_fill_probability",
+            "event_edge_ticks",
+            "post_minus_pre_realized_edge",
+        ],
+        "passive fill event transition summary",
+    )
+    data = values.copy()
+    data["event_regime"] = events["event_regime"].astype(str)
+    data["regime_transition"] = events["regime_transition"].astype(str)
+
+    rows: list[dict[str, float | int | str]] = []
+    for transition, group in data.groupby("regime_transition", sort=True):
+        drift = group["post_minus_pre_realized_edge"]
+        adverse = int((drift < 0.0).sum())
+        rows.append(
+            {
+                "regime_transition": str(transition),
+                "event_regimes": int(group["event_regime"].nunique()),
+                "events": int(len(group)),
+                "adverse_post_edge_events": adverse,
+                "adverse_post_edge_share": float(adverse / len(group)),
+                "mean_event_fill_probability": float(group["event_fill_probability"].mean()),
+                "mean_event_adverse_fill_probability": float(
+                    group["event_adverse_fill_probability"].mean()
+                ),
+                "mean_event_edge_ticks": float(group["event_edge_ticks"].mean()),
+                "mean_post_minus_pre_realized_edge": float(drift.mean()),
+                "worst_post_minus_pre_realized_edge": float(drift.min()),
+            }
+        )
+    return pd.DataFrame(rows)[columns].sort_values(
+        [
+            "adverse_post_edge_share",
+            "worst_post_minus_pre_realized_edge",
+            "mean_event_adverse_fill_probability",
+        ],
+        ascending=[False, True, False],
+        ignore_index=True,
+    )
+
+
+def _modal_window_regime(values: pd.Series, *, fallback: str) -> str:
+    if values.empty:
+        return fallback
+    counts = values.astype(str).value_counts(sort=True)
+    return str(counts.index[0])
 
 
 def passive_fill_event_toxicity_scorecard(
@@ -1482,6 +1563,9 @@ def _empty_passive_fill_event_windows() -> pd.DataFrame:
             "event_index",
             "event_side",
             "event_regime",
+            "pre_window_regime",
+            "post_window_regime",
+            "regime_transition",
             "event_fill_probability",
             "event_adverse_fill_probability",
             "event_edge_ticks",
@@ -1497,6 +1581,23 @@ def _empty_passive_fill_event_regime_summary() -> pd.DataFrame:
     return pd.DataFrame(
         columns=[
             "event_regime",
+            "events",
+            "adverse_post_edge_events",
+            "adverse_post_edge_share",
+            "mean_event_fill_probability",
+            "mean_event_adverse_fill_probability",
+            "mean_event_edge_ticks",
+            "mean_post_minus_pre_realized_edge",
+            "worst_post_minus_pre_realized_edge",
+        ]
+    )
+
+
+def _empty_passive_fill_event_transition_summary() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "regime_transition",
+            "event_regimes",
             "events",
             "adverse_post_edge_events",
             "adverse_post_edge_share",

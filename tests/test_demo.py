@@ -111,9 +111,11 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_execution_publishability_review_packet.csv").exists()
     assert (tmp_path / "passive_fill_event_windows.csv").exists()
     assert (tmp_path / "passive_fill_event_regime_summary.csv").exists()
+    assert (tmp_path / "passive_fill_event_transition_summary.csv").exists()
     assert (tmp_path / "passive_fill_event_toxicity_scorecard.json").exists()
     assert (tmp_path / "heldout_passive_fill_event_windows.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_regime_summary.csv").exists()
+    assert (tmp_path / "heldout_passive_fill_event_transition_summary.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_toxicity_scorecard.json").exists()
     assert (tmp_path / "passive_fill_calibration_curve.csv").exists()
     assert (tmp_path / "heldout_passive_fill_calibration_curve.csv").exists()
@@ -167,6 +169,17 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     event_toxicity = json.loads((tmp_path / "passive_fill_event_toxicity_scorecard.json").read_text())
     assert "event_toxicity_label" in event_toxicity
     assert "weighted_mean_post_minus_pre_realized_edge" in event_toxicity
+    event_transition_columns = set(
+        pd.read_csv(tmp_path / "passive_fill_event_transition_summary.csv", nrows=1).columns
+    )
+    assert {
+        "regime_transition",
+        "event_regimes",
+        "events",
+        "adverse_post_edge_share",
+        "mean_event_adverse_fill_probability",
+        "worst_post_minus_pre_realized_edge",
+    }.issubset(event_transition_columns)
     execution_packet_columns = set(
         pd.read_csv(tmp_path / "execution_publishability_review_packet.csv", nrows=1).columns
     )

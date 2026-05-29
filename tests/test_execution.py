@@ -11,6 +11,7 @@ from lcri_lab.execution import (
     passive_fill_calibration_summary,
     passive_fill_event_regime_summary,
     passive_fill_event_toxicity_scorecard,
+    passive_fill_event_transition_summary,
     passive_fill_event_window_diagnostics,
     execution_publishability_review_packet,
     passive_fill_edge_curve,
@@ -528,6 +529,65 @@ def test_passive_fill_event_window_diagnostics_tracks_side_specific_drift() -> N
     assert events["pre_realized_edge_sum"].tolist() == pytest.approx([0.20, -0.60, 1.00])
     assert events["post_realized_edge_sum"].tolist() == pytest.approx([-0.10, -0.20, 0.00])
     assert events["post_minus_pre_realized_edge"].tolist() == pytest.approx([-0.30, 0.40, -1.00])
+
+
+def test_passive_fill_event_window_diagnostics_labels_regime_transitions() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "long", "short", "short", "long", "short"],
+            "regime": ["calm", "calm", "thin", "stress", "stress", "stress"],
+            "bid_fill_probability": [0.10, 0.91, 0.20, 0.10, 0.92, 0.10],
+            "ask_fill_probability": [0.10, 0.20, 0.93, 0.92, 0.20, 0.10],
+            "bid_adverse_fill_probability": [0.05, 0.30, 0.20, 0.20, 0.35, 0.10],
+            "ask_adverse_fill_probability": [0.10, 0.20, 0.40, 0.45, 0.10, 0.10],
+            "execution_adjusted_edge_ticks": [0.10, 0.80, 0.70, 0.90, 0.50, 0.20],
+            "long_net_return_ticks": [0.20, 0.30, -0.20, -0.10, 0.40, 0.10],
+            "short_net_return_ticks": [-0.10, -0.20, 0.50, -0.50, -0.20, 0.10],
+        }
+    )
+
+    events = passive_fill_event_window_diagnostics(
+        frame,
+        threshold=0.90,
+        window=1,
+        regime_col="regime",
+    )
+
+    assert events["event_index"].tolist() == [1, 2, 3, 4]
+    assert events["pre_window_regime"].tolist() == ["calm", "calm", "thin", "stress"]
+    assert events["post_window_regime"].tolist() == ["thin", "stress", "stress", "stress"]
+    assert events["regime_transition"].tolist() == [
+        "calm->thin",
+        "calm->stress",
+        "thin->stress",
+        "stress->stress",
+    ]
+
+
+def test_passive_fill_event_transition_summary_ranks_transition_toxicity() -> None:
+    events = pd.DataFrame(
+        {
+            "event_regime": ["thin", "thin", "stress", "stress"],
+            "regime_transition": ["calm->thin", "calm->thin", "thin->stress", "stress->stress"],
+            "event_fill_probability": [0.90, 0.80, 0.95, 0.85],
+            "event_adverse_fill_probability": [0.30, 0.20, 0.60, 0.10],
+            "event_edge_ticks": [0.70, 0.50, 1.20, 0.40],
+            "post_minus_pre_realized_edge": [-0.40, -0.10, -1.00, 0.20],
+        }
+    )
+
+    summary = passive_fill_event_transition_summary(events)
+
+    assert summary["regime_transition"].tolist() == ["thin->stress", "calm->thin", "stress->stress"]
+    assert summary["events"].tolist() == [1, 2, 1]
+    assert summary["adverse_post_edge_share"].tolist() == pytest.approx([1.00, 1.00, 0.00])
+    assert summary["mean_event_adverse_fill_probability"].tolist() == pytest.approx([0.60, 0.25, 0.10])
+    assert summary["mean_post_minus_pre_realized_edge"].tolist() == pytest.approx([-1.00, -0.25, 0.20])
+
+
+def test_passive_fill_event_transition_summary_rejects_bad_events() -> None:
+    with pytest.raises(ValueError, match="missing passive fill event transition summary columns"):
+        passive_fill_event_transition_summary(pd.DataFrame({"event_regime": ["thin"]}))
 
 
 def test_passive_fill_event_regime_summary_ranks_adverse_execution_windows() -> None:
