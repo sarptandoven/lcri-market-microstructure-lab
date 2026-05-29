@@ -2,6 +2,7 @@
 
 from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.alpha import (
+    add_alpha_event_window_regimes,
     add_microstructure_alpha_stack,
     alpha_event_drift_gate,
     alpha_event_regime_summary,
@@ -9,6 +10,7 @@ from lcri_lab.alpha import (
     alpha_event_score_weighted_drift,
     alpha_event_window_diagnostics,
     alpha_event_window_lifecycle_summary,
+    alpha_event_window_regime_summary,
     alpha_event_window_summary,
     alpha_research_gate,
     alpha_toxicity_review_summary,
@@ -150,6 +152,7 @@ __all__ = [
     "passive_fill_event_window_diagnostics",
     "queue_position_fill_surface",
     "add_transaction_cost_labels",
+    "add_alpha_event_window_regimes",
     "add_microstructure_alpha_stack",
     "alpha_event_drift_gate",
     "alpha_event_regime_summary",
@@ -157,6 +160,7 @@ __all__ = [
     "alpha_event_score_weighted_drift",
     "alpha_event_window_diagnostics",
     "alpha_event_window_lifecycle_summary",
+    "alpha_event_window_regime_summary",
     "alpha_event_window_summary",
     "alpha_research_gate",
     "alpha_toxicity_review_summary",

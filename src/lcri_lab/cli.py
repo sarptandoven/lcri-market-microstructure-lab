@@ -73,12 +73,14 @@ from lcri_lab.evaluation import (
 )
 from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.alpha import (
+    add_alpha_event_window_regimes,
     add_microstructure_alpha_stack,
     alpha_event_drift_gate,
     alpha_event_regime_summary,
     alpha_event_release_review_packet,
     alpha_event_score_weighted_drift,
     alpha_event_window_diagnostics,
+    alpha_event_window_regime_summary,
     alpha_event_window_summary,
 )
 from lcri_lab.execution import (
@@ -456,6 +458,12 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     )
     transition_robustness = transition_robustness_summary(scored)
     heldout_transition_robustness = transition_robustness_summary(heldout_scored)
+    scored = add_alpha_event_window_regimes(scored, return_col="future_return_ticks")
+    heldout_scored = add_alpha_event_window_regimes(heldout_scored, return_col="future_return_ticks")
+    alpha_window_regime_summary = alpha_event_window_regime_summary(
+        scored,
+        return_col="future_return_ticks",
+    )
     alpha_events = alpha_event_window_diagnostics(
         scored,
         return_col="future_return_ticks",
@@ -604,6 +612,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "heldout_transition_robustness.json",
         "alpha_event_windows.csv",
         "alpha_event_regime_summary.csv",
+        "alpha_event_window_regime_summary.csv",
         "alpha_event_window_summary.json",
         "alpha_event_score_weighted_drift.json",
         "alpha_event_drift_gate.json",
@@ -805,6 +814,9 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     write_json(output / "heldout_transition_robustness.json", heldout_transition_robustness)
     alpha_events.to_csv(output / "alpha_event_windows.csv", index=False)
     alpha_event_regimes.to_csv(output / "alpha_event_regime_summary.csv", index=False)
+    alpha_window_regime_summary.to_csv(
+        output / "alpha_event_window_regime_summary.csv", index=False
+    )
     write_json(output / "alpha_event_window_summary.json", alpha_event_summary)
     write_json(output / "alpha_event_score_weighted_drift.json", alpha_weighted_drift)
     write_json(output / "alpha_event_drift_gate.json", alpha_drift_gate)
@@ -944,6 +956,7 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         heldout_lcri_reversal_transition_gate=heldout_reversal_transition_gate,
         heldout_transition_robustness=heldout_transition_robustness,
         alpha_event_release_review_packet=alpha_release_packet_for_summary,
+        alpha_event_window_regime_summary=alpha_window_regime_summary,
         alpha_event_window_summary=alpha_event_summary,
         alpha_event_drift_gate=alpha_drift_gate,
         alpha_event_review_verification_summary=alpha_event_verification_summary,

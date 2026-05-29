@@ -2,6 +2,7 @@ import pandas as pd
 import pytest
 
 from lcri_lab.alpha import (
+    add_alpha_event_window_regimes,
     add_microstructure_alpha_stack,
     alpha_event_drift_gate,
     alpha_event_regime_summary,
@@ -9,6 +10,7 @@ from lcri_lab.alpha import (
     alpha_event_score_weighted_drift,
     alpha_event_window_diagnostics,
     alpha_event_window_lifecycle_summary,
+    alpha_event_window_regime_summary,
     alpha_event_window_summary,
     alpha_research_gate,
     alpha_toxicity_review_summary,
@@ -166,6 +168,57 @@ def test_alpha_event_window_diagnostics_rejects_nonfinite_threshold() -> None:
 
     with pytest.raises(ValueError, match="threshold"):
         alpha_event_window_diagnostics(frame, threshold=float("nan"))
+
+
+def test_add_alpha_event_window_regimes_marks_pre_event_and_post_event_rows() -> None:
+    frame = pd.DataFrame(
+        {
+            "phase_shift_alpha": [0.0, 0.2, 1.4, 0.0, 0.3, 1.1, 0.0],
+            "microstructure_alpha_score": [0.1, 0.4, 2.0, 0.6, 0.5, 1.7, 0.2],
+            "gross_return_ticks": [1.0, 1.0, -2.0, -1.0, -1.0, -3.0, 2.0],
+        }
+    )
+
+    output = add_alpha_event_window_regimes(frame, window=1, threshold=1.0)
+
+    assert output["alpha_event_window_regime"].tolist() == [
+        "calm",
+        "pre_event",
+        "event",
+        "post_event",
+        "pre_event",
+        "event",
+        "post_event",
+    ]
+    assert output["alpha_event_distance"].tolist() == [-2, -1, 0, 1, -1, 0, 1]
+    assert output["alpha_event_window_position"].tolist() == pytest.approx(
+        [-2.0, -1.0, 0.0, 1.0, -1.0, 0.0, 1.0]
+    )
+
+
+def test_alpha_event_window_regime_summary_surfaces_adverse_pre_event_pockets() -> None:
+    frame = pd.DataFrame(
+        {
+            "phase_shift_alpha": [0.0, 1.2, 0.0, 0.0, 1.1, 0.0],
+            "microstructure_alpha_score": [1.0, 2.0, 0.5, 1.5, 3.0, 0.2],
+            "gross_return_ticks": [-1.0, -2.0, 1.0, -3.0, -4.0, 2.0],
+        }
+    )
+    labelled = add_alpha_event_window_regimes(frame, window=1, threshold=1.0)
+
+    summary = alpha_event_window_regime_summary(labelled)
+    pre = summary.set_index("alpha_event_window_regime").loc["pre_event"]
+
+    assert pre["rows"] == 2
+    assert pre["event_rows"] == 0
+    assert pre["mean_microstructure_alpha_score"] == pytest.approx(1.25)
+    assert pre["mean_forward_return_ticks"] == pytest.approx(-2.0)
+    assert pre["adverse_return_share"] == pytest.approx(1.0)
+
+
+def test_add_alpha_event_window_regimes_rejects_invalid_window() -> None:
+    with pytest.raises(ValueError, match="window"):
+        add_alpha_event_window_regimes(pd.DataFrame({"phase_shift_alpha": [1.0]}), window=0)
 
 
 def test_alpha_event_regime_summary_ranks_adverse_regimes() -> None:

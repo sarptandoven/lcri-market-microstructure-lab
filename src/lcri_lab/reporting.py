@@ -3431,6 +3431,7 @@ def write_research_summary(
     heldout_lcri_reversal_transition_gate: pd.DataFrame | None = None,
     heldout_transition_robustness: dict[str, Any] | None = None,
     alpha_event_release_review_packet: pd.DataFrame | None = None,
+    alpha_event_window_regime_summary: pd.DataFrame | None = None,
     alpha_event_window_summary: dict[str, Any] | None = None,
     alpha_event_drift_gate: dict[str, Any] | None = None,
     alpha_event_review_verification_summary: dict[str, Any] | None = None,
@@ -3658,6 +3659,12 @@ def write_research_summary(
                 "",
                 _markdown_table(alpha_event_release_review_packet)
                 if alpha_event_release_review_packet is not None
+                else "_Not generated._",
+                "",
+                "## Alpha event-window row regimes",
+                "",
+                _markdown_table(alpha_event_window_regime_summary)
+                if alpha_event_window_regime_summary is not None
                 else "_Not generated._",
                 "",
                 "## Alpha event window summary",
@@ -4013,6 +4020,7 @@ _RESEARCH_SUMMARY_ARTIFACT_SECTIONS = {
     "LCRI contradiction review packet": "lcri_contradiction_review_packet.csv",
     "LCRI contradiction review packet summary": "lcri_contradiction_review_packet_summary.json",
     "Alpha event release review packet": "alpha_event_release_review_packet.csv",
+    "Alpha event-window row regimes": "alpha_event_window_regime_summary.csv",
     "Alpha event window summary": "alpha_event_window_summary.json",
     "Alpha event drift gate": "alpha_event_drift_gate.json",
     "Alpha event review verification summary": "alpha_event_review_verification_summary.json",

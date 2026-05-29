@@ -315,6 +315,105 @@ def alpha_event_window_diagnostics(
     return pd.DataFrame(rows)
 
 
+def add_alpha_event_window_regimes(
+    frame: pd.DataFrame,
+    *,
+    event_col: str = "phase_shift_alpha",
+    score_col: str = "microstructure_alpha_score",
+    return_col: str = "gross_return_ticks",
+    window: int = 3,
+    threshold: float = 0.0,
+) -> pd.DataFrame:
+    """Label every row by proximity to alpha-toxicity event windows.
+
+    Event-window regimes turn sparse alpha-event diagnostics into row-level
+    strata: ``pre_event`` rows reveal pressure buildup before toxic thresholds,
+    ``event`` rows capture the threshold crossing itself, and ``post_event`` rows
+    capture immediate aftermath for evaluation and release-review slices.
+    """
+    _validate_event_regime_window(window)
+    if not np.isfinite(threshold):
+        raise ValueError("threshold must be finite")
+    _require_columns(frame, [event_col, score_col, return_col], label="alpha event window regime")
+
+    output = frame.copy()
+    data = output[[event_col, score_col, return_col]].copy()
+    for column in [event_col, score_col, return_col]:
+        data[column] = data[column].astype(float)
+    _require_finite(
+        [data[event_col], data[score_col], data[return_col]],
+        label="alpha event regime inputs",
+    )
+
+    event_positions = np.flatnonzero(data[event_col].to_numpy(dtype=float) > threshold)
+    if len(event_positions) == 0:
+        distance = np.full(len(output), len(output) + window, dtype=int)
+    else:
+        distance = np.array(
+            [_nearest_event_distance(position, event_positions) for position in range(len(output))]
+        )
+
+    regimes = np.select(
+        [
+            distance == 0,
+            (distance < 0) & (np.abs(distance) <= window),
+            (distance > 0) & (distance <= window),
+        ],
+        ["event", "pre_event", "post_event"],
+        default="calm",
+    )
+    output["alpha_event_distance"] = distance.astype(int)
+    output["alpha_event_window_position"] = distance.astype(float) / float(window)
+    output["alpha_event_window_regime"] = regimes.astype(str)
+    return output
+
+
+def alpha_event_window_regime_summary(
+    frame: pd.DataFrame,
+    *,
+    regime_col: str = "alpha_event_window_regime",
+    score_col: str = "microstructure_alpha_score",
+    return_col: str = "gross_return_ticks",
+) -> pd.DataFrame:
+    """Summarize alpha score and forward returns by event-window regime."""
+    columns = [
+        "alpha_event_window_regime",
+        "rows",
+        "event_rows",
+        "row_share",
+        "mean_microstructure_alpha_score",
+        "mean_forward_return_ticks",
+        "adverse_return_share",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    _require_columns(frame, [regime_col, score_col, return_col], label="alpha event window regime summary")
+    data = frame[[regime_col, score_col, return_col]].copy()
+    for column in [score_col, return_col]:
+        data[column] = data[column].astype(float)
+    _require_finite([data[score_col], data[return_col]], label="alpha event regime summary inputs")
+
+    total_rows = float(len(data))
+    rows = []
+    for regime, group in data.groupby(regime_col, sort=True):
+        returns = group[return_col]
+        rows.append(
+            {
+                "alpha_event_window_regime": str(regime),
+                "rows": int(len(group)),
+                "event_rows": int((group[regime_col].astype(str) == "event").sum()),
+                "row_share": _safe_divide(float(len(group)), total_rows),
+                "mean_microstructure_alpha_score": _finite_mean(group[score_col]),
+                "mean_forward_return_ticks": _finite_mean(returns),
+                "adverse_return_share": _safe_divide(float((returns < 0.0).sum()), float(len(group))),
+            }
+        )
+    return pd.DataFrame(rows)[columns].sort_values(
+        ["adverse_return_share", "mean_microstructure_alpha_score", "rows"],
+        ascending=[False, False, False],
+    ).reset_index(drop=True)
+
+
 def alpha_event_regime_summary(events: pd.DataFrame) -> pd.DataFrame:
     """Aggregate alpha event-window drift by event regime."""
     columns = [
@@ -704,6 +803,18 @@ def alpha_toxicity_review_summary(review_table: pd.DataFrame) -> dict[str, float
         "top_review_label": str(top["review_label"]),
         "top_toxicity_score": float(top["toxicity_score"]),
     }
+
+
+def _validate_event_regime_window(window: int) -> None:
+    if not isinstance(window, int) or isinstance(window, bool):
+        raise ValueError("window must be an integer")
+    if window < 1:
+        raise ValueError("window must be at least 1")
+
+
+def _nearest_event_distance(position: int, event_positions: np.ndarray) -> int:
+    signed = position - event_positions.astype(int)
+    return int(signed[np.argmin(np.abs(signed))])
 
 
 def _validate_window(window: int) -> None:

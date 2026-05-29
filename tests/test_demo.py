@@ -99,6 +99,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "lcri_evidence_release_checklist_summary.json").exists()
     assert (tmp_path / "alpha_event_windows.csv").exists()
     assert (tmp_path / "alpha_event_regime_summary.csv").exists()
+    assert (tmp_path / "alpha_event_window_regime_summary.csv").exists()
     assert (tmp_path / "alpha_event_window_summary.json").exists()
     assert (tmp_path / "alpha_event_score_weighted_drift.json").exists()
     assert (tmp_path / "alpha_event_drift_gate.json").exists()
@@ -134,6 +135,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "ask_fill_probability",
         "execution_adjusted_edge_ticks",
         "best_execution_side",
+        "alpha_event_window_regime",
+        "alpha_event_distance",
     }.issubset(sample_columns)
     execution_sample_columns = set(pd.read_csv(tmp_path / "execution_adjusted_sample.csv", nrows=1).columns)
     assert {
@@ -231,6 +234,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["lcri_gap_delta_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_transition_lift.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["alpha_event_release_review_packet.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["alpha_event_window_regime_summary.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["alpha_event_drift_gate.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["execution_adjusted_edge_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_execution_adjusted_edge_summary.json"]["size_bytes"] > 0
@@ -270,6 +274,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## LCRI evidence release checklist" in summary
     assert "## LCRI evidence release checklist summary" in summary
     assert "## Alpha event release review packet" in summary
+    assert "## Alpha event-window row regimes" in summary
     assert "## Alpha event drift gate" in summary
     assert "## Transition robustness" in summary
     assert "## Heldout transition lift" in summary
