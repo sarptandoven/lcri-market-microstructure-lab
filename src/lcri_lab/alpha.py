@@ -359,6 +359,85 @@ def alpha_event_regime_summary(events: pd.DataFrame) -> pd.DataFrame:
     ).reset_index(drop=True)
 
 
+def alpha_event_window_lifecycle_summary(events: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate event windows by pre/post return lifecycle regime.
+
+    This separates events that merely continue favorable drift from the more
+    publishability-relevant failure mode where pre-event alpha buildup reverses
+    into adverse post-event returns.
+    """
+    columns = [
+        "event_lifecycle_regime",
+        "events",
+        "event_share",
+        "dominant_event_regime",
+        "adverse_post_drift_events",
+        "adverse_post_drift_share",
+        "mean_pre_return_sum",
+        "mean_post_return_sum",
+        "mean_post_minus_pre_return",
+        "mean_event_score",
+    ]
+    if events.empty:
+        return pd.DataFrame(columns=columns)
+
+    required = [
+        "event_score",
+        "pre_return_sum",
+        "post_return_sum",
+        "post_minus_pre_return",
+    ]
+    optional_regime = "event_regime" in events.columns
+    if optional_regime:
+        required.append("event_regime")
+    _require_columns(events, required, label="alpha event lifecycle summary")
+    data = events[required].copy()
+    numeric_columns = ["event_score", "pre_return_sum", "post_return_sum", "post_minus_pre_return"]
+    for column in numeric_columns:
+        data[column] = data[column].astype(float)
+    _require_finite([data[column] for column in numeric_columns], label="alpha event lifecycle inputs")
+
+    pre = data["pre_return_sum"]
+    post = data["post_return_sum"]
+    data["event_lifecycle_regime"] = np.select(
+        [
+            (pre > 0.0) & (post < 0.0),
+            (pre > 0.0) & (post >= 0.0),
+            (pre <= 0.0) & (post < 0.0),
+        ],
+        ["buildup_reversal", "continuation", "decay_breakdown"],
+        default="relief_rebound",
+    )
+
+    total_events = float(len(data))
+    rows = []
+    for lifecycle, group in data.groupby("event_lifecycle_regime", sort=True):
+        drift = group["post_minus_pre_return"]
+        adverse = int((drift < 0.0).sum())
+        if optional_regime:
+            dominant = str(group["event_regime"].astype(str).value_counts().sort_values(ascending=False).index[0])
+        else:
+            dominant = "all"
+        rows.append(
+            {
+                "event_lifecycle_regime": str(lifecycle),
+                "events": int(len(group)),
+                "event_share": _safe_divide(float(len(group)), total_events),
+                "dominant_event_regime": dominant,
+                "adverse_post_drift_events": adverse,
+                "adverse_post_drift_share": _safe_divide(float(adverse), float(len(group))),
+                "mean_pre_return_sum": _finite_mean(group["pre_return_sum"]),
+                "mean_post_return_sum": _finite_mean(group["post_return_sum"]),
+                "mean_post_minus_pre_return": _finite_mean(drift),
+                "mean_event_score": _finite_mean(group["event_score"]),
+            }
+        )
+    return pd.DataFrame(rows)[columns].sort_values(
+        ["adverse_post_drift_share", "mean_post_minus_pre_return", "event_share"],
+        ascending=[False, True, False],
+    ).reset_index(drop=True)
+
+
 def alpha_event_window_summary(events: pd.DataFrame) -> dict[str, float | int | str]:
     """Summarize alpha event-window drift for release review."""
     if events.empty:

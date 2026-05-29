@@ -202,6 +202,11 @@ def test_public_api_exports_alpha_event_score_weighted_drift() -> None:
     assert "alpha_event_score_weighted_drift" in lcri_lab.__all__
 
 
+def test_public_api_exports_alpha_event_lifecycle_summary() -> None:
+    assert callable(lcri_lab.alpha_event_window_lifecycle_summary)
+    assert "alpha_event_window_lifecycle_summary" in lcri_lab.__all__
+
+
 def test_public_api_exports_alpha_event_release_review_packet() -> None:
     assert callable(lcri_lab.alpha_event_release_review_packet)
     assert "alpha_event_release_review_packet" in lcri_lab.__all__

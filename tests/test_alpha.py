@@ -8,6 +8,7 @@ from lcri_lab.alpha import (
     alpha_event_release_review_packet,
     alpha_event_score_weighted_drift,
     alpha_event_window_diagnostics,
+    alpha_event_window_lifecycle_summary,
     alpha_event_window_summary,
     alpha_research_gate,
     alpha_toxicity_review_summary,
@@ -183,6 +184,46 @@ def test_alpha_event_regime_summary_ranks_adverse_regimes() -> None:
     assert summary.iloc[0]["adverse_post_drift_share"] == pytest.approx(1.0)
     assert summary.iloc[0]["mean_post_minus_pre_return"] == pytest.approx(-2.0)
     assert summary.iloc[0]["mean_event_score"] == pytest.approx(1.5)
+
+
+def test_alpha_event_window_lifecycle_summary_classifies_toxic_reversals() -> None:
+    events = pd.DataFrame(
+        {
+            "event_regime": ["toxic", "toxic", "calm", "calm"],
+            "event_score": [3.0, 1.0, 0.5, 0.7],
+            "pre_return_sum": [2.0, 1.0, -1.0, 0.0],
+            "post_return_sum": [-3.0, -2.0, 2.0, 1.0],
+            "post_minus_pre_return": [-5.0, -3.0, 3.0, 1.0],
+        }
+    )
+
+    summary = alpha_event_window_lifecycle_summary(events)
+
+    toxic = summary.set_index("event_lifecycle_regime").loc["buildup_reversal"]
+    assert toxic["events"] == 2
+    assert toxic["event_share"] == pytest.approx(0.5)
+    assert toxic["dominant_event_regime"] == "toxic"
+    assert toxic["adverse_post_drift_share"] == pytest.approx(1.0)
+    assert toxic["mean_post_minus_pre_return"] == pytest.approx(-4.0)
+    assert toxic["mean_event_score"] == pytest.approx(2.0)
+
+
+def test_alpha_event_window_lifecycle_summary_handles_empty_events() -> None:
+    summary = alpha_event_window_lifecycle_summary(pd.DataFrame())
+
+    assert list(summary.columns) == [
+        "event_lifecycle_regime",
+        "events",
+        "event_share",
+        "dominant_event_regime",
+        "adverse_post_drift_events",
+        "adverse_post_drift_share",
+        "mean_pre_return_sum",
+        "mean_post_return_sum",
+        "mean_post_minus_pre_return",
+        "mean_event_score",
+    ]
+    assert summary.empty
 
 
 def test_alpha_event_window_summary_surfaces_adverse_drift() -> None:
