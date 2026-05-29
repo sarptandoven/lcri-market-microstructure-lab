@@ -15,6 +15,7 @@ from lcri_lab.execution import (
     passive_fill_edge_curve,
     queue_position_edge_decay,
     queue_position_fill_surface,
+    queue_position_fraction_sweep,
 )
 
 
@@ -226,6 +227,41 @@ def test_queue_position_fill_surface_rejects_invalid_inputs() -> None:
         queue_position_fill_surface(pd.DataFrame(), probability_bins=0)
     with pytest.raises(ValueError, match="missing queue position fill surface columns"):
         queue_position_fill_surface(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_fraction_sweep_quantifies_quote_placement_decay() -> None:
+    frame = _book_frame().assign(
+        lcri_probability=[0.25, 0.75],
+        long_net_return_ticks=[1.0, 1.5],
+        short_net_return_ticks=[1.5, 1.0],
+    )
+
+    sweep = queue_position_fraction_sweep(
+        frame,
+        fractions=[0.0, 0.5, 1.0],
+        levels=2,
+        fill_config=FillProbabilityConfig(adverse_selection_scale=0.25),
+    )
+
+    assert sweep["queue_position_fraction"].tolist() == pytest.approx([0.0, 0.5, 1.0])
+    assert sweep["rows"].tolist() == [2, 2, 2]
+    assert sweep["mean_bid_queue_share"].is_monotonic_increasing
+    assert sweep["mean_ask_queue_share"].is_monotonic_increasing
+    assert sweep["mean_bid_fill_probability"].is_monotonic_decreasing
+    assert sweep["mean_ask_fill_probability"].is_monotonic_decreasing
+    assert sweep["mean_execution_adjusted_edge_ticks"].iloc[0] > sweep[
+        "mean_execution_adjusted_edge_ticks"
+    ].iloc[-1]
+    assert sweep["tradable_share"].between(0.0, 1.0).all()
+    assert sweep["abstain_share"].between(0.0, 1.0).all()
+    assert set(sweep["dominant_execution_side"]).issubset({"long", "short", "none"})
+
+
+def test_queue_position_fraction_sweep_rejects_invalid_fractions() -> None:
+    with pytest.raises(ValueError, match="fractions"):
+        queue_position_fraction_sweep(_book_frame(), fractions=[])
+    with pytest.raises(ValueError, match="queue_position_fraction"):
+        queue_position_fraction_sweep(_book_frame(), fractions=[-0.1])
 
 
 def test_queue_position_edge_decay_quantifies_deep_queue_degradation() -> None:

@@ -254,6 +254,89 @@ def add_execution_adjusted_edge(
     return output
 
 
+def queue_position_fraction_sweep(
+    frame: pd.DataFrame,
+    *,
+    fractions: list[float] | tuple[float, ...] = (0.0, 0.25, 0.50, 0.75, 1.0),
+    levels: int = 5,
+    fill_config: FillProbabilityConfig | None = None,
+    pressure_col: str = "lcri",
+    signal_col: str = "lcri",
+    probability_col: str = "lcri_probability",
+    long_net_col: str = "long_net_return_ticks",
+    short_net_col: str = "short_net_return_ticks",
+) -> pd.DataFrame:
+    """Stress-test passive execution quality across assumed queue placement.
+
+    Snapshot data cannot observe true order priority, so passive fill quality should
+    not be reported for a single hard-coded queue assumption. This sweep recomputes
+    queue-ahead features, passive fill odds, and execution-adjusted edge at several
+    join-depth fractions, producing a placement-sensitivity artifact for research
+    review and demos.
+    """
+    if isinstance(fractions, (str, bytes)):
+        raise ValueError("fractions must be a non-empty sequence of finite values")
+    fractions = list(fractions)
+    if not fractions:
+        raise ValueError("fractions must be a non-empty sequence")
+    for fraction in fractions:
+        if not math.isfinite(float(fraction)):
+            raise ValueError("queue_position_fraction values must be finite")
+        if not 0.0 <= float(fraction) <= 1.0:
+            raise ValueError("queue_position_fraction values must be in [0.0, 1.0]")
+    if frame.empty:
+        return _empty_queue_position_fraction_sweep()
+
+    rows: list[dict[str, float | int | str]] = []
+    for fraction in fractions:
+        queued = add_queue_position_features(
+            frame,
+            levels=levels,
+            queue_position_fraction=float(fraction),
+        )
+        filled = add_passive_fill_probabilities(
+            queued,
+            config=fill_config,
+            pressure_col=pressure_col,
+        )
+        executed = add_execution_adjusted_edge(
+            filled,
+            signal_col=signal_col,
+            probability_col=probability_col,
+            long_net_col=long_net_col,
+            short_net_col=short_net_col,
+        )
+        summary = execution_adjusted_edge_summary(executed)
+        rows_count = int(summary["rows"])
+        abstain_rows = int(summary["abstain_rows"])
+        rows.append(
+            {
+                "queue_position_fraction": float(fraction),
+                "rows": rows_count,
+                "mean_bid_queue_share": float(executed["bid_queue_share"].mean()),
+                "mean_ask_queue_share": float(executed["ask_queue_share"].mean()),
+                "mean_bid_fill_probability": float(summary["mean_bid_fill_probability"]),
+                "mean_ask_fill_probability": float(summary["mean_ask_fill_probability"]),
+                "mean_fill_probability_imbalance": float(
+                    executed["fill_probability_imbalance"].mean()
+                ),
+                "mean_bid_adverse_fill_probability": float(
+                    executed["bid_adverse_fill_probability"].mean()
+                ),
+                "mean_ask_adverse_fill_probability": float(
+                    executed["ask_adverse_fill_probability"].mean()
+                ),
+                "mean_execution_adjusted_edge_ticks": float(
+                    summary["mean_execution_adjusted_edge_ticks"]
+                ),
+                "tradable_share": float(summary["tradable_share"]),
+                "abstain_share": float(abstain_rows / rows_count) if rows_count else 0.0,
+                "dominant_execution_side": str(summary["dominant_execution_side"]),
+            }
+        )
+    return pd.DataFrame(rows)[list(_empty_queue_position_fraction_sweep().columns)]
+
+
 def passive_fill_edge_curve(
     frame: pd.DataFrame,
     *,
@@ -903,6 +986,26 @@ def passive_fill_event_regime_summary(events: pd.DataFrame) -> pd.DataFrame:
         ["adverse_post_edge_share", "worst_post_minus_pre_realized_edge"],
         ascending=[False, True],
         ignore_index=True,
+    )
+
+
+def _empty_queue_position_fraction_sweep() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "queue_position_fraction",
+            "rows",
+            "mean_bid_queue_share",
+            "mean_ask_queue_share",
+            "mean_bid_fill_probability",
+            "mean_ask_fill_probability",
+            "mean_fill_probability_imbalance",
+            "mean_bid_adverse_fill_probability",
+            "mean_ask_adverse_fill_probability",
+            "mean_execution_adjusted_edge_ticks",
+            "tradable_share",
+            "abstain_share",
+            "dominant_execution_side",
+        ]
     )
 
 

@@ -1,7 +1,12 @@
 import numpy as np
 import pytest
 
-from lcri_lab.baseline import LiquidityBaseline, compute_lcri, design_feature_names
+from lcri_lab.baseline import (
+    LiquidityBaseline,
+    baseline_component_attribution,
+    compute_lcri,
+    design_feature_names,
+)
 from lcri_lab.features import compute_features
 from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
@@ -49,6 +54,39 @@ def test_nonlinear_liquidity_basis_can_absorb_convex_stress_response() -> None:
 
     assert len(baseline.coefficients) == len(design_feature_names()) + 1
     assert float(np.sqrt(np.mean(residual**2))) < 1e-6
+
+
+def test_baseline_component_attribution_exposes_nonlinear_liquidity_dominance() -> None:
+    books = simulate_order_books(SimulationConfig(rows=700, seed=14))
+    features = compute_features(books)
+    features["raw_imbalance"] = (
+        0.09 * features["spread_ticks"].to_numpy(dtype=float) ** 2
+        + 0.30 * features["liquidity_void_ratio"].to_numpy(dtype=float)
+        * features["volatility"].to_numpy(dtype=float)
+        - 0.25 / (1.0 + features["replenishment_rate"].to_numpy(dtype=float))
+    )
+    baseline = LiquidityBaseline(ridge=1e-8).fit(features)
+
+    attribution = baseline_component_attribution(features, baseline)
+    component_share = attribution.groupby("component")["contribution_share"].sum()
+    top = attribution.iloc[0]
+
+    assert attribution.columns.tolist() == [
+        "component",
+        "feature",
+        "coefficient",
+        "mean_contribution",
+        "mean_abs_contribution",
+        "contribution_share",
+    ]
+    assert component_share["nonlinear_liquidity"] > 0.90
+    assert top["component"] == "nonlinear_liquidity"
+    assert top["feature"] in {
+        "spread_stress_squared",
+        "liquidity_void_x_volatility",
+        "replenishment_inverse",
+    }
+    assert attribution["contribution_share"].sum() == pytest.approx(1.0)
 
 
 def test_baseline_rejects_invalid_ridge() -> None:

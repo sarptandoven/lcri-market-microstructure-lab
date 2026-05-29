@@ -89,6 +89,74 @@ def design_feature_names() -> list[str]:
     return [*feature_columns(), *INTERACTION_FEATURES, *NONLINEAR_LIQUIDITY_FEATURES]
 
 
+def baseline_component_attribution(frame: pd.DataFrame, baseline: LiquidityBaseline) -> pd.DataFrame:
+    """Attribute a fitted baseline's prediction to core, interaction, and nonlinear terms.
+
+    LCRI is only as publishable as its neutralization model: if residual imbalance is
+    mostly explained by convex stress terms, reviewers need to know the signal is
+    not just a linear liquidity proxy in disguise. This diagnostic decomposes the
+    standardized ridge prediction into feature-level absolute contribution shares.
+    """
+    columns = [
+        "component",
+        "feature",
+        "coefficient",
+        "mean_contribution",
+        "mean_abs_contribution",
+        "contribution_share",
+    ]
+    if baseline.coefficients is None or baseline.mean_ is None or baseline.scale_ is None:
+        raise RuntimeError("baseline must be fit before attribution")
+    feature_names = design_feature_names()
+    expected_shape = (len(feature_names) + 1,)
+    if baseline.coefficients.shape != expected_shape:
+        raise ValueError("baseline coefficients do not match design feature names")
+    if baseline.mean_.shape != (len(feature_names),) or baseline.scale_.shape != (len(feature_names),):
+        raise ValueError("baseline normalization arrays do not match design feature names")
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    x = _design_matrix(frame)
+    xz = (x - baseline.mean_) / baseline.scale_
+    contributions = xz * baseline.coefficients[1:]
+    mean_contribution = contributions.mean(axis=0)
+    mean_abs_contribution = np.abs(contributions).mean(axis=0)
+    denominator = float(mean_abs_contribution.sum())
+    shares = mean_abs_contribution / denominator if denominator > 0.0 else np.zeros_like(mean_abs_contribution)
+
+    rows = [
+        {
+            "component": _component_for_feature(feature),
+            "feature": feature,
+            "coefficient": float(coefficient),
+            "mean_contribution": float(mean_value),
+            "mean_abs_contribution": float(abs_value),
+            "contribution_share": float(share),
+        }
+        for feature, coefficient, mean_value, abs_value, share in zip(
+            feature_names,
+            baseline.coefficients[1:],
+            mean_contribution,
+            mean_abs_contribution,
+            shares,
+            strict=True,
+        )
+    ]
+    return pd.DataFrame(rows, columns=columns).sort_values(
+        ["contribution_share", "mean_abs_contribution", "feature"],
+        ascending=[False, False, True],
+        ignore_index=True,
+    )
+
+
+def _component_for_feature(feature: str) -> str:
+    if feature in NONLINEAR_LIQUIDITY_FEATURES:
+        return "nonlinear_liquidity"
+    if feature in INTERACTION_FEATURES:
+        return "interaction"
+    return "core"
+
+
 def _design_matrix(frame: pd.DataFrame) -> np.ndarray:
     cols = feature_columns()
     missing = [col for col in cols if col not in frame.columns]

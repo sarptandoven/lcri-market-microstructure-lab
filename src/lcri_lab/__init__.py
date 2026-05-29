@@ -17,7 +17,12 @@ from lcri_lab.alpha import (
     alpha_toxicity_review_table,
     microstructure_alpha_regime_summary,
 )
-from lcri_lab.baseline import LiquidityBaseline, compute_lcri, design_feature_names
+from lcri_lab.baseline import (
+    LiquidityBaseline,
+    baseline_component_attribution,
+    compute_lcri,
+    design_feature_names,
+)
 from lcri_lab.evaluation import (
     absorption_regime_metrics,
     calibration_curve,
@@ -107,6 +112,7 @@ from lcri_lab.execution import (
     passive_fill_event_window_diagnostics,
     queue_position_edge_decay,
     queue_position_fill_surface,
+    queue_position_fraction_sweep,
 )
 from lcri_lab.labels import add_transaction_cost_labels
 from lcri_lab.memory import (
@@ -153,6 +159,7 @@ __all__ = [
     "passive_fill_event_window_diagnostics",
     "queue_position_edge_decay",
     "queue_position_fill_surface",
+    "queue_position_fraction_sweep",
     "add_transaction_cost_labels",
     "add_alpha_event_window_regimes",
     "add_microstructure_alpha_stack",
@@ -192,6 +199,8 @@ __all__ = [
     "publishability_margin_diagnostics",
     "publishability_margin_summary",
     "SimulationConfig",
+    "baseline_component_attribution",
+    "compute_lcri",
     "calibration_curve",
     "calibration_error_summary",
     "calibration_fracture_gate_decision",
