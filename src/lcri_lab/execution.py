@@ -337,6 +337,114 @@ def queue_position_fraction_sweep(
     return pd.DataFrame(rows)[list(_empty_queue_position_fraction_sweep().columns)]
 
 
+def queue_position_capacity_frontier(
+    sweep: pd.DataFrame,
+    *,
+    min_edge_ticks: float = 0.0,
+    min_tradable_share: float = 0.50,
+) -> dict[str, float | int | str]:
+    """Find the deepest queue placement that preserves executable LCRI edge.
+
+    ``queue_position_fraction_sweep`` shows how passive edge decays as assumed
+    queue priority worsens. This reducer turns that curve into an actionable
+    capacity frontier: the deepest quote-placement fraction that still clears a
+    minimum execution-adjusted edge and tradable-share gate. It is intentionally
+    threshold-based so publishability/demo artifacts can state whether alpha only
+    works at unrealistic front-of-queue placement or survives meaningful queue
+    depth.
+    """
+    if not math.isfinite(min_edge_ticks):
+        raise ValueError("min_edge_ticks must be finite")
+    if not math.isfinite(min_tradable_share):
+        raise ValueError("min_tradable_share must be finite")
+    if not 0.0 <= min_tradable_share <= 1.0:
+        raise ValueError("min_tradable_share must be in [0.0, 1.0]")
+
+    empty = _empty_queue_position_capacity_frontier()
+    if sweep.empty:
+        return empty
+
+    required = {
+        "queue_position_fraction",
+        "rows",
+        "mean_execution_adjusted_edge_ticks",
+        "tradable_share",
+        "dominant_execution_side",
+    }
+    _require_columns(sweep, required, "queue position capacity frontier")
+    values = _finite_values(
+        sweep,
+        [
+            "queue_position_fraction",
+            "rows",
+            "mean_execution_adjusted_edge_ticks",
+            "tradable_share",
+        ],
+        "queue position capacity frontier",
+    )
+    if not values["queue_position_fraction"].between(0.0, 1.0).all():
+        raise ValueError("queue position capacity frontier fractions must be in [0, 1]")
+    if (values["rows"] < 0.0).any():
+        raise ValueError("queue position capacity frontier rows must be non-negative")
+    if not values["tradable_share"].between(0.0, 1.0).all():
+        raise ValueError("queue position capacity frontier tradable shares must be in [0, 1]")
+
+    data = values.copy()
+    data["dominant_execution_side"] = sweep["dominant_execution_side"].astype(str)
+    data = data.sort_values("queue_position_fraction", ignore_index=True)
+    front = data.iloc[0]
+    viable = data[
+        (data["mean_execution_adjusted_edge_ticks"] >= min_edge_ticks)
+        & (data["tradable_share"] >= min_tradable_share)
+    ]
+
+    if viable.empty:
+        result = empty.copy()
+        result.update(
+            {
+                "rows": int(len(data)),
+                "front_queue_position_fraction": float(front["queue_position_fraction"]),
+                "front_mean_execution_adjusted_edge_ticks": float(
+                    front["mean_execution_adjusted_edge_ticks"]
+                ),
+                "front_tradable_share": float(front["tradable_share"]),
+                "capacity_label": "no_viable_passive_capacity",
+            }
+        )
+        return result
+
+    capacity = viable.iloc[-1]
+    edge_decay = float(
+        front["mean_execution_adjusted_edge_ticks"]
+        - capacity["mean_execution_adjusted_edge_ticks"]
+    )
+    tradable_decay = float(front["tradable_share"] - capacity["tradable_share"])
+    max_fraction = float(capacity["queue_position_fraction"])
+    result = {
+        "rows": int(len(data)),
+        "viable_rows": int(len(viable)),
+        "front_queue_position_fraction": float(front["queue_position_fraction"]),
+        "max_viable_queue_position_fraction": max_fraction,
+        "front_mean_execution_adjusted_edge_ticks": float(
+            front["mean_execution_adjusted_edge_ticks"]
+        ),
+        "max_viable_mean_execution_adjusted_edge_ticks": float(
+            capacity["mean_execution_adjusted_edge_ticks"]
+        ),
+        "edge_decay_to_capacity_ticks": edge_decay,
+        "front_tradable_share": float(front["tradable_share"]),
+        "max_viable_tradable_share": float(capacity["tradable_share"]),
+        "tradable_share_decay_to_capacity": tradable_decay,
+        "dominant_execution_side_at_capacity": str(capacity["dominant_execution_side"]),
+        "capacity_label": _queue_capacity_label(
+            max_fraction=max_fraction,
+            edge_decay=edge_decay,
+            tradable_decay=tradable_decay,
+        ),
+    }
+    return result
+
+
 def passive_fill_edge_curve(
     frame: pd.DataFrame,
     *,
@@ -1007,6 +1115,31 @@ def _empty_queue_position_fraction_sweep() -> pd.DataFrame:
             "dominant_execution_side",
         ]
     )
+
+
+def _empty_queue_position_capacity_frontier() -> dict[str, float | int | str]:
+    return {
+        "rows": 0,
+        "viable_rows": 0,
+        "front_queue_position_fraction": 0.0,
+        "max_viable_queue_position_fraction": 0.0,
+        "front_mean_execution_adjusted_edge_ticks": 0.0,
+        "max_viable_mean_execution_adjusted_edge_ticks": 0.0,
+        "edge_decay_to_capacity_ticks": 0.0,
+        "front_tradable_share": 0.0,
+        "max_viable_tradable_share": 0.0,
+        "tradable_share_decay_to_capacity": 0.0,
+        "dominant_execution_side_at_capacity": "none",
+        "capacity_label": "empty_sweep",
+    }
+
+
+def _queue_capacity_label(*, max_fraction: float, edge_decay: float, tradable_decay: float) -> str:
+    if max_fraction >= 0.75 and edge_decay <= 0.25 and tradable_decay <= 0.15:
+        return "deep_queue_resilient_capacity"
+    if max_fraction >= 0.50:
+        return "queue_capacity_constrained"
+    return "front_queue_only_capacity"
 
 
 def _empty_passive_fill_edge_curve() -> pd.DataFrame:

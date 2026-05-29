@@ -16,6 +16,7 @@ from lcri_lab.execution import (
     queue_position_edge_decay,
     queue_position_fill_surface,
     queue_position_fraction_sweep,
+    queue_position_capacity_frontier,
 )
 
 
@@ -262,6 +263,70 @@ def test_queue_position_fraction_sweep_rejects_invalid_fractions() -> None:
         queue_position_fraction_sweep(_book_frame(), fractions=[])
     with pytest.raises(ValueError, match="queue_position_fraction"):
         queue_position_fraction_sweep(_book_frame(), fractions=[-0.1])
+
+
+def test_queue_position_capacity_frontier_finds_deepest_viable_quote_placement() -> None:
+    sweep = pd.DataFrame(
+        {
+            "queue_position_fraction": [0.0, 0.25, 0.50, 0.75, 1.0],
+            "rows": [100, 100, 100, 100, 100],
+            "mean_bid_fill_probability": [0.82, 0.74, 0.65, 0.52, 0.40],
+            "mean_ask_fill_probability": [0.78, 0.70, 0.61, 0.48, 0.36],
+            "mean_execution_adjusted_edge_ticks": [0.90, 0.72, 0.51, 0.18, -0.05],
+            "tradable_share": [0.94, 0.88, 0.74, 0.45, 0.20],
+            "abstain_share": [0.06, 0.12, 0.26, 0.55, 0.80],
+            "dominant_execution_side": ["long", "long", "long", "short", "short"],
+        }
+    )
+
+    frontier = queue_position_capacity_frontier(
+        sweep,
+        min_edge_ticks=0.50,
+        min_tradable_share=0.70,
+    )
+
+    assert frontier == {
+        "rows": 5,
+        "viable_rows": 3,
+        "front_queue_position_fraction": pytest.approx(0.0),
+        "max_viable_queue_position_fraction": pytest.approx(0.50),
+        "front_mean_execution_adjusted_edge_ticks": pytest.approx(0.90),
+        "max_viable_mean_execution_adjusted_edge_ticks": pytest.approx(0.51),
+        "edge_decay_to_capacity_ticks": pytest.approx(0.39),
+        "front_tradable_share": pytest.approx(0.94),
+        "max_viable_tradable_share": pytest.approx(0.74),
+        "tradable_share_decay_to_capacity": pytest.approx(0.20),
+        "dominant_execution_side_at_capacity": "long",
+        "capacity_label": "queue_capacity_constrained",
+    }
+
+
+def test_queue_position_capacity_frontier_labels_no_viable_capacity() -> None:
+    sweep = pd.DataFrame(
+        {
+            "queue_position_fraction": [0.0, 0.5],
+            "rows": [10, 10],
+            "mean_bid_fill_probability": [0.40, 0.30],
+            "mean_ask_fill_probability": [0.35, 0.20],
+            "mean_execution_adjusted_edge_ticks": [0.10, -0.10],
+            "tradable_share": [0.40, 0.20],
+            "abstain_share": [0.60, 0.80],
+            "dominant_execution_side": ["none", "none"],
+        }
+    )
+
+    frontier = queue_position_capacity_frontier(sweep, min_edge_ticks=0.50, min_tradable_share=0.70)
+
+    assert frontier["viable_rows"] == 0
+    assert frontier["max_viable_queue_position_fraction"] == pytest.approx(0.0)
+    assert frontier["capacity_label"] == "no_viable_passive_capacity"
+
+
+def test_queue_position_capacity_frontier_rejects_invalid_inputs() -> None:
+    with pytest.raises(ValueError, match="min_tradable_share"):
+        queue_position_capacity_frontier(pd.DataFrame(), min_tradable_share=1.5)
+    with pytest.raises(ValueError, match="missing queue position capacity frontier columns"):
+        queue_position_capacity_frontier(pd.DataFrame({"queue_position_fraction": [0.0]}))
 
 
 def test_queue_position_edge_decay_quantifies_deep_queue_degradation() -> None:
