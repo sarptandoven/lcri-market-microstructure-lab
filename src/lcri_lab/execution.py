@@ -349,6 +349,153 @@ def passive_fill_edge_curve(
     return pd.DataFrame(rows)[list(_empty_passive_fill_edge_curve().columns)]
 
 
+def passive_fill_calibration_curve(
+    frame: pd.DataFrame,
+    *,
+    bins: int = 5,
+    side_col: str = "best_execution_side",
+    regime_col: str | None = None,
+    bid_realized_col: str = "bid_realized_fill",
+    ask_realized_col: str = "ask_realized_fill",
+) -> pd.DataFrame:
+    """Calibrate side-specific passive fill probabilities against realized fills.
+
+    Rows are reduced to executable ``long``/``short`` decisions, mapped to the
+    matching bid/ask predicted fill probability and realized fill flag, then
+    rank-binned within each regime. This is the bridge from the snapshot proxy to
+    event-level add/cancel/trade validation: high predicted buckets should carry
+    higher realized fill rates with small calibration error and Brier loss.
+    """
+    if not isinstance(bins, int) or isinstance(bins, bool):
+        raise ValueError("bins must be an integer")
+    if bins < 1:
+        raise ValueError("bins must be at least 1")
+
+    required = {
+        side_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        bid_realized_col,
+        ask_realized_col,
+    }
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(frame, required, "passive fill calibration")
+    if frame.empty:
+        return _empty_passive_fill_calibration_curve()
+
+    values = _finite_values(
+        frame,
+        ["bid_fill_probability", "ask_fill_probability", bid_realized_col, ask_realized_col],
+        "passive fill calibration",
+    )
+    side = frame[side_col].astype(str)
+    tradable = side.isin(["long", "short"])
+    if not bool(tradable.any()):
+        return _empty_passive_fill_calibration_curve()
+
+    selected = pd.DataFrame(index=frame.index[tradable])
+    selected_side = side.loc[tradable]
+    selected["side"] = selected_side
+    selected["regime"] = (
+        frame.loc[tradable, regime_col].astype(str) if regime_col is not None else "all"
+    )
+    selected["predicted_fill_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_fill_probability"],
+        values.loc[tradable, "ask_fill_probability"],
+    )
+    selected["realized_fill"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, bid_realized_col],
+        values.loc[tradable, ask_realized_col],
+    )
+    if not selected["realized_fill"].between(0.0, 1.0).all():
+        raise ValueError("passive fill calibration realized fills must be in [0, 1]")
+    if not selected["predicted_fill_probability"].between(0.0, 1.0).all():
+        raise ValueError("passive fill calibration probabilities must be in [0, 1]")
+
+    rows: list[dict[str, float | int | str]] = []
+    for regime, regime_group in selected.groupby("regime", sort=True):
+        regime_group = regime_group.copy()
+        regime_group["bin"] = _rank_probability_bins(
+            regime_group["predicted_fill_probability"], bins
+        )
+        for bin_id, group in regime_group.groupby("bin", sort=True):
+            predicted = group["predicted_fill_probability"]
+            realized = group["realized_fill"]
+            fill_rate = float(realized.mean())
+            mean_prediction = float(predicted.mean())
+            error = fill_rate - mean_prediction
+            rows.append(
+                {
+                    "regime": str(regime),
+                    "bin": int(bin_id),
+                    "rows": int(len(group)),
+                    "long_rows": int((group["side"] == "long").sum()),
+                    "short_rows": int((group["side"] == "short").sum()),
+                    "mean_predicted_fill_probability": mean_prediction,
+                    "realized_fill_rate": fill_rate,
+                    "calibration_error": error,
+                    "absolute_calibration_error": abs(error),
+                    "brier_score": float(((predicted - realized) ** 2).mean()),
+                }
+            )
+    return pd.DataFrame(rows)[list(_empty_passive_fill_calibration_curve().columns)]
+
+
+def passive_fill_calibration_summary(curve: pd.DataFrame) -> dict[str, float | int | str]:
+    """Summarize passive-fill calibration curve quality with row weighting."""
+    if curve.empty:
+        return _empty_passive_fill_calibration_summary()
+    required = {
+        "regime",
+        "bin",
+        "rows",
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+        "calibration_error",
+        "absolute_calibration_error",
+        "brier_score",
+    }
+    _require_columns(curve, required, "passive fill calibration summary")
+    values = _finite_values(
+        curve,
+        [
+            "rows",
+            "mean_predicted_fill_probability",
+            "realized_fill_rate",
+            "calibration_error",
+            "absolute_calibration_error",
+            "brier_score",
+        ],
+        "passive fill calibration summary",
+    )
+    if (values["rows"] < 0.0).any():
+        raise ValueError("passive fill calibration summary rows must be non-negative")
+    total_rows = int(values["rows"].sum())
+    if total_rows == 0:
+        return _empty_passive_fill_calibration_summary()
+    weights = values["rows"] / total_rows
+    worst_idx = values["absolute_calibration_error"].idxmax()
+    return {
+        "rows": total_rows,
+        "bins": int(len(curve)),
+        "regimes": int(curve["regime"].astype(str).nunique()),
+        "weighted_mean_predicted_fill_probability": float(
+            (values["mean_predicted_fill_probability"] * weights).sum()
+        ),
+        "weighted_realized_fill_rate": float((values["realized_fill_rate"] * weights).sum()),
+        "weighted_calibration_error": float((values["calibration_error"] * weights).sum()),
+        "expected_calibration_error": float(
+            (values["absolute_calibration_error"] * weights).sum()
+        ),
+        "weighted_brier_score": float((values["brier_score"] * weights).sum()),
+        "worst_regime": str(curve.loc[worst_idx, "regime"]),
+        "worst_absolute_calibration_error": float(values.loc[worst_idx, "absolute_calibration_error"]),
+    }
+
+
 def passive_fill_event_window_diagnostics(
     frame: pd.DataFrame,
     *,
@@ -523,6 +670,38 @@ def _empty_passive_fill_edge_curve() -> pd.DataFrame:
             "mean_execution_adjusted_edge_ticks",
         ]
     )
+
+
+def _empty_passive_fill_calibration_curve() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "regime",
+            "bin",
+            "rows",
+            "long_rows",
+            "short_rows",
+            "mean_predicted_fill_probability",
+            "realized_fill_rate",
+            "calibration_error",
+            "absolute_calibration_error",
+            "brier_score",
+        ]
+    )
+
+
+def _empty_passive_fill_calibration_summary() -> dict[str, float | int | str]:
+    return {
+        "rows": 0,
+        "bins": 0,
+        "regimes": 0,
+        "weighted_mean_predicted_fill_probability": 0.0,
+        "weighted_realized_fill_rate": 0.0,
+        "weighted_calibration_error": 0.0,
+        "expected_calibration_error": 0.0,
+        "weighted_brier_score": 0.0,
+        "worst_regime": "none",
+        "worst_absolute_calibration_error": 0.0,
+    }
 
 
 def _empty_passive_fill_event_windows() -> pd.DataFrame:

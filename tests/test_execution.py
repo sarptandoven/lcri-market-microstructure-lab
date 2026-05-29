@@ -7,6 +7,8 @@ from lcri_lab.execution import (
     add_passive_fill_probabilities,
     add_queue_position_features,
     execution_adjusted_edge_summary,
+    passive_fill_calibration_curve,
+    passive_fill_calibration_summary,
     passive_fill_event_regime_summary,
     passive_fill_event_window_diagnostics,
     execution_publishability_review_packet,
@@ -179,6 +181,65 @@ def test_passive_fill_edge_curve_rejects_invalid_inputs() -> None:
         passive_fill_edge_curve(pd.DataFrame(), bins=0)
     with pytest.raises(ValueError, match="missing passive fill edge curve columns"):
         passive_fill_edge_curve(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_passive_fill_calibration_curve_scores_realized_side_fills_by_regime() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "long", "short", "short", "abstain", "long"],
+            "regime": ["thin", "thin", "thin", "stressed", "thin", "stressed"],
+            "bid_fill_probability": [0.20, 0.80, 0.10, 0.30, 0.50, 0.90],
+            "ask_fill_probability": [0.10, 0.20, 0.40, 0.90, 0.50, 0.10],
+            "bid_realized_fill": [0, 1, 0, 0, 1, 1],
+            "ask_realized_fill": [0, 0, 0, 1, 1, 1],
+        }
+    )
+
+    curve = passive_fill_calibration_curve(
+        frame,
+        bins=2,
+        regime_col="regime",
+        bid_realized_col="bid_realized_fill",
+        ask_realized_col="ask_realized_fill",
+    )
+
+    assert curve["regime"].tolist() == ["stressed", "stressed", "thin", "thin"]
+    assert curve["bin"].tolist() == [1, 2, 1, 2]
+    assert curve["rows"].tolist() == [1, 1, 2, 1]
+    assert curve["realized_fill_rate"].tolist() == pytest.approx([1.00, 1.00, 0.00, 1.00])
+    assert curve["mean_predicted_fill_probability"].tolist() == pytest.approx([0.90, 0.90, 0.30, 0.80])
+    assert curve["calibration_error"].tolist() == pytest.approx([0.10, 0.10, -0.30, 0.20])
+    assert curve["brier_score"].tolist() == pytest.approx([0.01, 0.01, 0.10, 0.04])
+
+
+def test_passive_fill_calibration_summary_exposes_weighted_fill_error() -> None:
+    curve = pd.DataFrame(
+        {
+            "regime": ["thin", "thin", "stressed"],
+            "bin": [1, 2, 1],
+            "rows": [2, 3, 5],
+            "mean_predicted_fill_probability": [0.30, 0.80, 0.60],
+            "realized_fill_rate": [0.00, 1.00, 0.40],
+            "calibration_error": [-0.30, 0.20, -0.20],
+            "absolute_calibration_error": [0.30, 0.20, 0.20],
+            "brier_score": [0.10, 0.04, 0.24],
+        }
+    )
+
+    summary = passive_fill_calibration_summary(curve)
+
+    assert summary == {
+        "rows": 10,
+        "bins": 3,
+        "regimes": 2,
+        "weighted_mean_predicted_fill_probability": pytest.approx(0.60),
+        "weighted_realized_fill_rate": pytest.approx(0.50),
+        "weighted_calibration_error": pytest.approx(-0.10),
+        "expected_calibration_error": pytest.approx(0.22),
+        "weighted_brier_score": pytest.approx(0.152),
+        "worst_regime": "thin",
+        "worst_absolute_calibration_error": pytest.approx(0.30),
+    }
 
 
 def test_passive_fill_event_window_diagnostics_tracks_side_specific_drift() -> None:

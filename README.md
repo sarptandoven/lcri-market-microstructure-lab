@@ -227,6 +227,7 @@ src/lcri_lab/
   baseline.py       liquidity-conditioned baseline estimator
   model.py          fit, score, save, and load interface
   evaluation.py     metrics and regime-stratified analysis
+  execution.py      queue-position fill probabilities and execution calibration
   labels.py         transaction-cost-aware labels
   publishability.py publishable edge gate
   memory.py         rolling pressure persistence features
@@ -256,17 +257,18 @@ tests/
 - Real order book feeds must be normalized into the snapshot schema before scoring.
 - The current baseline is transparent and ridge-regularized; nonlinear stress enters through explicit basis terms rather than a black-box estimator.
 - Queue-position-aware passive fill probability is snapshot-proxy based, not an event-level queue simulator.
-- Passive-fill event windows now surface side-specific post-fill drift by regime; they should be calibrated against event-level add/cancel/trade data before live use.
+- Passive-fill calibration curves can compare that proxy to side-specific realized fill flags, but the realized flags still need event-level add/cancel/trade data for live calibration.
+- Passive-fill event windows now surface side-specific post-fill drift by regime; they should be promoted into demo/report artifacts after calibration.
 
 ## Next steps
 
 - Add a real-data adapter for normalized TAQ or crypto L2 snapshots.
+- Map event-level add/cancel/trade messages into `bid_realized_fill`/`ask_realized_fill` labels for passive-fill calibration curves.
 - Evaluate liquidity fracture features on real L2 data against raw LCRI.
 - Test whether pressure memory improves publishable-edge filtering.
 - Compare publishable-edge hit rate across shadow absorption regimes.
 - Track residual tail diagnostics by side, threshold, and absorption state.
 - Audit feature stability by liquidity regime before model promotion.
 - Compare directional metrics against cost-aware tradable labels.
-- Calibrate queue-position-aware fill probability against event-level add/cancel/trade data.
-- Promote passive-fill event-window regime diagnostics into demo/report artifacts after calibration.
+- Promote passive-fill calibration and event-window regime diagnostics into demo/report artifacts.
 - Add model cards with fitted coefficients and residual scales.
