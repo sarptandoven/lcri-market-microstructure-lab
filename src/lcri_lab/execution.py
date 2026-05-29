@@ -475,6 +475,130 @@ def queue_position_fill_surface(
     return pd.DataFrame(rows)[list(_empty_queue_position_fill_surface().columns)]
 
 
+def queue_position_edge_decay(surface: pd.DataFrame, *, min_rows: int = 1) -> pd.DataFrame:
+    """Summarize how passive execution edge decays as queue position gets deeper.
+
+    ``queue_position_fill_surface`` gives a two-dimensional calibration grid. This
+    reducer collapses the fill-probability axis to a queue-depth frontier per
+    regime, then compares front-of-queue and back-of-queue realized fill, predicted
+    fill, calibration error, and execution-adjusted edge. The output is designed
+    to answer the placement question: does a signal remain investable deeper in
+    the visible queue, or is it mostly a front-of-queue opportunity?
+    """
+    if not isinstance(min_rows, int) or isinstance(min_rows, bool):
+        raise ValueError("min_rows must be an integer")
+    if min_rows < 1:
+        raise ValueError("min_rows must be at least 1")
+    columns = list(_empty_queue_position_edge_decay().columns)
+    if surface.empty:
+        return _empty_queue_position_edge_decay()
+
+    required = {
+        "regime",
+        "queue_bin",
+        "rows",
+        "mean_queue_share",
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+        "absolute_calibration_error",
+        "mean_execution_adjusted_edge_ticks",
+    }
+    _require_columns(surface, required, "queue position edge decay")
+    values = _finite_values(
+        surface,
+        [
+            "queue_bin",
+            "rows",
+            "mean_queue_share",
+            "mean_predicted_fill_probability",
+            "realized_fill_rate",
+            "absolute_calibration_error",
+            "mean_execution_adjusted_edge_ticks",
+        ],
+        "queue position edge decay",
+    )
+    if (values["rows"] < 0.0).any():
+        raise ValueError("queue position edge decay rows must be non-negative")
+    if not values["mean_predicted_fill_probability"].between(0.0, 1.0).all():
+        raise ValueError("queue position edge decay predicted probabilities must be in [0, 1]")
+    if not values["realized_fill_rate"].between(0.0, 1.0).all():
+        raise ValueError("queue position edge decay realized fill rates must be in [0, 1]")
+
+    data = values.copy()
+    data["regime"] = surface["regime"].astype(str)
+    rows: list[dict[str, float | int | str | bool]] = []
+    for regime, regime_group in data.groupby("regime", sort=True):
+        queue_rows = []
+        for queue_bin, queue_group in regime_group.groupby("queue_bin", sort=True):
+            total_rows = float(queue_group["rows"].sum())
+            if total_rows < float(min_rows):
+                continue
+            weights = queue_group["rows"] / total_rows if total_rows > 0.0 else queue_group["rows"]
+            queue_rows.append(
+                {
+                    "queue_bin": int(queue_bin),
+                    "rows": int(total_rows),
+                    "mean_queue_share": float((queue_group["mean_queue_share"] * weights).sum()),
+                    "mean_predicted_fill_probability": float(
+                        (queue_group["mean_predicted_fill_probability"] * weights).sum()
+                    ),
+                    "realized_fill_rate": float((queue_group["realized_fill_rate"] * weights).sum()),
+                    "absolute_calibration_error": float(
+                        (queue_group["absolute_calibration_error"] * weights).sum()
+                    ),
+                    "mean_execution_adjusted_edge_ticks": float(
+                        (queue_group["mean_execution_adjusted_edge_ticks"] * weights).sum()
+                    ),
+                }
+            )
+        if not queue_rows:
+            continue
+        frontier = pd.DataFrame(queue_rows).sort_values("queue_bin").reset_index(drop=True)
+        front = frontier.iloc[0]
+        back = frontier.iloc[-1]
+        edges = frontier["mean_execution_adjusted_edge_ticks"]
+        worst_idx = edges.idxmin()
+        edge_decay = float(front["mean_execution_adjusted_edge_ticks"] - back["mean_execution_adjusted_edge_ticks"])
+        fill_decay = float(front["realized_fill_rate"] - back["realized_fill_rate"])
+        calibration_widening = float(
+            back["absolute_calibration_error"] - front["absolute_calibration_error"]
+        )
+        monotonic_edge_decay = bool((edges.diff().fillna(0.0) <= 1e-12).all())
+        rows.append(
+            {
+                "regime": str(regime),
+                "queue_bins": int(len(frontier)),
+                "rows": int(frontier["rows"].sum()),
+                "front_queue_bin": int(front["queue_bin"]),
+                "back_queue_bin": int(back["queue_bin"]),
+                "front_mean_queue_share": float(front["mean_queue_share"]),
+                "back_mean_queue_share": float(back["mean_queue_share"]),
+                "fill_rate_decay": fill_decay,
+                "predicted_fill_decay": float(
+                    front["mean_predicted_fill_probability"]
+                    - back["mean_predicted_fill_probability"]
+                ),
+                "edge_decay_ticks": edge_decay,
+                "calibration_error_widening": calibration_widening,
+                "monotonic_edge_decay": monotonic_edge_decay,
+                "worst_queue_bin": int(frontier.loc[worst_idx, "queue_bin"]),
+                "worst_mean_execution_adjusted_edge_ticks": float(edges.loc[worst_idx]),
+                "queue_decay_label": _queue_decay_label(
+                    edge_decay=edge_decay,
+                    fill_decay=fill_decay,
+                    calibration_widening=calibration_widening,
+                ),
+            }
+        )
+    if not rows:
+        return _empty_queue_position_edge_decay()
+    return pd.DataFrame(rows)[columns].sort_values(
+        ["edge_decay_ticks", "fill_rate_decay", "regime"],
+        ascending=[False, False, True],
+        ignore_index=True,
+    )
+
+
 def passive_fill_calibration_curve(
     frame: pd.DataFrame,
     *,
@@ -814,6 +938,39 @@ def _empty_queue_position_fill_surface() -> pd.DataFrame:
             "mean_execution_adjusted_edge_ticks",
         ]
     )
+
+
+def _empty_queue_position_edge_decay() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "regime",
+            "queue_bins",
+            "rows",
+            "front_queue_bin",
+            "back_queue_bin",
+            "front_mean_queue_share",
+            "back_mean_queue_share",
+            "fill_rate_decay",
+            "predicted_fill_decay",
+            "edge_decay_ticks",
+            "calibration_error_widening",
+            "monotonic_edge_decay",
+            "worst_queue_bin",
+            "worst_mean_execution_adjusted_edge_ticks",
+            "queue_decay_label",
+        ]
+    )
+
+
+def _queue_decay_label(*, edge_decay: float, fill_decay: float, calibration_widening: float) -> str:
+    if calibration_widening > 0.100000000001:
+        return "calibration_watch"
+    if edge_decay > 0.0 and fill_decay >= 0.0:
+        return "front_queue_preferred"
+    if edge_decay <= 0.0 and fill_decay <= 0.0:
+        return "deep_queue_resilient"
+    return "mixed_queue_response"
+
 
 def _empty_passive_fill_calibration_curve() -> pd.DataFrame:
     return pd.DataFrame(

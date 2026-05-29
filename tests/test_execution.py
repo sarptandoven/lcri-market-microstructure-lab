@@ -13,6 +13,7 @@ from lcri_lab.execution import (
     passive_fill_event_window_diagnostics,
     execution_publishability_review_packet,
     passive_fill_edge_curve,
+    queue_position_edge_decay,
     queue_position_fill_surface,
 )
 
@@ -225,6 +226,49 @@ def test_queue_position_fill_surface_rejects_invalid_inputs() -> None:
         queue_position_fill_surface(pd.DataFrame(), probability_bins=0)
     with pytest.raises(ValueError, match="missing queue position fill surface columns"):
         queue_position_fill_surface(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_edge_decay_quantifies_deep_queue_degradation() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["open", "open", "open", "thin", "thin"],
+            "queue_bin": [1, 2, 3, 1, 2],
+            "fill_probability_bin": [2, 2, 1, 1, 2],
+            "rows": [10, 20, 10, 5, 5],
+            "mean_queue_share": [0.10, 0.50, 0.90, 0.20, 0.80],
+            "mean_predicted_fill_probability": [0.80, 0.60, 0.40, 0.30, 0.70],
+            "realized_fill_rate": [0.70, 0.50, 0.20, 0.20, 0.60],
+            "calibration_error": [-0.10, -0.10, -0.20, -0.10, -0.10],
+            "absolute_calibration_error": [0.10, 0.10, 0.20, 0.10, 0.10],
+            "brier_score": [0.10, 0.12, 0.30, 0.20, 0.15],
+            "mean_execution_adjusted_edge_ticks": [1.20, 0.50, -0.10, 0.10, 0.40],
+        }
+    )
+
+    decay = queue_position_edge_decay(surface)
+
+    open_row = decay.set_index("regime").loc["open"]
+    assert open_row["queue_bins"] == 3
+    assert open_row["rows"] == 40
+    assert open_row["front_mean_queue_share"] == pytest.approx(0.10)
+    assert open_row["back_mean_queue_share"] == pytest.approx(0.90)
+    assert open_row["fill_rate_decay"] == pytest.approx(0.50)
+    assert open_row["predicted_fill_decay"] == pytest.approx(0.40)
+    assert open_row["edge_decay_ticks"] == pytest.approx(1.30)
+    assert open_row["calibration_error_widening"] == pytest.approx(0.10)
+    assert bool(open_row["monotonic_edge_decay"]) is True
+    assert open_row["worst_queue_bin"] == 3
+    assert open_row["queue_decay_label"] == "front_queue_preferred"
+
+    thin_row = decay.set_index("regime").loc["thin"]
+    assert thin_row["queue_decay_label"] == "deep_queue_resilient"
+
+
+def test_queue_position_edge_decay_rejects_bad_surface() -> None:
+    with pytest.raises(ValueError, match="min_rows"):
+        queue_position_edge_decay(pd.DataFrame(), min_rows=0)
+    with pytest.raises(ValueError, match="missing queue position edge decay columns"):
+        queue_position_edge_decay(pd.DataFrame({"regime": ["open"]}))
 
 
 def test_passive_fill_calibration_curve_scores_realized_side_fills_by_regime() -> None:

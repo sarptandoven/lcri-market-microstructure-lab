@@ -105,6 +105,7 @@ from lcri_lab.execution import (
     passive_fill_edge_curve,
     passive_fill_event_regime_summary,
     passive_fill_event_window_diagnostics,
+    queue_position_edge_decay,
     queue_position_fill_surface,
 )
 from lcri_lab.labels import add_transaction_cost_labels
@@ -150,6 +151,7 @@ __all__ = [
     "passive_fill_edge_curve",
     "passive_fill_event_regime_summary",
     "passive_fill_event_window_diagnostics",
+    "queue_position_edge_decay",
     "queue_position_fill_surface",
     "add_transaction_cost_labels",
     "add_alpha_event_window_regimes",
