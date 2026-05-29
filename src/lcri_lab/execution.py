@@ -254,6 +254,124 @@ def add_execution_adjusted_edge(
     return output
 
 
+def passive_fill_edge_curve(
+    frame: pd.DataFrame,
+    *,
+    bins: int = 5,
+    side_col: str = "best_execution_side",
+    long_return_col: str = "long_net_return_ticks",
+    short_return_col: str = "short_net_return_ticks",
+) -> pd.DataFrame:
+    """Bin tradable passive opportunities by predicted fill quality.
+
+    The curve is a lightweight calibration surface for the snapshot-based fill
+    proxy. It keeps only rows where `side_col` is ``long`` or ``short``, selects
+    the side-appropriate fill/adverse-fill probability and realized return, then
+    reports whether higher predicted fill buckets also carry healthier realized
+    execution edge. The result is intended for research review dashboards rather
+    than as a formal fill simulator.
+    """
+    if not isinstance(bins, int) or isinstance(bins, bool):
+        raise ValueError("bins must be an integer")
+    if bins < 1:
+        raise ValueError("bins must be at least 1")
+
+    columns = [
+        side_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+        "execution_adjusted_edge_ticks",
+        long_return_col,
+        short_return_col,
+    ]
+    _require_columns(frame, set(columns), "passive fill edge curve")
+    if frame.empty:
+        return _empty_passive_fill_edge_curve()
+
+    values = _finite_values(
+        frame,
+        [
+            "bid_fill_probability",
+            "ask_fill_probability",
+            "bid_adverse_fill_probability",
+            "ask_adverse_fill_probability",
+            "execution_adjusted_edge_ticks",
+            long_return_col,
+            short_return_col,
+        ],
+        "passive fill edge curve",
+    )
+    side = frame[side_col].astype(str)
+    tradable = side.isin(["long", "short"])
+    if not bool(tradable.any()):
+        return _empty_passive_fill_edge_curve()
+
+    selected = pd.DataFrame(index=frame.index[tradable])
+    selected_side = side.loc[tradable]
+    selected["side"] = selected_side
+    selected["predicted_fill_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_fill_probability"],
+        values.loc[tradable, "ask_fill_probability"],
+    )
+    selected["adverse_fill_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_adverse_fill_probability"],
+        values.loc[tradable, "ask_adverse_fill_probability"],
+    )
+    selected["realized_edge_ticks"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, long_return_col],
+        values.loc[tradable, short_return_col],
+    )
+    selected["execution_adjusted_edge_ticks"] = values.loc[tradable, "execution_adjusted_edge_ticks"]
+    selected["bin"] = _rank_probability_bins(selected["predicted_fill_probability"], bins)
+
+    rows: list[dict[str, float | int]] = []
+    for bin_id, group in selected.groupby("bin", sort=True):
+        rows.append(
+            {
+                "bin": int(bin_id),
+                "rows": len(group),
+                "long_rows": int((group["side"] == "long").sum()),
+                "short_rows": int((group["side"] == "short").sum()),
+                "mean_predicted_fill_probability": float(group["predicted_fill_probability"].mean()),
+                "mean_adverse_fill_probability": float(group["adverse_fill_probability"].mean()),
+                "mean_realized_edge_ticks": float(group["realized_edge_ticks"].mean()),
+                "positive_edge_rate": float((group["realized_edge_ticks"] > 0.0).mean()),
+                "mean_execution_adjusted_edge_ticks": float(
+                    group["execution_adjusted_edge_ticks"].mean()
+                ),
+            }
+        )
+    return pd.DataFrame(rows)[list(_empty_passive_fill_edge_curve().columns)]
+
+
+def _empty_passive_fill_edge_curve() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "bin",
+            "rows",
+            "long_rows",
+            "short_rows",
+            "mean_predicted_fill_probability",
+            "mean_adverse_fill_probability",
+            "mean_realized_edge_ticks",
+            "positive_edge_rate",
+            "mean_execution_adjusted_edge_ticks",
+        ]
+    )
+
+
+def _rank_probability_bins(probability: pd.Series, bins: int) -> pd.Series:
+    effective_bins = min(bins, len(probability))
+    ranks = probability.rank(method="first")
+    bin_ids = pd.qcut(ranks, q=effective_bins, labels=False, duplicates="drop")
+    return bin_ids.astype(int) + 1
+
+
 def _empty_execution_summary() -> dict[str, float | int | str]:
     return {
         "rows": 0,

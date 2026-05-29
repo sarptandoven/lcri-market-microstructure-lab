@@ -7,6 +7,7 @@ from lcri_lab.execution import (
     add_passive_fill_probabilities,
     add_queue_position_features,
     execution_adjusted_edge_summary,
+    passive_fill_edge_curve,
 )
 
 
@@ -142,6 +143,39 @@ def test_execution_adjusted_edge_summary_quantifies_tradability_drag() -> None:
     assert summary["publishable_side_conflict_rows"] == 2
     assert summary["publishable_side_conflict_share"] == pytest.approx(0.50)
     assert summary["dominant_execution_side"] == "long"
+
+
+def test_passive_fill_edge_curve_bins_execution_quality_by_predicted_fill() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "long", "short", "short", "abstain"],
+            "bid_fill_probability": [0.20, 0.80, 0.10, 0.30, 0.50],
+            "ask_fill_probability": [0.10, 0.20, 0.40, 0.90, 0.50],
+            "bid_adverse_fill_probability": [0.05, 0.20, 0.10, 0.10, 0.30],
+            "ask_adverse_fill_probability": [0.10, 0.20, 0.15, 0.25, 0.30],
+            "execution_adjusted_edge_ticks": [0.10, 0.70, -0.20, 1.20, -0.10],
+            "long_net_return_ticks": [0.40, 1.00, -0.50, -0.20, 0.00],
+            "short_net_return_ticks": [-0.20, -0.60, -0.40, 1.50, 0.00],
+        }
+    )
+
+    curve = passive_fill_edge_curve(frame, bins=2)
+
+    assert curve["bin"].tolist() == [1, 2]
+    assert curve["rows"].tolist() == [2, 2]
+    assert curve["mean_predicted_fill_probability"].tolist() == pytest.approx([0.30, 0.85])
+    assert curve["mean_adverse_fill_probability"].tolist() == pytest.approx([0.10, 0.225])
+    assert curve["mean_realized_edge_ticks"].tolist() == pytest.approx([0.0, 1.25])
+    assert curve["positive_edge_rate"].tolist() == pytest.approx([0.50, 1.00])
+    assert curve["long_rows"].tolist() == [1, 1]
+    assert curve["short_rows"].tolist() == [1, 1]
+
+
+def test_passive_fill_edge_curve_rejects_invalid_inputs() -> None:
+    with pytest.raises(ValueError, match="bins"):
+        passive_fill_edge_curve(pd.DataFrame(), bins=0)
+    with pytest.raises(ValueError, match="missing passive fill edge curve columns"):
+        passive_fill_edge_curve(pd.DataFrame({"best_execution_side": ["long"]}))
 
 
 def test_execution_adjusted_edge_summary_handles_empty_frames() -> None:

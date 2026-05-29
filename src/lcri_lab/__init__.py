@@ -96,6 +96,7 @@ from lcri_lab.execution import (
     add_passive_fill_probabilities,
     add_queue_position_features,
     execution_adjusted_edge_summary,
+    passive_fill_edge_curve,
 )
 from lcri_lab.labels import add_transaction_cost_labels
 from lcri_lab.memory import (
@@ -134,6 +135,7 @@ __all__ = [
     "add_passive_fill_probabilities",
     "add_queue_position_features",
     "execution_adjusted_edge_summary",
+    "passive_fill_edge_curve",
     "add_transaction_cost_labels",
     "add_microstructure_alpha_stack",
     "alpha_event_drift_gate",
