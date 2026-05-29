@@ -13,6 +13,7 @@ from lcri_lab.execution import (
     passive_fill_event_window_diagnostics,
     execution_publishability_review_packet,
     passive_fill_edge_curve,
+    queue_position_fill_surface,
 )
 
 
@@ -181,6 +182,49 @@ def test_passive_fill_edge_curve_rejects_invalid_inputs() -> None:
         passive_fill_edge_curve(pd.DataFrame(), bins=0)
     with pytest.raises(ValueError, match="missing passive fill edge curve columns"):
         passive_fill_edge_curve(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_fill_surface_crosses_queue_depth_with_realized_fills() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "long", "short", "short", "abstain", "long"],
+            "regime": ["open", "open", "open", "midday", "open", "midday"],
+            "bid_queue_share": [0.10, 0.80, 0.20, 0.50, 0.40, 0.90],
+            "ask_queue_share": [0.40, 0.50, 0.30, 0.85, 0.40, 0.20],
+            "bid_fill_probability": [0.20, 0.90, 0.10, 0.30, 0.50, 0.80],
+            "ask_fill_probability": [0.10, 0.20, 0.40, 0.95, 0.50, 0.10],
+            "bid_realized_fill": [0, 1, 0, 0, 1, 1],
+            "ask_realized_fill": [0, 0, 0, 1, 1, 1],
+            "execution_adjusted_edge_ticks": [0.10, 0.70, -0.20, 1.20, -0.10, 0.50],
+        }
+    )
+
+    surface = queue_position_fill_surface(
+        frame,
+        queue_bins=2,
+        probability_bins=2,
+        regime_col="regime",
+        bid_realized_col="bid_realized_fill",
+        ask_realized_col="ask_realized_fill",
+    )
+
+    assert surface["regime"].tolist() == ["midday", "midday", "open", "open"]
+    assert surface["queue_bin"].tolist() == [1, 2, 1, 2]
+    assert surface["fill_probability_bin"].tolist() == [2, 1, 1, 2]
+    assert surface["rows"].tolist() == [1, 1, 2, 1]
+    assert surface["mean_queue_share"].tolist() == pytest.approx([0.85, 0.90, 0.20, 0.80])
+    assert surface["realized_fill_rate"].tolist() == pytest.approx([1.00, 1.00, 0.00, 1.00])
+    assert surface["calibration_error"].tolist() == pytest.approx([0.05, 0.20, -0.30, 0.10])
+    assert surface["mean_execution_adjusted_edge_ticks"].tolist() == pytest.approx([1.20, 0.50, -0.05, 0.70])
+
+
+def test_queue_position_fill_surface_rejects_invalid_inputs() -> None:
+    with pytest.raises(ValueError, match="queue_bins"):
+        queue_position_fill_surface(pd.DataFrame(), queue_bins=0)
+    with pytest.raises(ValueError, match="probability_bins"):
+        queue_position_fill_surface(pd.DataFrame(), probability_bins=0)
+    with pytest.raises(ValueError, match="missing queue position fill surface columns"):
+        queue_position_fill_surface(pd.DataFrame({"best_execution_side": ["long"]}))
 
 
 def test_passive_fill_calibration_curve_scores_realized_side_fills_by_regime() -> None:

@@ -349,6 +349,132 @@ def passive_fill_edge_curve(
     return pd.DataFrame(rows)[list(_empty_passive_fill_edge_curve().columns)]
 
 
+def queue_position_fill_surface(
+    frame: pd.DataFrame,
+    *,
+    queue_bins: int = 4,
+    probability_bins: int = 4,
+    side_col: str = "best_execution_side",
+    regime_col: str | None = None,
+    bid_realized_col: str = "bid_realized_fill",
+    ask_realized_col: str = "ask_realized_fill",
+) -> pd.DataFrame:
+    """Cross queue position depth with passive-fill calibration quality.
+
+    This diagnostic surfaces whether the fill proxy is only calibrated for front-
+    of-queue quotes or remains reliable deeper in the visible queue. Tradable rows
+    are mapped to side-specific queue share, fill probability, and realized fill,
+    then rank-binned within each regime across queue depth and predicted fill.
+    """
+    if not isinstance(queue_bins, int) or isinstance(queue_bins, bool):
+        raise ValueError("queue_bins must be an integer")
+    if not isinstance(probability_bins, int) or isinstance(probability_bins, bool):
+        raise ValueError("probability_bins must be an integer")
+    if queue_bins < 1:
+        raise ValueError("queue_bins must be at least 1")
+    if probability_bins < 1:
+        raise ValueError("probability_bins must be at least 1")
+
+    required = {
+        side_col,
+        "bid_queue_share",
+        "ask_queue_share",
+        "bid_fill_probability",
+        "ask_fill_probability",
+        bid_realized_col,
+        ask_realized_col,
+        "execution_adjusted_edge_ticks",
+    }
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(frame, required, "queue position fill surface")
+    if frame.empty:
+        return _empty_queue_position_fill_surface()
+
+    numeric_columns = [
+        "bid_queue_share",
+        "ask_queue_share",
+        "bid_fill_probability",
+        "ask_fill_probability",
+        bid_realized_col,
+        ask_realized_col,
+        "execution_adjusted_edge_ticks",
+    ]
+    values = _finite_values(frame, numeric_columns, "queue position fill surface")
+    side = frame[side_col].astype(str)
+    tradable = side.isin(["long", "short"])
+    if not bool(tradable.any()):
+        return _empty_queue_position_fill_surface()
+
+    selected = pd.DataFrame(index=frame.index[tradable])
+    selected_side = side.loc[tradable]
+    selected["regime"] = (
+        frame.loc[tradable, regime_col].astype(str) if regime_col is not None else "all"
+    )
+    selected["queue_share"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_queue_share"],
+        values.loc[tradable, "ask_queue_share"],
+    )
+    selected["predicted_fill_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_fill_probability"],
+        values.loc[tradable, "ask_fill_probability"],
+    )
+    selected["realized_fill"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, bid_realized_col],
+        values.loc[tradable, ask_realized_col],
+    )
+    selected["execution_adjusted_edge_ticks"] = values.loc[
+        tradable, "execution_adjusted_edge_ticks"
+    ]
+    if not selected["queue_share"].ge(0.0).all():
+        raise ValueError("queue position fill surface queue shares must be non-negative")
+    if not selected["predicted_fill_probability"].between(0.0, 1.0).all():
+        raise ValueError("queue position fill surface probabilities must be in [0, 1]")
+    if not selected["realized_fill"].between(0.0, 1.0).all():
+        raise ValueError("queue position fill surface realized fills must be in [0, 1]")
+
+    rows: list[dict[str, float | int | str]] = []
+    for regime, regime_group in selected.groupby("regime", sort=True):
+        regime_group = regime_group.copy()
+        regime_group["queue_bin"] = _rank_probability_bins(
+            regime_group["queue_share"], queue_bins
+        )
+        regime_group["fill_probability_bin"] = _rank_probability_bins(
+            regime_group["predicted_fill_probability"], probability_bins
+        )
+        for (queue_bin, fill_bin), group in regime_group.groupby(
+            ["queue_bin", "fill_probability_bin"], sort=True
+        ):
+            predicted = group["predicted_fill_probability"]
+            realized = group["realized_fill"]
+            fill_rate = float(realized.mean())
+            mean_prediction = float(predicted.mean())
+            error = fill_rate - mean_prediction
+            rows.append(
+                {
+                    "regime": str(regime),
+                    "queue_bin": int(queue_bin),
+                    "fill_probability_bin": int(fill_bin),
+                    "rows": int(len(group)),
+                    "mean_queue_share": float(group["queue_share"].mean()),
+                    "mean_predicted_fill_probability": mean_prediction,
+                    "realized_fill_rate": fill_rate,
+                    "calibration_error": error,
+                    "absolute_calibration_error": abs(error),
+                    "brier_score": float(((predicted - realized) ** 2).mean()),
+                    "mean_execution_adjusted_edge_ticks": float(
+                        group["execution_adjusted_edge_ticks"].mean()
+                    ),
+                }
+            )
+    if not rows:
+        return _empty_queue_position_fill_surface()
+    return pd.DataFrame(rows)[list(_empty_queue_position_fill_surface().columns)]
+
+
 def passive_fill_calibration_curve(
     frame: pd.DataFrame,
     *,
@@ -671,6 +797,23 @@ def _empty_passive_fill_edge_curve() -> pd.DataFrame:
         ]
     )
 
+
+def _empty_queue_position_fill_surface() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "regime",
+            "queue_bin",
+            "fill_probability_bin",
+            "rows",
+            "mean_queue_share",
+            "mean_predicted_fill_probability",
+            "realized_fill_rate",
+            "calibration_error",
+            "absolute_calibration_error",
+            "brier_score",
+            "mean_execution_adjusted_edge_ticks",
+        ]
+    )
 
 def _empty_passive_fill_calibration_curve() -> pd.DataFrame:
     return pd.DataFrame(

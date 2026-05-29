@@ -89,6 +89,7 @@ from lcri_lab.execution import (
     execution_publishability_review_packet,
     passive_fill_event_regime_summary,
     passive_fill_event_window_diagnostics,
+    queue_position_fill_surface,
 )
 from lcri_lab.features import add_regime_transition_features
 from lcri_lab.ingest import normalize_l2_snapshots
@@ -496,6 +497,16 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_passive_fill_event_regimes = passive_fill_event_regime_summary(
         heldout_passive_fill_events
     )
+    passive_fill_labeled = _add_passive_fill_realization_proxy(scored)
+    heldout_passive_fill_labeled = _add_passive_fill_realization_proxy(heldout_scored)
+    queue_fill_surface = queue_position_fill_surface(
+        passive_fill_labeled,
+        regime_col="pressure_memory_decay_state",
+    )
+    heldout_queue_fill_surface = queue_position_fill_surface(
+        heldout_passive_fill_labeled,
+        regime_col="pressure_memory_decay_state",
+    )
 
     artifact_paths = [
         "lcri-model.json",
@@ -606,6 +617,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "passive_fill_event_regime_summary.csv",
         "heldout_passive_fill_event_windows.csv",
         "heldout_passive_fill_event_regime_summary.csv",
+        "queue_position_fill_surface.csv",
+        "heldout_queue_position_fill_surface.csv",
         "execution_adjusted_sample.csv",
         "research_summary.md",
         "artifact_coverage_matrix.csv",
@@ -816,6 +829,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_passive_fill_event_regimes.to_csv(
         output / "heldout_passive_fill_event_regime_summary.csv", index=False
     )
+    queue_fill_surface.to_csv(output / "queue_position_fill_surface.csv", index=False)
+    heldout_queue_fill_surface.to_csv(
+        output / "heldout_queue_position_fill_surface.csv", index=False
+    )
     scored[
         [
             "lcri",
@@ -941,6 +958,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         heldout_execution_summary=heldout_execution_summary,
         passive_fill_event_regimes=passive_fill_event_regimes,
         heldout_passive_fill_event_regimes=heldout_passive_fill_event_regimes,
+        queue_fill_surface=queue_fill_surface,
+        heldout_queue_fill_surface=heldout_queue_fill_surface,
     )
     coverage_matrix = artifact_coverage_matrix(artifact_paths)
     coverage_matrix.to_csv(output / "artifact_coverage_matrix.csv", index=False)
@@ -1120,6 +1139,29 @@ def _add_execution_adjusted_stack(frame: pd.DataFrame, *, tick_size: float) -> p
     return add_execution_adjusted_edge(fills)
 
 
+def _add_passive_fill_realization_proxy(frame: pd.DataFrame) -> pd.DataFrame:
+    """Attach demo passive-fill labels from the next mid-price path.
+
+    The synthetic demo has snapshots rather than order-level executions. For the
+    queue-position calibration surface we use a conservative touch proxy: a bid
+    quote is counted as filled when the next mid-price moves down by at least
+    half a tick, while an ask quote is counted as filled when the next mid-price
+    moves up by at least half a tick. This keeps demo artifacts execution-aware
+    without claiming event-level queue reconstruction.
+    """
+    required = {"future_return_ticks"}
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise ValueError(f"missing passive fill realization proxy columns: {missing}")
+    output = frame.copy()
+    move = output["future_return_ticks"].astype(float)
+    if not move.abs().lt(float("inf")).all():
+        raise ValueError("passive fill realization proxy returns must be finite")
+    output["bid_realized_fill"] = (move <= -0.5).astype(float)
+    output["ask_realized_fill"] = (move >= 0.5).astype(float)
+    return output
+
+
 def _append_execution_adjusted_summary(
     path: Path,
     *,
@@ -1127,9 +1169,13 @@ def _append_execution_adjusted_summary(
     heldout_execution_summary: dict[str, float | int | str],
     passive_fill_event_regimes: pd.DataFrame,
     heldout_passive_fill_event_regimes: pd.DataFrame,
+    queue_fill_surface: pd.DataFrame,
+    heldout_queue_fill_surface: pd.DataFrame,
 ) -> None:
     regime_lines = _passive_fill_regime_summary_lines(passive_fill_event_regimes)
     heldout_regime_lines = _passive_fill_regime_summary_lines(heldout_passive_fill_event_regimes)
+    queue_surface_lines = _queue_position_fill_surface_lines(queue_fill_surface)
+    heldout_queue_surface_lines = _queue_position_fill_surface_lines(heldout_queue_fill_surface)
     lines = [
         "",
         "## Execution-adjusted edge summary",
@@ -1148,6 +1194,14 @@ def _append_execution_adjusted_summary(
         "",
         *heldout_regime_lines,
         "",
+        "## Queue-position fill calibration surface",
+        "",
+        *queue_surface_lines,
+        "",
+        "## Heldout queue-position fill calibration surface",
+        "",
+        *heldout_queue_surface_lines,
+        "",
     ]
     path.write_text(path.read_text() + "\n".join(lines))
 
@@ -1165,6 +1219,27 @@ def _passive_fill_regime_summary_lines(summary: pd.DataFrame) -> list[str]:
             f"{row['mean_post_minus_pre_realized_edge']:.3f}, "
             f"worst_post_minus_pre_realized_edge="
             f"{row['worst_post_minus_pre_realized_edge']:.3f}"
+        )
+    return rows
+
+
+def _queue_position_fill_surface_lines(surface: pd.DataFrame) -> list[str]:
+    if surface.empty:
+        return ["- no tradable queue-position fill observations"]
+    ranked = surface.sort_values(
+        ["absolute_calibration_error", "rows"], ascending=[False, False]
+    ).head(5)
+    rows = []
+    for row in ranked.to_dict("records"):
+        rows.append(
+            "- "
+            f"{row['regime']} qbin={int(row['queue_bin'])} "
+            f"pbin={int(row['fill_probability_bin'])}: rows={int(row['rows'])}, "
+            f"mean_queue_share={row['mean_queue_share']:.3f}, "
+            f"predicted_fill={row['mean_predicted_fill_probability']:.3f}, "
+            f"realized_fill={row['realized_fill_rate']:.3f}, "
+            f"abs_calibration_error={row['absolute_calibration_error']:.3f}, "
+            f"mean_execution_edge={row['mean_execution_adjusted_edge_ticks']:.3f}"
         )
     return rows
 

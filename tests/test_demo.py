@@ -112,6 +112,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "passive_fill_event_regime_summary.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_windows.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_regime_summary.csv").exists()
+    assert (tmp_path / "queue_position_fill_surface.csv").exists()
+    assert (tmp_path / "heldout_queue_position_fill_surface.csv").exists()
     assert (tmp_path / "execution_adjusted_sample.csv").exists()
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
@@ -157,6 +159,18 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "review_priority",
         "review_note",
     }.issubset(execution_packet_columns)
+    queue_surface_columns = set(
+        pd.read_csv(tmp_path / "queue_position_fill_surface.csv", nrows=1).columns
+    )
+    assert {
+        "regime",
+        "queue_bin",
+        "fill_probability_bin",
+        "mean_queue_share",
+        "realized_fill_rate",
+        "absolute_calibration_error",
+        "mean_execution_adjusted_edge_ticks",
+    }.issubset(queue_surface_columns)
     assert metadata_summary["artifacts_with_metadata"] > 0
     assert metadata_summary["total_size_bytes"] > 0
     assert metadata_summary["largest_artifact"] != "none"
@@ -226,6 +240,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_passive_fill_event_windows.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["queue_position_fill_surface.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_queue_position_fill_surface.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["execution_adjusted_sample.csv"]["size_bytes"] > 0
     assert len(manifest["artifact_metadata"]["metrics.csv"]["sha256"]) == 64
     summary = (tmp_path / "research_summary.md").read_text()
@@ -261,6 +277,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## Adverse selection phase-shift summary" in summary
     assert "## Execution-adjusted edge summary" in summary
     assert "## Passive-fill event-window regime diagnostics" in summary
+    assert "## Queue-position fill calibration surface" in summary
 
     verify_report(tmp_path)
 
