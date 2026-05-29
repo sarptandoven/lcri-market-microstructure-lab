@@ -438,6 +438,27 @@ def test_verify_report_accepts_intact_manifest(
     assert "passes_verification" in captured.out
 
 
+def test_verify_report_checks_execution_publishability_packets(tmp_path: Path) -> None:
+    (tmp_path / "execution_publishability_review_packet.csv").write_text(
+        "publishable_side,best_execution_side,rows,conflict_rows,conflict_share,"
+        "mean_execution_adjusted_edge_ticks,mean_best_fill_probability,"
+        "mean_best_adverse_fill_probability,mean_publishable_fill_probability,"
+        "mean_edge_drag_ticks,review_priority,review_note\n"
+        "long,short,3,4,1.2,0.1,0.4,0.2,0.3,0.1,3,bad bounds\n"
+    )
+    (tmp_path / "artifact_manifest.json").write_text(
+        json.dumps(
+            {
+                "artifacts": ["execution_publishability_review_packet.csv"],
+                "artifact_metadata": {},
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="execution publishability"):
+        verify_report(tmp_path)
+
+
 def test_verify_report_error_includes_summary(tmp_path: Path) -> None:
     (tmp_path / "artifact_manifest.json").write_text(json.dumps({"artifacts": []}))
 

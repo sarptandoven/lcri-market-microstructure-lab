@@ -21,6 +21,7 @@ from lcri_lab.reporting import (
     verify_artifact_manifest,
     verify_artifact_metadata_summary,
     verify_adverse_selection_phase_shift_summary,
+    verify_execution_publishability_review_artifacts,
     verify_figure_artifacts,
     verify_generalization_fragility_consistency,
     verify_generalization_fragility_diagnostics,
@@ -241,6 +242,79 @@ def test_verify_phase_shift_artifact_review_checks_schema_and_labels(tmp_path) -
         tmp_path / "phase_shift_artifact_review.csv", index=False
     )
     assert "incomplete phase-shift artifact" in verify_phase_shift_artifact_review(tmp_path)[0]
+
+
+def test_verify_execution_publishability_review_artifacts_checks_bounds_and_schema(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {
+                "publishable_side": "long",
+                "best_execution_side": "abstain",
+                "rows": 4,
+                "conflict_rows": 4,
+                "conflict_share": 1.0,
+                "mean_execution_adjusted_edge_ticks": -0.15,
+                "mean_best_fill_probability": 0.0,
+                "mean_best_adverse_fill_probability": 0.0,
+                "mean_publishable_fill_probability": 0.25,
+                "mean_edge_drag_ticks": -0.35,
+                "review_priority": 3,
+                "review_note": "pre-execution long signal abstains after queue/adverse-fill adjustment",
+            },
+            {
+                "publishable_side": "abstain",
+                "best_execution_side": "short",
+                "rows": 6,
+                "conflict_rows": 6,
+                "conflict_share": 1.0,
+                "mean_execution_adjusted_edge_ticks": 0.20,
+                "mean_best_fill_probability": 0.72,
+                "mean_best_adverse_fill_probability": 0.08,
+                "mean_publishable_fill_probability": 0.0,
+                "mean_edge_drag_ticks": 0.20,
+                "review_priority": 2,
+                "review_note": "execution layer surfaces short opportunity despite pre-execution abstain",
+            },
+        ]
+    ).to_csv(tmp_path / "execution_publishability_review_packet.csv", index=False)
+
+    assert verify_execution_publishability_review_artifacts(tmp_path) == []
+
+    pd.DataFrame(
+        [
+            {
+                "publishable_side": "long",
+                "best_execution_side": "short",
+                "rows": 3,
+                "conflict_rows": 5,
+                "conflict_share": 1.2,
+                "mean_execution_adjusted_edge_ticks": 0.1,
+                "mean_best_fill_probability": -0.1,
+                "mean_best_adverse_fill_probability": 0.4,
+                "mean_publishable_fill_probability": 0.2,
+                "mean_edge_drag_ticks": 0.3,
+                "review_priority": 3,
+                "review_note": "bad bounds",
+            }
+        ]
+    ).to_csv(tmp_path / "execution_publishability_review_packet.csv", index=False)
+
+    errors = verify_execution_publishability_review_artifacts(tmp_path)
+
+    assert any("conflict rows exceed rows" in error for error in errors)
+    assert any("bounded execution publishability probabilities violated" in error for error in errors)
+
+
+def test_verify_execution_publishability_review_artifacts_checks_heldout_packet(tmp_path) -> None:
+    pd.DataFrame([{"publishable_side": "long"}]).to_csv(
+        tmp_path / "heldout_execution_publishability_review_packet.csv", index=False
+    )
+
+    errors = verify_execution_publishability_review_artifacts(
+        tmp_path, "heldout_execution_publishability_review_packet.csv"
+    )
+
+    assert "incomplete execution publishability review packet" in errors[0]
 
 
 def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path) -> None:

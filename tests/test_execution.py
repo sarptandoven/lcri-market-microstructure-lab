@@ -7,6 +7,7 @@ from lcri_lab.execution import (
     add_passive_fill_probabilities,
     add_queue_position_features,
     execution_adjusted_edge_summary,
+    execution_publishability_review_packet,
     passive_fill_edge_curve,
 )
 
@@ -178,6 +179,55 @@ def test_passive_fill_edge_curve_rejects_invalid_inputs() -> None:
         passive_fill_edge_curve(pd.DataFrame({"best_execution_side": ["long"]}))
 
 
+def test_execution_publishability_review_packet_surfaces_queue_gate_conflicts() -> None:
+    frame = pd.DataFrame(
+        {
+            "publishable_side": ["long", "long", "short", "abstain", "short"],
+            "best_execution_side": ["long", "abstain", "long", "short", "short"],
+            "execution_adjusted_edge_ticks": [0.70, -0.20, 0.10, 0.30, 0.80],
+            "long_fill_adjusted_edge_ticks": [0.70, -0.20, 0.10, -0.10, -0.40],
+            "short_fill_adjusted_edge_ticks": [-0.30, -0.10, -0.20, 0.30, 0.80],
+            "bid_fill_probability": [0.80, 0.20, 0.60, 0.20, 0.10],
+            "ask_fill_probability": [0.30, 0.40, 0.20, 0.70, 0.90],
+            "bid_adverse_fill_probability": [0.10, 0.40, 0.20, 0.20, 0.30],
+            "ask_adverse_fill_probability": [0.30, 0.30, 0.50, 0.10, 0.10],
+        }
+    )
+
+    packet = execution_publishability_review_packet(frame)
+
+    assert packet["review_priority"].tolist()[:2] == [3, 3]
+    assert packet.loc[0, "publishable_side"] == "long"
+    assert packet.loc[0, "best_execution_side"] == "abstain"
+    assert packet.loc[0, "review_note"] == "pre-execution long signal abstains after queue/adverse-fill adjustment"
+    assert packet.loc[0, "mean_publishable_fill_probability"] == pytest.approx(0.20)
+    assert packet.loc[0, "mean_best_fill_probability"] == pytest.approx(0.0)
+    assert packet.loc[1, "publishable_side"] == "short"
+    assert packet.loc[1, "best_execution_side"] == "long"
+    assert packet.loc[1, "mean_edge_drag_ticks"] == pytest.approx(0.30)
+    assert packet.loc[1, "conflict_share"] == pytest.approx(1.0)
+
+
+def test_execution_publishability_review_packet_handles_empty_frames() -> None:
+    packet = execution_publishability_review_packet(pd.DataFrame())
+
+    assert list(packet.columns) == [
+        "publishable_side",
+        "best_execution_side",
+        "rows",
+        "conflict_rows",
+        "conflict_share",
+        "mean_execution_adjusted_edge_ticks",
+        "mean_best_fill_probability",
+        "mean_best_adverse_fill_probability",
+        "mean_publishable_fill_probability",
+        "mean_edge_drag_ticks",
+        "review_priority",
+        "review_note",
+    ]
+    assert packet.empty
+
+
 def test_execution_adjusted_edge_summary_handles_empty_frames() -> None:
     summary = execution_adjusted_edge_summary(pd.DataFrame())
 
@@ -209,6 +259,8 @@ def test_execution_functions_reject_missing_columns() -> None:
         add_passive_fill_probabilities(pd.DataFrame({"lcri": [1.0]}))
     with pytest.raises(ValueError, match="missing execution edge columns"):
         add_execution_adjusted_edge(pd.DataFrame({"lcri": [1.0]}))
+    with pytest.raises(ValueError, match="missing execution publishability review columns"):
+        execution_publishability_review_packet(pd.DataFrame({"publishable_side": ["long"]}))
 
 
 def test_execution_functions_reject_non_finite_inputs() -> None:

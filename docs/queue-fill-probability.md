@@ -50,6 +50,13 @@ The best positive side becomes `best_execution_side`. If both fill-adjusted edge
 
 `execution_adjusted_edge_summary` turns the row-level edge into a compact evaluation artifact with tradable/abstain share, mean and median execution-adjusted edge, side dominance, average fill/adverse-fill probabilities, and optional conflicts against the pre-execution `publishable_side` gate. The conflict rate is the key execution-aware publishability diagnostic: it identifies cases where a signal cleared probability and transaction-cost gates but becomes non-tradable, or flips side, once visible queue position and adverse-fill selection are applied.
 
+`execution_publishability_review_packet` expands that conflict rate into a publishable-vs-execution cross-tab for release review. It prioritizes rows where pre-execution `long`/`short` signals become `abstain` or flip side after queue/adverse-fill adjustment, and reports average best fill probability, adverse-fill probability, pre-execution side fill probability, execution-adjusted edge, and edge drag. The demo writes this packet for both full-sample and heldout slices as:
+
+- `execution_publishability_review_packet.csv`
+- `heldout_execution_publishability_review_packet.csv`
+
+These artifacts make the publishability gate execution-aware instead of only probability/cost-aware: reviewers can see whether nominal alpha survives visible queue position and adverse selection, not just whether it predicts direction.
+
 ## Passive fill edge curve
 
 `passive_fill_edge_curve` provides a small calibration surface for API users and research dashboards. It keeps only rows where `best_execution_side` is `long` or `short`, selects the side-appropriate predicted fill probability, adverse-fill probability, and realized net return, then bins tradable rows by predicted fill quality.

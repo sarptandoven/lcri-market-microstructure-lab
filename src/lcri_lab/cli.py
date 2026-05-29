@@ -86,6 +86,7 @@ from lcri_lab.execution import (
     add_passive_fill_probabilities,
     add_queue_position_features,
     execution_adjusted_edge_summary,
+    execution_publishability_review_packet,
 )
 from lcri_lab.features import add_regime_transition_features
 from lcri_lab.ingest import normalize_l2_snapshots
@@ -124,6 +125,7 @@ from lcri_lab.reporting import (
     verify_generalization_stability_confidence_summary,
     verify_hidden_resiliency_asymmetry_summary,
     verify_adverse_selection_phase_shift_summary,
+    verify_execution_publishability_review_artifacts,
     verify_phase_shift_artifact_review,
     verify_lcri_fragility_gate_alignment,
     verify_lcri_fragility_gate_scorecard,
@@ -474,6 +476,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         pass
     execution_summary = execution_adjusted_edge_summary(scored)
     heldout_execution_summary = execution_adjusted_edge_summary(heldout_scored)
+    execution_publishability_packet = execution_publishability_review_packet(scored)
+    heldout_execution_publishability_packet = execution_publishability_review_packet(heldout_scored)
 
     artifact_paths = [
         "lcri-model.json",
@@ -578,6 +582,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "alpha_event_review_verification_summary.json",
         "execution_adjusted_edge_summary.json",
         "heldout_execution_adjusted_edge_summary.json",
+        "execution_publishability_review_packet.csv",
+        "heldout_execution_publishability_review_packet.csv",
         "execution_adjusted_sample.csv",
         "research_summary.md",
         "artifact_coverage_matrix.csv",
@@ -772,6 +778,12 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     write_json(output / "alpha_event_review_verification_summary.json", alpha_event_verification_summary)
     write_json(output / "execution_adjusted_edge_summary.json", execution_summary)
     write_json(output / "heldout_execution_adjusted_edge_summary.json", heldout_execution_summary)
+    execution_publishability_packet.to_csv(
+        output / "execution_publishability_review_packet.csv", index=False
+    )
+    heldout_execution_publishability_packet.to_csv(
+        output / "heldout_execution_publishability_review_packet.csv", index=False
+    )
     scored[
         [
             "lcri",
@@ -1161,6 +1173,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_phase_shift_artifact_review.csv"
             )
             if "heldout_phase_shift_artifact_review.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_execution_publishability_review_artifacts(report_dir)
+            if "execution_publishability_review_packet.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_execution_publishability_review_artifacts(
+                report_dir, "heldout_execution_publishability_review_packet.csv"
+            )
+            if "heldout_execution_publishability_review_packet.csv" in manifest_artifacts
             else []
         ),
         *(

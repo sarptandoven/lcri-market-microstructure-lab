@@ -486,6 +486,65 @@ _ALPHA_EVENT_ERROR_ARTIFACT_HINTS = {
 }
 
 
+def verify_execution_publishability_review_artifacts(
+    output_dir: Path, artifact: str = "execution_publishability_review_packet.csv"
+) -> list[str]:
+    """Return errors for incomplete execution-aware publishability review packets."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing execution publishability review packet: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "publishable_side",
+        "best_execution_side",
+        "rows",
+        "conflict_rows",
+        "conflict_share",
+        "mean_execution_adjusted_edge_ticks",
+        "mean_best_fill_probability",
+        "mean_best_adverse_fill_probability",
+        "mean_publishable_fill_probability",
+        "mean_edge_drag_ticks",
+        "review_priority",
+        "review_note",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete execution publishability review packet {artifact}: {missing}"]
+
+    numeric_columns = list(required - {"publishable_side", "best_execution_side", "review_note"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    valid_sides = {"long", "short", "abstain"}
+    unknown_publishable = sorted(set(frame["publishable_side"].astype(str)) - valid_sides)
+    unknown_best = sorted(set(frame["best_execution_side"].astype(str)) - valid_sides)
+    if unknown_publishable:
+        errors.append(f"unknown publishable sides in {artifact}: {unknown_publishable}")
+    if unknown_best:
+        errors.append(f"unknown best execution sides in {artifact}: {unknown_best}")
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite execution publishability values in {artifact}")
+    count_columns = ["rows", "conflict_rows", "review_priority"]
+    if not numeric[count_columns].ge(0.0).all().all():
+        errors.append(f"negative execution publishability counts in {artifact}")
+    probability_columns = [
+        "conflict_share",
+        "mean_best_fill_probability",
+        "mean_best_adverse_fill_probability",
+        "mean_publishable_fill_probability",
+    ]
+    if not numeric[probability_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        errors.append(f"bounded execution publishability probabilities violated in {artifact}")
+    if (numeric["conflict_rows"] > numeric["rows"]).any():
+        errors.append(f"execution publishability conflict rows exceed rows in {artifact}")
+    expected_conflict = frame["publishable_side"].astype(str) != frame["best_execution_side"].astype(str)
+    if not (numeric["conflict_rows"].eq(0.0) == ~expected_conflict).all():
+        errors.append(f"execution publishability conflict flags inconsistent with sides in {artifact}")
+    if frame["review_note"].astype(str).str.len().eq(0).any():
+        errors.append(f"blank execution publishability review notes in {artifact}")
+    return errors
+
+
 def verify_alpha_event_review_artifacts(output_dir: Path) -> list[str]:
     """Return errors when alpha event review artifacts are incomplete or stale."""
     paths = {

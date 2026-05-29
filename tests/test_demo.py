@@ -106,6 +106,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "alpha_event_review_verification_summary.json").exists()
     assert (tmp_path / "execution_adjusted_edge_summary.json").exists()
     assert (tmp_path / "heldout_execution_adjusted_edge_summary.json").exists()
+    assert (tmp_path / "execution_publishability_review_packet.csv").exists()
+    assert (tmp_path / "heldout_execution_publishability_review_packet.csv").exists()
     assert (tmp_path / "execution_adjusted_sample.csv").exists()
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
@@ -140,6 +142,17 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert execution_summary["rows"] == 750
     assert "tradable_share" in execution_summary
     assert "publishable_side_conflict_share" in execution_summary
+    execution_packet_columns = set(
+        pd.read_csv(tmp_path / "execution_publishability_review_packet.csv", nrows=1).columns
+    )
+    assert {
+        "publishable_side",
+        "best_execution_side",
+        "mean_best_fill_probability",
+        "mean_edge_drag_ticks",
+        "review_priority",
+        "review_note",
+    }.issubset(execution_packet_columns)
     assert metadata_summary["artifacts_with_metadata"] > 0
     assert metadata_summary["total_size_bytes"] > 0
     assert metadata_summary["largest_artifact"] != "none"
@@ -203,6 +216,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["alpha_event_drift_gate.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["execution_adjusted_edge_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_execution_adjusted_edge_summary.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["execution_publishability_review_packet.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_execution_publishability_review_packet.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["execution_adjusted_sample.csv"]["size_bytes"] > 0
     assert len(manifest["artifact_metadata"]["metrics.csv"]["sha256"]) == 64
     summary = (tmp_path / "research_summary.md").read_text()

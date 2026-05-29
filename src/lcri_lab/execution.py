@@ -372,6 +372,166 @@ def _rank_probability_bins(probability: pd.Series, bins: int) -> pd.Series:
     return bin_ids.astype(int) + 1
 
 
+def execution_publishability_review_packet(frame: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate pre/post-execution publishability conflicts for review.
+
+    The packet cross-tabs the pre-execution ``publishable_side`` gate against the
+    queue/adverse-fill-aware ``best_execution_side``. It is intentionally small
+    enough to ship as a demo/report artifact while still exposing the failure
+    modes that matter for market microstructure review: signals that abstain
+    after queue-position adjustment, side flips, and opportunities surfaced only
+    by the execution layer.
+    """
+    columns = list(_empty_execution_publishability_review_packet().columns)
+    required = {
+        "publishable_side",
+        "best_execution_side",
+        "execution_adjusted_edge_ticks",
+        "long_fill_adjusted_edge_ticks",
+        "short_fill_adjusted_edge_ticks",
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+    }
+    if frame.empty:
+        return _empty_execution_publishability_review_packet()
+    _require_columns(frame, required, "execution publishability review")
+    values = _finite_values(
+        frame,
+        [
+            "execution_adjusted_edge_ticks",
+            "long_fill_adjusted_edge_ticks",
+            "short_fill_adjusted_edge_ticks",
+            "bid_fill_probability",
+            "ask_fill_probability",
+            "bid_adverse_fill_probability",
+            "ask_adverse_fill_probability",
+        ],
+        "execution publishability review",
+    )
+
+    publishable_side = frame["publishable_side"].astype(str)
+    best_side = frame["best_execution_side"].astype(str)
+    row_state = pd.DataFrame(
+        {
+            "publishable_side": publishable_side,
+            "best_execution_side": best_side,
+            "execution_adjusted_edge_ticks": values["execution_adjusted_edge_ticks"],
+            "best_fill_probability": _side_probability(
+                best_side,
+                bid=values["bid_fill_probability"],
+                ask=values["ask_fill_probability"],
+            ),
+            "best_adverse_fill_probability": _side_probability(
+                best_side,
+                bid=values["bid_adverse_fill_probability"],
+                ask=values["ask_adverse_fill_probability"],
+            ),
+            "publishable_fill_probability": _side_probability(
+                publishable_side,
+                bid=values["bid_fill_probability"],
+                ask=values["ask_fill_probability"],
+            ),
+            "publishable_edge_ticks": _side_probability(
+                publishable_side,
+                bid=values["long_fill_adjusted_edge_ticks"],
+                ask=values["short_fill_adjusted_edge_ticks"],
+            ),
+        }
+    )
+    row_state["edge_drag_ticks"] = (
+        row_state["execution_adjusted_edge_ticks"] - row_state["publishable_edge_ticks"]
+    )
+    row_state["is_conflict"] = row_state["publishable_side"] != row_state["best_execution_side"]
+
+    rows: list[dict[str, float | int | str]] = []
+    for (published, best), group in row_state.groupby(
+        ["publishable_side", "best_execution_side"], sort=True
+    ):
+        conflict_rows = int(group["is_conflict"].sum())
+        rows.append(
+            {
+                "publishable_side": str(published),
+                "best_execution_side": str(best),
+                "rows": len(group),
+                "conflict_rows": conflict_rows,
+                "conflict_share": float(group["is_conflict"].mean()),
+                "mean_execution_adjusted_edge_ticks": float(
+                    group["execution_adjusted_edge_ticks"].mean()
+                ),
+                "mean_best_fill_probability": float(group["best_fill_probability"].mean()),
+                "mean_best_adverse_fill_probability": float(
+                    group["best_adverse_fill_probability"].mean()
+                ),
+                "mean_publishable_fill_probability": float(
+                    group["publishable_fill_probability"].mean()
+                ),
+                "mean_edge_drag_ticks": float(group["edge_drag_ticks"].mean()),
+                "review_priority": _execution_review_priority(str(published), str(best)),
+                "review_note": _execution_review_note(str(published), str(best)),
+            }
+        )
+
+    packet = pd.DataFrame(rows)[columns]
+    return packet.sort_values(
+        ["review_priority", "conflict_rows", "rows", "publishable_side", "best_execution_side"],
+        ascending=[False, False, False, True, True],
+        ignore_index=True,
+    )
+
+
+def _side_probability(side: pd.Series, *, bid: pd.Series, ask: pd.Series) -> pd.Series:
+    return pd.Series(
+        np.select([side == "long", side == "short"], [bid, ask], default=0.0),
+        index=side.index,
+    )
+
+
+def _execution_review_priority(publishable_side: str, best_execution_side: str) -> int:
+    if publishable_side == best_execution_side:
+        return 0
+    if publishable_side in {"long", "short"}:
+        return 3
+    if best_execution_side in {"long", "short"}:
+        return 2
+    return 1
+
+
+def _execution_review_note(publishable_side: str, best_execution_side: str) -> str:
+    if publishable_side == best_execution_side:
+        return f"pre-execution and execution-aware gates agree on {best_execution_side}"
+    if publishable_side in {"long", "short"} and best_execution_side == "abstain":
+        return (
+            f"pre-execution {publishable_side} signal abstains after "
+            "queue/adverse-fill adjustment"
+        )
+    if publishable_side in {"long", "short"} and best_execution_side in {"long", "short"}:
+        return f"pre-execution {publishable_side} signal flips to {best_execution_side} after execution adjustment"
+    if publishable_side == "abstain" and best_execution_side in {"long", "short"}:
+        return f"execution layer surfaces {best_execution_side} opportunity despite pre-execution abstain"
+    return f"publishability gate changes from {publishable_side} to {best_execution_side} after execution adjustment"
+
+
+def _empty_execution_publishability_review_packet() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "publishable_side",
+            "best_execution_side",
+            "rows",
+            "conflict_rows",
+            "conflict_share",
+            "mean_execution_adjusted_edge_ticks",
+            "mean_best_fill_probability",
+            "mean_best_adverse_fill_probability",
+            "mean_publishable_fill_probability",
+            "mean_edge_drag_ticks",
+            "review_priority",
+            "review_note",
+        ]
+    )
+
+
 def _empty_execution_summary() -> dict[str, float | int | str]:
     return {
         "rows": 0,
