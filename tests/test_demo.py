@@ -113,6 +113,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "passive_fill_event_regime_summary.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_windows.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_regime_summary.csv").exists()
+    assert (tmp_path / "passive_fill_calibration_curve.csv").exists()
+    assert (tmp_path / "heldout_passive_fill_calibration_curve.csv").exists()
+    assert (tmp_path / "passive_fill_calibration_summary.json").exists()
+    assert (tmp_path / "heldout_passive_fill_calibration_summary.json").exists()
     assert (tmp_path / "queue_position_fill_surface.csv").exists()
     assert (tmp_path / "heldout_queue_position_fill_surface.csv").exists()
     assert (tmp_path / "queue_position_fraction_sweep.csv").exists()
@@ -169,6 +173,22 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "review_priority",
         "review_note",
     }.issubset(execution_packet_columns)
+    passive_fill_calibration_columns = set(
+        pd.read_csv(tmp_path / "passive_fill_calibration_curve.csv", nrows=1).columns
+    )
+    assert {
+        "regime",
+        "bin",
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+        "absolute_calibration_error",
+        "brier_score",
+    }.issubset(passive_fill_calibration_columns)
+    passive_fill_calibration_summary = json.loads(
+        (tmp_path / "passive_fill_calibration_summary.json").read_text()
+    )
+    assert "expected_calibration_error" in passive_fill_calibration_summary
+    assert "weighted_brier_score" in passive_fill_calibration_summary
     queue_surface_columns = set(
         pd.read_csv(tmp_path / "queue_position_fill_surface.csv", nrows=1).columns
     )

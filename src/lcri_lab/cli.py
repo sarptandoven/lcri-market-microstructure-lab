@@ -89,6 +89,8 @@ from lcri_lab.execution import (
     add_queue_position_features,
     execution_adjusted_edge_summary,
     execution_publishability_review_packet,
+    passive_fill_calibration_curve,
+    passive_fill_calibration_summary,
     passive_fill_event_regime_summary,
     passive_fill_event_window_diagnostics,
     queue_position_capacity_frontier,
@@ -511,6 +513,18 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     )
     passive_fill_labeled = _add_passive_fill_realization_proxy(scored)
     heldout_passive_fill_labeled = _add_passive_fill_realization_proxy(heldout_scored)
+    passive_fill_calibration = passive_fill_calibration_curve(
+        passive_fill_labeled,
+        regime_col="pressure_memory_decay_state",
+    )
+    heldout_passive_fill_calibration = passive_fill_calibration_curve(
+        heldout_passive_fill_labeled,
+        regime_col="pressure_memory_decay_state",
+    )
+    passive_fill_calibration_stats = passive_fill_calibration_summary(passive_fill_calibration)
+    heldout_passive_fill_calibration_stats = passive_fill_calibration_summary(
+        heldout_passive_fill_calibration
+    )
     queue_fill_surface = queue_position_fill_surface(
         passive_fill_labeled,
         regime_col="pressure_memory_decay_state",
@@ -648,6 +662,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "passive_fill_event_regime_summary.csv",
         "heldout_passive_fill_event_windows.csv",
         "heldout_passive_fill_event_regime_summary.csv",
+        "passive_fill_calibration_curve.csv",
+        "heldout_passive_fill_calibration_curve.csv",
+        "passive_fill_calibration_summary.json",
+        "heldout_passive_fill_calibration_summary.json",
         "queue_position_fill_surface.csv",
         "heldout_queue_position_fill_surface.csv",
         "queue_position_fraction_sweep.csv",
@@ -870,6 +888,15 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_passive_fill_event_regimes.to_csv(
         output / "heldout_passive_fill_event_regime_summary.csv", index=False
     )
+    passive_fill_calibration.to_csv(output / "passive_fill_calibration_curve.csv", index=False)
+    heldout_passive_fill_calibration.to_csv(
+        output / "heldout_passive_fill_calibration_curve.csv", index=False
+    )
+    write_json(output / "passive_fill_calibration_summary.json", passive_fill_calibration_stats)
+    write_json(
+        output / "heldout_passive_fill_calibration_summary.json",
+        heldout_passive_fill_calibration_stats,
+    )
     queue_fill_surface.to_csv(output / "queue_position_fill_surface.csv", index=False)
     heldout_queue_fill_surface.to_csv(
         output / "heldout_queue_position_fill_surface.csv", index=False
@@ -1011,6 +1038,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         heldout_execution_summary=heldout_execution_summary,
         passive_fill_event_regimes=passive_fill_event_regimes,
         heldout_passive_fill_event_regimes=heldout_passive_fill_event_regimes,
+        passive_fill_calibration_summary=passive_fill_calibration_stats,
+        heldout_passive_fill_calibration_summary=heldout_passive_fill_calibration_stats,
         queue_fill_surface=queue_fill_surface,
         heldout_queue_fill_surface=heldout_queue_fill_surface,
         queue_fraction_sweep=queue_fraction_sweep,
@@ -1229,6 +1258,8 @@ def _append_execution_adjusted_summary(
     heldout_execution_summary: dict[str, float | int | str],
     passive_fill_event_regimes: pd.DataFrame,
     heldout_passive_fill_event_regimes: pd.DataFrame,
+    passive_fill_calibration_summary: dict[str, float | int | str],
+    heldout_passive_fill_calibration_summary: dict[str, float | int | str],
     queue_fill_surface: pd.DataFrame,
     heldout_queue_fill_surface: pd.DataFrame,
     queue_fraction_sweep: pd.DataFrame,
@@ -1241,6 +1272,12 @@ def _append_execution_adjusted_summary(
 ) -> None:
     regime_lines = _passive_fill_regime_summary_lines(passive_fill_event_regimes)
     heldout_regime_lines = _passive_fill_regime_summary_lines(heldout_passive_fill_event_regimes)
+    passive_calibration_lines = _passive_fill_calibration_summary_lines(
+        passive_fill_calibration_summary
+    )
+    heldout_passive_calibration_lines = _passive_fill_calibration_summary_lines(
+        heldout_passive_fill_calibration_summary
+    )
     queue_surface_lines = _queue_position_fill_surface_lines(queue_fill_surface)
     heldout_queue_surface_lines = _queue_position_fill_surface_lines(heldout_queue_fill_surface)
     queue_sweep_lines = _queue_position_fraction_sweep_lines(queue_fraction_sweep)
@@ -1271,6 +1308,14 @@ def _append_execution_adjusted_summary(
         "## Heldout passive-fill event-window regime diagnostics",
         "",
         *heldout_regime_lines,
+        "",
+        "## Passive-fill calibration summary",
+        "",
+        *passive_calibration_lines,
+        "",
+        "## Heldout passive-fill calibration summary",
+        "",
+        *heldout_passive_calibration_lines,
         "",
         "## Queue-position fill calibration surface",
         "",
@@ -1327,6 +1372,22 @@ def _passive_fill_regime_summary_lines(summary: pd.DataFrame) -> list[str]:
             f"{row['worst_post_minus_pre_realized_edge']:.3f}"
         )
     return rows
+
+
+def _passive_fill_calibration_summary_lines(summary: dict[str, float | int | str]) -> list[str]:
+    if not summary or int(summary.get("rows", 0)) == 0:
+        return ["- no passive-fill calibration observations"]
+    keys = [
+        "rows",
+        "regimes",
+        "weighted_mean_predicted_fill_probability",
+        "weighted_realized_fill_rate",
+        "expected_calibration_error",
+        "weighted_brier_score",
+        "worst_regime",
+        "worst_absolute_calibration_error",
+    ]
+    return [f"- {key}: {summary.get(key, 'n/a')}" for key in keys]
 
 
 def _queue_position_fill_surface_lines(surface: pd.DataFrame) -> list[str]:

@@ -120,6 +120,27 @@ surfaces without opening every file:
   payload with present/missing counts, pass/fail status, release decision,
   review priority, categorized blocking-error excerpts, and next owner action
   for dashboard triage.
+- `execution_adjusted_edge_summary.json`: compact passive-fill-adjusted tradable
+  edge summary with abstain share, adverse-fill drag, and publishable-side conflicts.
+- `execution_publishability_review_packet.csv`: reviewer packet joining original
+  publishability side with best execution side, fill probabilities, edge drag, and
+  conflict priority.
+- `passive_fill_event_windows.csv`: high passive-fill-probability event windows
+  with side-specific pre/post realized edge drift by memory-decay regime.
+- `passive_fill_event_regime_summary.csv`: regime aggregation of passive-fill
+  event-window drift, adverse-post-event share, and worst drift.
+- `passive_fill_calibration_curve.csv`: side-specific passive-fill calibration
+  curve that bins predicted fill probability against realized fill proxy by regime.
+- `passive_fill_calibration_summary.json`: row-weighted passive-fill calibration
+  health summary with expected calibration error, weighted Brier score, and worst regime.
+- `queue_position_fill_surface.csv`: queue-depth x predicted-fill calibration grid
+  that surfaces whether passive execution remains calibrated away from front queue.
+- `queue_position_capacity_frontier.json`: thresholded queue-placement capacity
+  frontier for the deepest viable passive queue fraction.
+- `queue_position_capacity_stability.json`: full-sample versus heldout capacity
+  comparison with queue-depth, edge, tradable-share, and side-stability labels.
+- `queue_position_edge_decay.csv`: regime-level queue-depth decay summary for fill
+  rate, calibration error widening, and execution-adjusted edge.
 - `lcri_uncertainty_weighted_review_priority.csv`: owner-review queue that
   combines contradiction packet priority with CI coverage width, CI/gate
   disagreement counts, and fragility uncertainty.

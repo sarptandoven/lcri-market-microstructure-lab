@@ -258,7 +258,7 @@ tests/
 - The current baseline is transparent and ridge-regularized; nonlinear stress enters through explicit basis terms rather than a black-box estimator.
 - Queue-position-aware passive fill probability is snapshot-proxy based, not an event-level queue simulator.
 - Passive-fill calibration curves can compare that proxy to side-specific realized fill flags, but the realized flags still need event-level add/cancel/trade data for live calibration.
-- Passive-fill event windows now surface side-specific post-fill drift by regime; they should be promoted into demo/report artifacts after calibration.
+- Passive-fill event windows now surface side-specific post-fill drift by regime and are emitted as demo/report artifacts with calibration summaries.
 
 ## Next steps
 
@@ -270,5 +270,4 @@ tests/
 - Track residual tail diagnostics by side, threshold, and absorption state.
 - Audit feature stability by liquidity regime before model promotion.
 - Compare directional metrics against cost-aware tradable labels.
-- Promote passive-fill calibration and event-window regime diagnostics into demo/report artifacts.
 - Add model cards with fitted coefficients and residual scales.
