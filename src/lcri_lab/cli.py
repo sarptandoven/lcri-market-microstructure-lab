@@ -91,7 +91,11 @@ from lcri_lab.execution import (
     execution_publishability_review_packet,
     passive_fill_event_regime_summary,
     passive_fill_event_window_diagnostics,
+    queue_position_capacity_frontier,
+    queue_position_capacity_stability,
+    queue_position_edge_decay,
     queue_position_fill_surface,
+    queue_position_fraction_sweep,
 )
 from lcri_lab.features import add_regime_transition_features
 from lcri_lab.ingest import normalize_l2_snapshots
@@ -515,6 +519,24 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         heldout_passive_fill_labeled,
         regime_col="pressure_memory_decay_state",
     )
+    queue_fraction_sweep = queue_position_fraction_sweep(scored)
+    heldout_queue_fraction_sweep = queue_position_fraction_sweep(heldout_scored)
+    queue_capacity_frontier = queue_position_capacity_frontier(
+        queue_fraction_sweep,
+        min_edge_ticks=0.0,
+        min_tradable_share=0.50,
+    )
+    heldout_queue_capacity_frontier = queue_position_capacity_frontier(
+        heldout_queue_fraction_sweep,
+        min_edge_ticks=0.0,
+        min_tradable_share=0.50,
+    )
+    queue_capacity_stability = queue_position_capacity_stability(
+        queue_capacity_frontier,
+        heldout_queue_capacity_frontier,
+    )
+    queue_edge_decay = queue_position_edge_decay(queue_fill_surface)
+    heldout_queue_edge_decay = queue_position_edge_decay(heldout_queue_fill_surface)
 
     artifact_paths = [
         "lcri-model.json",
@@ -628,6 +650,13 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "heldout_passive_fill_event_regime_summary.csv",
         "queue_position_fill_surface.csv",
         "heldout_queue_position_fill_surface.csv",
+        "queue_position_fraction_sweep.csv",
+        "heldout_queue_position_fraction_sweep.csv",
+        "queue_position_capacity_frontier.json",
+        "heldout_queue_position_capacity_frontier.json",
+        "queue_position_capacity_stability.json",
+        "queue_position_edge_decay.csv",
+        "heldout_queue_position_edge_decay.csv",
         "execution_adjusted_sample.csv",
         "research_summary.md",
         "artifact_coverage_matrix.csv",
@@ -845,6 +874,17 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_queue_fill_surface.to_csv(
         output / "heldout_queue_position_fill_surface.csv", index=False
     )
+    queue_fraction_sweep.to_csv(output / "queue_position_fraction_sweep.csv", index=False)
+    heldout_queue_fraction_sweep.to_csv(
+        output / "heldout_queue_position_fraction_sweep.csv", index=False
+    )
+    write_json(output / "queue_position_capacity_frontier.json", queue_capacity_frontier)
+    write_json(
+        output / "heldout_queue_position_capacity_frontier.json", heldout_queue_capacity_frontier
+    )
+    write_json(output / "queue_position_capacity_stability.json", queue_capacity_stability)
+    queue_edge_decay.to_csv(output / "queue_position_edge_decay.csv", index=False)
+    heldout_queue_edge_decay.to_csv(output / "heldout_queue_position_edge_decay.csv", index=False)
     scored[
         [
             "lcri",
@@ -973,6 +1013,13 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         heldout_passive_fill_event_regimes=heldout_passive_fill_event_regimes,
         queue_fill_surface=queue_fill_surface,
         heldout_queue_fill_surface=heldout_queue_fill_surface,
+        queue_fraction_sweep=queue_fraction_sweep,
+        heldout_queue_fraction_sweep=heldout_queue_fraction_sweep,
+        queue_capacity_frontier=queue_capacity_frontier,
+        heldout_queue_capacity_frontier=heldout_queue_capacity_frontier,
+        queue_capacity_stability=queue_capacity_stability,
+        queue_edge_decay=queue_edge_decay,
+        heldout_queue_edge_decay=heldout_queue_edge_decay,
     )
     coverage_matrix = artifact_coverage_matrix(artifact_paths)
     coverage_matrix.to_csv(output / "artifact_coverage_matrix.csv", index=False)
@@ -1184,11 +1231,29 @@ def _append_execution_adjusted_summary(
     heldout_passive_fill_event_regimes: pd.DataFrame,
     queue_fill_surface: pd.DataFrame,
     heldout_queue_fill_surface: pd.DataFrame,
+    queue_fraction_sweep: pd.DataFrame,
+    heldout_queue_fraction_sweep: pd.DataFrame,
+    queue_capacity_frontier: dict[str, float | int | str],
+    heldout_queue_capacity_frontier: dict[str, float | int | str],
+    queue_capacity_stability: dict[str, float | int | str | bool],
+    queue_edge_decay: pd.DataFrame,
+    heldout_queue_edge_decay: pd.DataFrame,
 ) -> None:
     regime_lines = _passive_fill_regime_summary_lines(passive_fill_event_regimes)
     heldout_regime_lines = _passive_fill_regime_summary_lines(heldout_passive_fill_event_regimes)
     queue_surface_lines = _queue_position_fill_surface_lines(queue_fill_surface)
     heldout_queue_surface_lines = _queue_position_fill_surface_lines(heldout_queue_fill_surface)
+    queue_sweep_lines = _queue_position_fraction_sweep_lines(queue_fraction_sweep)
+    heldout_queue_sweep_lines = _queue_position_fraction_sweep_lines(heldout_queue_fraction_sweep)
+    queue_capacity_lines = _queue_position_capacity_frontier_lines(queue_capacity_frontier)
+    heldout_queue_capacity_lines = _queue_position_capacity_frontier_lines(
+        heldout_queue_capacity_frontier
+    )
+    queue_capacity_stability_lines = _queue_position_capacity_stability_lines(
+        queue_capacity_stability
+    )
+    queue_decay_lines = _queue_position_edge_decay_lines(queue_edge_decay)
+    heldout_queue_decay_lines = _queue_position_edge_decay_lines(heldout_queue_edge_decay)
     lines = [
         "",
         "## Execution-adjusted edge summary",
@@ -1214,6 +1279,34 @@ def _append_execution_adjusted_summary(
         "## Heldout queue-position fill calibration surface",
         "",
         *heldout_queue_surface_lines,
+        "",
+        "## Queue-position fraction sweep",
+        "",
+        *queue_sweep_lines,
+        "",
+        "## Heldout queue-position fraction sweep",
+        "",
+        *heldout_queue_sweep_lines,
+        "",
+        "## Queue-position capacity frontier",
+        "",
+        *queue_capacity_lines,
+        "",
+        "## Heldout queue-position capacity frontier",
+        "",
+        *heldout_queue_capacity_lines,
+        "",
+        "## Queue-position capacity stability",
+        "",
+        *queue_capacity_stability_lines,
+        "",
+        "## Queue-position edge decay",
+        "",
+        *queue_decay_lines,
+        "",
+        "## Heldout queue-position edge decay",
+        "",
+        *heldout_queue_decay_lines,
         "",
     ]
     path.write_text(path.read_text() + "\n".join(lines))
@@ -1253,6 +1346,72 @@ def _queue_position_fill_surface_lines(surface: pd.DataFrame) -> list[str]:
             f"realized_fill={row['realized_fill_rate']:.3f}, "
             f"abs_calibration_error={row['absolute_calibration_error']:.3f}, "
             f"mean_execution_edge={row['mean_execution_adjusted_edge_ticks']:.3f}"
+        )
+    return rows
+
+
+def _queue_position_fraction_sweep_lines(sweep: pd.DataFrame) -> list[str]:
+    if sweep.empty:
+        return ["- no queue-position fraction sweep rows"]
+    rows = []
+    for row in sweep.to_dict("records"):
+        rows.append(
+            "- "
+            f"fraction={row['queue_position_fraction']:.2f}: "
+            f"bid_fill={row['mean_bid_fill_probability']:.3f}, "
+            f"ask_fill={row['mean_ask_fill_probability']:.3f}, "
+            f"execution_edge={row['mean_execution_adjusted_edge_ticks']:.3f}, "
+            f"tradable_share={row['tradable_share']:.3f}, "
+            f"dominant_side={row['dominant_execution_side']}"
+        )
+    return rows
+
+
+def _queue_position_capacity_frontier_lines(frontier: dict[str, float | int | str]) -> list[str]:
+    if not frontier:
+        return ["- no queue-position capacity frontier"]
+    keys = [
+        "capacity_label",
+        "max_viable_queue_position_fraction",
+        "max_viable_mean_execution_adjusted_edge_ticks",
+        "max_viable_tradable_share",
+        "edge_decay_to_capacity_ticks",
+        "tradable_share_decay_to_capacity",
+    ]
+    return [f"- {key}: {frontier.get(key, 'n/a')}" for key in keys]
+
+
+def _queue_position_capacity_stability_lines(
+    stability: dict[str, float | int | str | bool],
+) -> list[str]:
+    if not stability:
+        return ["- no queue-position capacity stability"]
+    keys = [
+        "capacity_stability_label",
+        "research_capacity_label",
+        "heldout_capacity_label",
+        "capacity_fraction_gap",
+        "capacity_edge_gap_ticks",
+        "capacity_tradable_share_gap",
+        "capacity_viable_row_gap",
+        "dominant_side_changed",
+    ]
+    return [f"- {key}: {stability.get(key, 'n/a')}" for key in keys]
+
+
+def _queue_position_edge_decay_lines(decay: pd.DataFrame) -> list[str]:
+    if decay.empty:
+        return ["- no queue-position edge-decay regimes"]
+    rows = []
+    for row in decay.head(5).to_dict("records"):
+        rows.append(
+            "- "
+            f"{row['regime']}: bins={int(row['queue_bins'])}, rows={int(row['rows'])}, "
+            f"front_queue={row['front_mean_queue_share']:.3f}, "
+            f"back_queue={row['back_mean_queue_share']:.3f}, "
+            f"fill_decay={row['fill_rate_decay']:.3f}, "
+            f"edge_decay={row['edge_decay_ticks']:.3f}, "
+            f"label={row['queue_decay_label']}"
         )
     return rows
 

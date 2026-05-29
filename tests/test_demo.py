@@ -115,6 +115,13 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_passive_fill_event_regime_summary.csv").exists()
     assert (tmp_path / "queue_position_fill_surface.csv").exists()
     assert (tmp_path / "heldout_queue_position_fill_surface.csv").exists()
+    assert (tmp_path / "queue_position_fraction_sweep.csv").exists()
+    assert (tmp_path / "heldout_queue_position_fraction_sweep.csv").exists()
+    assert (tmp_path / "queue_position_capacity_frontier.json").exists()
+    assert (tmp_path / "heldout_queue_position_capacity_frontier.json").exists()
+    assert (tmp_path / "queue_position_capacity_stability.json").exists()
+    assert (tmp_path / "queue_position_edge_decay.csv").exists()
+    assert (tmp_path / "heldout_queue_position_edge_decay.csv").exists()
     assert (tmp_path / "execution_adjusted_sample.csv").exists()
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
@@ -174,6 +181,30 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "absolute_calibration_error",
         "mean_execution_adjusted_edge_ticks",
     }.issubset(queue_surface_columns)
+    sweep_columns = set(pd.read_csv(tmp_path / "queue_position_fraction_sweep.csv", nrows=1).columns)
+    assert {
+        "queue_position_fraction",
+        "mean_bid_fill_probability",
+        "mean_ask_fill_probability",
+        "mean_execution_adjusted_edge_ticks",
+        "tradable_share",
+        "dominant_execution_side",
+    }.issubset(sweep_columns)
+    capacity_frontier = json.loads((tmp_path / "queue_position_capacity_frontier.json").read_text())
+    assert "max_viable_queue_position_fraction" in capacity_frontier
+    assert "capacity_label" in capacity_frontier
+    capacity_stability = json.loads((tmp_path / "queue_position_capacity_stability.json").read_text())
+    assert "capacity_fraction_gap" in capacity_stability
+    assert "capacity_stability_label" in capacity_stability
+    edge_decay_columns = set(pd.read_csv(tmp_path / "queue_position_edge_decay.csv", nrows=1).columns)
+    assert {
+        "regime",
+        "front_mean_queue_share",
+        "back_mean_queue_share",
+        "fill_rate_decay",
+        "edge_decay_ticks",
+        "queue_decay_label",
+    }.issubset(edge_decay_columns)
     assert metadata_summary["artifacts_with_metadata"] > 0
     assert metadata_summary["total_size_bytes"] > 0
     assert metadata_summary["largest_artifact"] != "none"
@@ -246,6 +277,13 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["heldout_passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["queue_position_fill_surface.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_queue_position_fill_surface.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["queue_position_fraction_sweep.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_queue_position_fraction_sweep.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["queue_position_capacity_frontier.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_queue_position_capacity_frontier.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["queue_position_capacity_stability.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["queue_position_edge_decay.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_queue_position_edge_decay.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["execution_adjusted_sample.csv"]["size_bytes"] > 0
     assert len(manifest["artifact_metadata"]["metrics.csv"]["sha256"]) == 64
     summary = (tmp_path / "research_summary.md").read_text()
@@ -283,6 +321,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## Execution-adjusted edge summary" in summary
     assert "## Passive-fill event-window regime diagnostics" in summary
     assert "## Queue-position fill calibration surface" in summary
+    assert "## Queue-position fraction sweep" in summary
+    assert "## Queue-position capacity frontier" in summary
+    assert "## Queue-position capacity stability" in summary
+    assert "## Queue-position edge decay" in summary
 
     verify_report(tmp_path)
 

@@ -13,10 +13,11 @@ from lcri_lab.execution import (
     passive_fill_event_window_diagnostics,
     execution_publishability_review_packet,
     passive_fill_edge_curve,
+    queue_position_capacity_frontier,
+    queue_position_capacity_stability,
     queue_position_edge_decay,
     queue_position_fill_surface,
     queue_position_fraction_sweep,
-    queue_position_capacity_frontier,
 )
 
 
@@ -327,6 +328,71 @@ def test_queue_position_capacity_frontier_rejects_invalid_inputs() -> None:
         queue_position_capacity_frontier(pd.DataFrame(), min_tradable_share=1.5)
     with pytest.raises(ValueError, match="missing queue position capacity frontier columns"):
         queue_position_capacity_frontier(pd.DataFrame({"queue_position_fraction": [0.0]}))
+
+
+def test_queue_position_capacity_stability_compares_research_and_heldout_frontiers() -> None:
+    research = {
+        "rows": 5,
+        "viable_rows": 4,
+        "front_queue_position_fraction": 0.0,
+        "max_viable_queue_position_fraction": 0.75,
+        "front_mean_execution_adjusted_edge_ticks": 0.90,
+        "max_viable_mean_execution_adjusted_edge_ticks": 0.40,
+        "edge_decay_to_capacity_ticks": 0.50,
+        "front_tradable_share": 0.95,
+        "max_viable_tradable_share": 0.80,
+        "tradable_share_decay_to_capacity": 0.15,
+        "dominant_execution_side_at_capacity": "long",
+        "capacity_label": "queue_capacity_constrained",
+    }
+    heldout = {
+        **research,
+        "viable_rows": 3,
+        "max_viable_queue_position_fraction": 0.50,
+        "max_viable_mean_execution_adjusted_edge_ticks": 0.20,
+        "max_viable_tradable_share": 0.62,
+        "dominant_execution_side_at_capacity": "short",
+    }
+
+    stability = queue_position_capacity_stability(research, heldout)
+
+    assert stability == {
+        "research_capacity_label": "queue_capacity_constrained",
+        "heldout_capacity_label": "queue_capacity_constrained",
+        "capacity_fraction_gap": pytest.approx(-0.25),
+        "capacity_edge_gap_ticks": pytest.approx(-0.20),
+        "capacity_tradable_share_gap": pytest.approx(-0.18),
+        "capacity_viable_row_gap": -1,
+        "dominant_side_changed": True,
+        "capacity_stability_label": "capacity_fragile",
+    }
+
+
+def test_queue_position_capacity_stability_labels_stable_capacity() -> None:
+    research = {
+        "viable_rows": 3,
+        "max_viable_queue_position_fraction": 0.50,
+        "max_viable_mean_execution_adjusted_edge_ticks": 0.40,
+        "max_viable_tradable_share": 0.70,
+        "dominant_execution_side_at_capacity": "long",
+        "capacity_label": "queue_capacity_constrained",
+    }
+    heldout = {
+        **research,
+        "max_viable_queue_position_fraction": 0.50,
+        "max_viable_mean_execution_adjusted_edge_ticks": 0.36,
+        "max_viable_tradable_share": 0.68,
+    }
+
+    stability = queue_position_capacity_stability(research, heldout)
+
+    assert stability["dominant_side_changed"] is False
+    assert stability["capacity_stability_label"] == "capacity_stable"
+
+
+def test_queue_position_capacity_stability_rejects_bad_frontiers() -> None:
+    with pytest.raises(ValueError, match="missing research capacity frontier keys"):
+        queue_position_capacity_stability({"capacity_label": "x"}, {})
 
 
 def test_queue_position_edge_decay_quantifies_deep_queue_degradation() -> None:

@@ -445,6 +445,103 @@ def queue_position_capacity_frontier(
     return result
 
 
+def queue_position_capacity_stability(
+    research_frontier: dict[str, float | int | str],
+    heldout_frontier: dict[str, float | int | str],
+    *,
+    max_fraction_gap: float = 0.10,
+    max_edge_gap_ticks: float = 0.10,
+    max_tradable_share_gap: float = 0.05,
+) -> dict[str, float | int | str | bool]:
+    """Compare in-sample and heldout passive queue-capacity frontiers.
+
+    Capacity can look publishable if only the research segment clears the passive
+    edge/tradability gates. This reducer turns the train/heldout frontier pair
+    into an explicit stability gate: how much queue depth, edge, tradable share,
+    and side selection survive out of sample.
+    """
+    for name, value in {
+        "max_fraction_gap": max_fraction_gap,
+        "max_edge_gap_ticks": max_edge_gap_ticks,
+        "max_tradable_share_gap": max_tradable_share_gap,
+    }.items():
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"{name} must be finite and non-negative")
+
+    required = {
+        "viable_rows",
+        "max_viable_queue_position_fraction",
+        "max_viable_mean_execution_adjusted_edge_ticks",
+        "max_viable_tradable_share",
+        "dominant_execution_side_at_capacity",
+        "capacity_label",
+    }
+    for label, frontier in {
+        "research": research_frontier,
+        "heldout": heldout_frontier,
+    }.items():
+        missing = sorted(required - set(frontier))
+        if missing:
+            raise ValueError(f"missing {label} capacity frontier keys: {missing}")
+
+    research_fraction = float(research_frontier["max_viable_queue_position_fraction"])
+    heldout_fraction = float(heldout_frontier["max_viable_queue_position_fraction"])
+    research_edge = float(research_frontier["max_viable_mean_execution_adjusted_edge_ticks"])
+    heldout_edge = float(heldout_frontier["max_viable_mean_execution_adjusted_edge_ticks"])
+    research_tradable = float(research_frontier["max_viable_tradable_share"])
+    heldout_tradable = float(heldout_frontier["max_viable_tradable_share"])
+    research_viable_rows = int(research_frontier["viable_rows"])
+    heldout_viable_rows = int(heldout_frontier["viable_rows"])
+
+    numeric_values = [
+        research_fraction,
+        heldout_fraction,
+        research_edge,
+        heldout_edge,
+        research_tradable,
+        heldout_tradable,
+    ]
+    if not all(math.isfinite(value) for value in numeric_values):
+        raise ValueError("capacity frontier numeric values must be finite")
+    if not 0.0 <= research_fraction <= 1.0 or not 0.0 <= heldout_fraction <= 1.0:
+        raise ValueError("capacity frontier fractions must be in [0.0, 1.0]")
+    if not 0.0 <= research_tradable <= 1.0 or not 0.0 <= heldout_tradable <= 1.0:
+        raise ValueError("capacity frontier tradable shares must be in [0.0, 1.0]")
+    if research_viable_rows < 0 or heldout_viable_rows < 0:
+        raise ValueError("capacity frontier viable rows must be non-negative")
+
+    fraction_gap = heldout_fraction - research_fraction
+    edge_gap = heldout_edge - research_edge
+    tradable_gap = heldout_tradable - research_tradable
+    viable_row_gap = heldout_viable_rows - research_viable_rows
+    dominant_side_changed = (
+        str(research_frontier["dominant_execution_side_at_capacity"])
+        != str(heldout_frontier["dominant_execution_side_at_capacity"])
+    )
+    label = _queue_capacity_stability_label(
+        fraction_gap=fraction_gap,
+        edge_gap=edge_gap,
+        tradable_gap=tradable_gap,
+        viable_row_gap=viable_row_gap,
+        dominant_side_changed=dominant_side_changed,
+        heldout_label=str(heldout_frontier["capacity_label"]),
+        max_fraction_gap=max_fraction_gap,
+        max_edge_gap_ticks=max_edge_gap_ticks,
+        max_tradable_share_gap=max_tradable_share_gap,
+    )
+
+    return {
+        "research_capacity_label": str(research_frontier["capacity_label"]),
+        "heldout_capacity_label": str(heldout_frontier["capacity_label"]),
+        "capacity_fraction_gap": float(fraction_gap),
+        "capacity_edge_gap_ticks": float(edge_gap),
+        "capacity_tradable_share_gap": float(tradable_gap),
+        "capacity_viable_row_gap": int(viable_row_gap),
+        "dominant_side_changed": dominant_side_changed,
+        "capacity_stability_label": label,
+    }
+
+
 def passive_fill_edge_curve(
     frame: pd.DataFrame,
     *,
@@ -1140,6 +1237,31 @@ def _queue_capacity_label(*, max_fraction: float, edge_decay: float, tradable_de
     if max_fraction >= 0.50:
         return "queue_capacity_constrained"
     return "front_queue_only_capacity"
+
+
+def _queue_capacity_stability_label(
+    *,
+    fraction_gap: float,
+    edge_gap: float,
+    tradable_gap: float,
+    viable_row_gap: int,
+    dominant_side_changed: bool,
+    heldout_label: str,
+    max_fraction_gap: float,
+    max_edge_gap_ticks: float,
+    max_tradable_share_gap: float,
+) -> str:
+    if heldout_label in {"empty_sweep", "no_viable_passive_capacity"}:
+        return "capacity_not_replicated"
+    if (
+        fraction_gap < -max_fraction_gap
+        or edge_gap < -max_edge_gap_ticks
+        or tradable_gap < -max_tradable_share_gap
+        or viable_row_gap < 0
+        or dominant_side_changed
+    ):
+        return "capacity_fragile"
+    return "capacity_stable"
 
 
 def _empty_passive_fill_edge_curve() -> pd.DataFrame:
