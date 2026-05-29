@@ -13,7 +13,7 @@ from lcri_lab.baseline import LiquidityBaseline, compute_lcri, design_feature_na
 from lcri_lab.features import compute_features
 
 
-ARTIFACT_VERSION = 2
+ARTIFACT_VERSION = 3
 
 
 @dataclass(frozen=True)

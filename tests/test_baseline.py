@@ -27,6 +27,28 @@ def test_design_feature_names_include_interactions() -> None:
     assert "resilience_asymmetry" in names
     assert "spread_x_replenishment" in names
     assert "log_depth_x_depth_slope" in names
+    assert "spread_stress_squared" in names
+    assert "volatility_stress_squared" in names
+    assert "liquidity_void_x_volatility" in names
+    assert "replenishment_inverse" in names
+
+
+def test_nonlinear_liquidity_basis_can_absorb_convex_stress_response() -> None:
+    books = simulate_order_books(SimulationConfig(rows=700, seed=12))
+    features = compute_features(books)
+    features["raw_imbalance"] = (
+        0.06 * features["spread_ticks"].to_numpy(dtype=float) ** 2
+        - 0.35 * features["volatility"].to_numpy(dtype=float) ** 2
+        + 0.25 * features["liquidity_void_ratio"].to_numpy(dtype=float)
+        * features["volatility"].to_numpy(dtype=float)
+        - 0.18 / (1.0 + features["replenishment_rate"].to_numpy(dtype=float))
+    )
+
+    baseline = LiquidityBaseline(ridge=1e-8).fit(features)
+    residual = features["raw_imbalance"].to_numpy(dtype=float) - baseline.predict(features)
+
+    assert len(baseline.coefficients) == len(design_feature_names()) + 1
+    assert float(np.sqrt(np.mean(residual**2))) < 1e-6
 
 
 def test_baseline_rejects_invalid_ridge() -> None:

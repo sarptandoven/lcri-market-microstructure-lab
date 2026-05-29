@@ -15,6 +15,13 @@ INTERACTION_FEATURES = [
     "log_depth_x_depth_slope",
 ]
 
+NONLINEAR_LIQUIDITY_FEATURES = [
+    "spread_stress_squared",
+    "volatility_stress_squared",
+    "liquidity_void_x_volatility",
+    "replenishment_inverse",
+]
+
 
 @dataclass
 class LiquidityBaseline:
@@ -79,7 +86,7 @@ def compute_lcri(frame: pd.DataFrame, baseline: LiquidityBaseline) -> pd.DataFra
 
 
 def design_feature_names() -> list[str]:
-    return [*feature_columns(), *INTERACTION_FEATURES]
+    return [*feature_columns(), *INTERACTION_FEATURES, *NONLINEAR_LIQUIDITY_FEATURES]
 
 
 def _design_matrix(frame: pd.DataFrame) -> np.ndarray:
@@ -99,4 +106,15 @@ def _design_matrix(frame: pd.DataFrame) -> np.ndarray:
     )
     if not np.isfinite(interactions).all():
         raise ValueError("feature interactions must be finite")
-    return np.column_stack([x, interactions])
+    nonlinear = np.column_stack(
+        [
+            frame["spread_ticks"].to_numpy(dtype=float) ** 2,
+            frame["volatility"].to_numpy(dtype=float) ** 2,
+            frame["liquidity_void_ratio"].to_numpy(dtype=float)
+            * frame["volatility"].to_numpy(dtype=float),
+            1.0 / (1.0 + frame["replenishment_rate"].to_numpy(dtype=float)),
+        ]
+    )
+    if not np.isfinite(nonlinear).all():
+        raise ValueError("nonlinear liquidity features must be finite")
+    return np.column_stack([x, interactions, nonlinear])

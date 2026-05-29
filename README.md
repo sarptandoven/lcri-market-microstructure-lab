@@ -30,6 +30,11 @@ where `sigma_regime` is the residual scale estimated inside comparable liquidity
 
 Positive LCRI means bid-side pressure is high relative to the current liquidity baseline. Negative LCRI means ask-side pressure is high relative to the current liquidity baseline.
 
+The default baseline remains ridge-regularized and inspectable, but its design
+matrix includes nonlinear liquidity stress terms (`spread_ticks²`,
+`volatility²`, `liquidity_void_ratio × volatility`, and inverse replenishment)
+so convex book-stress effects are removed before residual pressure is scored.
+
 ## Inputs
 
 The model expects order book snapshots with these columns for each level from 1 to 5 by default:
@@ -249,8 +254,8 @@ tests/
 
 - The included workflow uses synthetic data.
 - Real order book feeds must be normalized into the snapshot schema before scoring.
-- The current baseline is linear and transparent by design.
-- Queue position and fill probability are not implemented yet.
+- The current baseline is transparent and ridge-regularized; nonlinear stress enters through explicit basis terms rather than a black-box estimator.
+- Queue-position-aware passive fill probability is snapshot-proxy based, not an event-level queue simulator.
 
 ## Next steps
 
@@ -261,7 +266,6 @@ tests/
 - Track residual tail diagnostics by side, threshold, and absorption state.
 - Audit feature stability by liquidity regime before model promotion.
 - Compare directional metrics against cost-aware tradable labels.
-- Add nonlinear baseline estimators with identical `fit` and `score_frame` semantics.
-- Extend the publishability gate with queue-position-aware fill probability.
-- Add event-window regime tagging.
+- Calibrate queue-position-aware fill probability against event-level add/cancel/trade data.
+- Add event-window regime tagging beyond the current rolling transition features.
 - Add model cards with fitted coefficients and residual scales.

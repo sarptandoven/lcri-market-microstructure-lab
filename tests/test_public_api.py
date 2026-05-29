@@ -21,7 +21,7 @@ def test_public_api_exports_signal_monotonicity_validation() -> None:
 
 
 def test_public_api_exports_artifact_version() -> None:
-    assert lcri_lab.ARTIFACT_VERSION == 2
+    assert lcri_lab.ARTIFACT_VERSION == 3
     assert "ARTIFACT_VERSION" in lcri_lab.__all__
 
 
