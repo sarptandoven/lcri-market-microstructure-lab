@@ -1194,6 +1194,120 @@ def passive_fill_event_regime_summary(events: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def passive_fill_event_toxicity_scorecard(
+    regime_summary: pd.DataFrame,
+    *,
+    max_adverse_post_edge_share: float = 0.60,
+    min_mean_post_minus_pre_edge: float = -0.25,
+    min_events: int = 1,
+) -> dict[str, float | int | str]:
+    """Gate passive-fill event windows for execution-aware publishability.
+
+    High fill probability is only useful if the subsequent event window is not
+    systematically toxic. This scorecard consumes ``passive_fill_event_regime_summary``
+    and flags regimes where high-probability fills are followed by excessive
+    adverse edge drift or a strongly negative mean post-minus-pre realized edge.
+    """
+    if not math.isfinite(max_adverse_post_edge_share) or not 0.0 <= max_adverse_post_edge_share <= 1.0:
+        raise ValueError("max_adverse_post_edge_share must be finite and between 0 and 1")
+    if not math.isfinite(min_mean_post_minus_pre_edge):
+        raise ValueError("min_mean_post_minus_pre_edge must be finite")
+    if not isinstance(min_events, int) or isinstance(min_events, bool) or min_events < 1:
+        raise ValueError("min_events must be a positive integer")
+    if regime_summary.empty:
+        return _empty_passive_fill_event_toxicity_scorecard()
+
+    required = {
+        "event_regime",
+        "events",
+        "adverse_post_edge_share",
+        "mean_event_fill_probability",
+        "mean_event_adverse_fill_probability",
+        "mean_post_minus_pre_realized_edge",
+        "worst_post_minus_pre_realized_edge",
+    }
+    _require_columns(regime_summary, required, "passive fill event toxicity")
+    values = _finite_values(
+        regime_summary,
+        [
+            "events",
+            "adverse_post_edge_share",
+            "mean_event_fill_probability",
+            "mean_event_adverse_fill_probability",
+            "mean_post_minus_pre_realized_edge",
+            "worst_post_minus_pre_realized_edge",
+        ],
+        "passive fill event toxicity",
+    )
+    if (values["events"] < 0.0).any():
+        raise ValueError("passive fill event toxicity events must be non-negative")
+
+    total_events = int(values["events"].sum())
+    if total_events == 0:
+        return _empty_passive_fill_event_toxicity_scorecard()
+
+    data = values.copy()
+    data["event_regime"] = regime_summary["event_regime"].astype(str)
+    weights = data["events"] / total_events
+    eligible = data[data["events"] >= min_events]
+    if eligible.empty:
+        scorecard = _empty_passive_fill_event_toxicity_scorecard()
+        scorecard.update(
+            {
+                "rows": int(len(regime_summary)),
+                "regimes": int(data["event_regime"].nunique()),
+                "total_events": total_events,
+                "weighted_mean_event_fill_probability": float(
+                    (data["mean_event_fill_probability"] * weights).sum()
+                ),
+                "weighted_mean_event_adverse_fill_probability": float(
+                    (data["mean_event_adverse_fill_probability"] * weights).sum()
+                ),
+                "weighted_mean_post_minus_pre_realized_edge": float(
+                    (data["mean_post_minus_pre_realized_edge"] * weights).sum()
+                ),
+                "event_toxicity_label": "insufficient_event_windows",
+            }
+        )
+        return scorecard
+
+    blocked = eligible[
+        (eligible["adverse_post_edge_share"] > max_adverse_post_edge_share)
+        | (eligible["mean_post_minus_pre_realized_edge"] < min_mean_post_minus_pre_edge)
+    ]
+    worst_idx = eligible.sort_values(
+        ["adverse_post_edge_share", "mean_post_minus_pre_realized_edge"],
+        ascending=[False, True],
+    ).index[0]
+    label = "event_window_blocker" if not blocked.empty else "event_window_pass"
+
+    return {
+        "rows": int(len(regime_summary)),
+        "regimes": int(data["event_regime"].nunique()),
+        "total_events": total_events,
+        "eligible_regimes": int(len(eligible)),
+        "blocked_regimes": int(len(blocked)),
+        "worst_regime": str(data.loc[worst_idx, "event_regime"]),
+        "worst_adverse_post_edge_share": float(data.loc[worst_idx, "adverse_post_edge_share"]),
+        "worst_mean_post_minus_pre_realized_edge": float(
+            data.loc[worst_idx, "mean_post_minus_pre_realized_edge"]
+        ),
+        "worst_post_minus_pre_realized_edge": float(
+            data.loc[worst_idx, "worst_post_minus_pre_realized_edge"]
+        ),
+        "weighted_mean_event_fill_probability": float(
+            (data["mean_event_fill_probability"] * weights).sum()
+        ),
+        "weighted_mean_event_adverse_fill_probability": float(
+            (data["mean_event_adverse_fill_probability"] * weights).sum()
+        ),
+        "weighted_mean_post_minus_pre_realized_edge": float(
+            (data["mean_post_minus_pre_realized_edge"] * weights).sum()
+        ),
+        "event_toxicity_label": label,
+    }
+
+
 def _empty_queue_position_fraction_sweep() -> pd.DataFrame:
     return pd.DataFrame(
         columns=[
@@ -1393,6 +1507,24 @@ def _empty_passive_fill_event_regime_summary() -> pd.DataFrame:
             "worst_post_minus_pre_realized_edge",
         ]
     )
+
+
+def _empty_passive_fill_event_toxicity_scorecard() -> dict[str, float | int | str]:
+    return {
+        "rows": 0,
+        "regimes": 0,
+        "total_events": 0,
+        "eligible_regimes": 0,
+        "blocked_regimes": 0,
+        "worst_regime": "none",
+        "worst_adverse_post_edge_share": 0.0,
+        "worst_mean_post_minus_pre_realized_edge": 0.0,
+        "worst_post_minus_pre_realized_edge": 0.0,
+        "weighted_mean_event_fill_probability": 0.0,
+        "weighted_mean_event_adverse_fill_probability": 0.0,
+        "weighted_mean_post_minus_pre_realized_edge": 0.0,
+        "event_toxicity_label": "empty_event_windows",
+    }
 
 
 def _rank_probability_bins(probability: pd.Series, bins: int) -> pd.Series:

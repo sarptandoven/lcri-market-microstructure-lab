@@ -10,6 +10,7 @@ from lcri_lab.execution import (
     passive_fill_calibration_curve,
     passive_fill_calibration_summary,
     passive_fill_event_regime_summary,
+    passive_fill_event_toxicity_scorecard,
     passive_fill_event_window_diagnostics,
     execution_publishability_review_packet,
     passive_fill_edge_curve,
@@ -548,6 +549,73 @@ def test_passive_fill_event_regime_summary_ranks_adverse_execution_windows() -> 
     assert summary["mean_event_fill_probability"].tolist() == pytest.approx([0.90, 0.865])
     assert summary["mean_event_adverse_fill_probability"].tolist() == pytest.approx([0.30, 0.375])
     assert summary["mean_post_minus_pre_realized_edge"].tolist() == pytest.approx([-0.30, -0.30])
+
+
+def test_passive_fill_event_toxicity_scorecard_blocks_adverse_event_regimes() -> None:
+    summary = pd.DataFrame(
+        {
+            "event_regime": ["stable", "thin"],
+            "events": [5, 3],
+            "adverse_post_edge_events": [1, 2],
+            "adverse_post_edge_share": [0.20, 2.0 / 3.0],
+            "mean_event_fill_probability": [0.72, 0.91],
+            "mean_event_adverse_fill_probability": [0.18, 0.42],
+            "mean_event_edge_ticks": [0.40, 0.80],
+            "mean_post_minus_pre_realized_edge": [0.10, -0.40],
+            "worst_post_minus_pre_realized_edge": [-0.20, -0.90],
+        }
+    )
+
+    scorecard = passive_fill_event_toxicity_scorecard(
+        summary,
+        max_adverse_post_edge_share=0.60,
+        min_mean_post_minus_pre_edge=-0.25,
+    )
+
+    assert scorecard == {
+        "rows": 2,
+        "regimes": 2,
+        "total_events": 8,
+        "eligible_regimes": 2,
+        "blocked_regimes": 1,
+        "worst_regime": "thin",
+        "worst_adverse_post_edge_share": pytest.approx(2.0 / 3.0),
+        "worst_mean_post_minus_pre_realized_edge": pytest.approx(-0.40),
+        "worst_post_minus_pre_realized_edge": pytest.approx(-0.90),
+        "weighted_mean_event_fill_probability": pytest.approx(0.79125),
+        "weighted_mean_event_adverse_fill_probability": pytest.approx(0.27),
+        "weighted_mean_post_minus_pre_realized_edge": pytest.approx(-0.0875),
+        "event_toxicity_label": "event_window_blocker",
+    }
+
+
+def test_passive_fill_event_toxicity_scorecard_labels_pass_and_thin_samples() -> None:
+    summary = pd.DataFrame(
+        {
+            "event_regime": ["stable"],
+            "events": [2],
+            "adverse_post_edge_events": [0],
+            "adverse_post_edge_share": [0.0],
+            "mean_event_fill_probability": [0.70],
+            "mean_event_adverse_fill_probability": [0.10],
+            "mean_event_edge_ticks": [0.30],
+            "mean_post_minus_pre_realized_edge": [0.20],
+            "worst_post_minus_pre_realized_edge": [0.10],
+        }
+    )
+
+    assert passive_fill_event_toxicity_scorecard(summary)["event_toxicity_label"] == "event_window_pass"
+    assert (
+        passive_fill_event_toxicity_scorecard(summary, min_events=3)["event_toxicity_label"]
+        == "insufficient_event_windows"
+    )
+
+
+def test_passive_fill_event_toxicity_scorecard_rejects_bad_summary() -> None:
+    with pytest.raises(ValueError, match="max_adverse_post_edge_share"):
+        passive_fill_event_toxicity_scorecard(pd.DataFrame(), max_adverse_post_edge_share=1.5)
+    with pytest.raises(ValueError, match="missing passive fill event toxicity columns"):
+        passive_fill_event_toxicity_scorecard(pd.DataFrame({"event_regime": ["thin"]}))
 
 
 def test_passive_fill_event_window_rejects_invalid_threshold() -> None:

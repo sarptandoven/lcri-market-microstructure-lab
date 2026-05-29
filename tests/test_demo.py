@@ -111,8 +111,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_execution_publishability_review_packet.csv").exists()
     assert (tmp_path / "passive_fill_event_windows.csv").exists()
     assert (tmp_path / "passive_fill_event_regime_summary.csv").exists()
+    assert (tmp_path / "passive_fill_event_toxicity_scorecard.json").exists()
     assert (tmp_path / "heldout_passive_fill_event_windows.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_regime_summary.csv").exists()
+    assert (tmp_path / "heldout_passive_fill_event_toxicity_scorecard.json").exists()
     assert (tmp_path / "passive_fill_calibration_curve.csv").exists()
     assert (tmp_path / "heldout_passive_fill_calibration_curve.csv").exists()
     assert (tmp_path / "passive_fill_calibration_summary.json").exists()
@@ -162,6 +164,9 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert execution_summary["rows"] == 750
     assert "tradable_share" in execution_summary
     assert "publishable_side_conflict_share" in execution_summary
+    event_toxicity = json.loads((tmp_path / "passive_fill_event_toxicity_scorecard.json").read_text())
+    assert "event_toxicity_label" in event_toxicity
+    assert "weighted_mean_post_minus_pre_realized_edge" in event_toxicity
     execution_packet_columns = set(
         pd.read_csv(tmp_path / "execution_publishability_review_packet.csv", nrows=1).columns
     )
@@ -293,8 +298,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["heldout_execution_publishability_review_packet.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_windows.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["passive_fill_event_toxicity_scorecard.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_passive_fill_event_windows.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_passive_fill_event_toxicity_scorecard.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["queue_position_fill_surface.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_queue_position_fill_surface.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["queue_position_fraction_sweep.csv"]["size_bytes"] > 0
@@ -340,6 +347,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## Adverse selection phase-shift summary" in summary
     assert "## Execution-adjusted edge summary" in summary
     assert "## Passive-fill event-window regime diagnostics" in summary
+    assert "## Passive-fill event-window toxicity scorecard" in summary
     assert "## Queue-position fill calibration surface" in summary
     assert "## Queue-position fraction sweep" in summary
     assert "## Queue-position capacity frontier" in summary
