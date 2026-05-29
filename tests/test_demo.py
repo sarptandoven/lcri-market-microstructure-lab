@@ -104,6 +104,9 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "alpha_event_drift_gate.json").exists()
     assert (tmp_path / "alpha_event_release_review_packet.csv").exists()
     assert (tmp_path / "alpha_event_review_verification_summary.json").exists()
+    assert (tmp_path / "execution_adjusted_edge_summary.json").exists()
+    assert (tmp_path / "heldout_execution_adjusted_edge_summary.json").exists()
+    assert (tmp_path / "execution_adjusted_sample.csv").exists()
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
     assert "passes_monotonicity_gate" in monotonicity
@@ -117,7 +120,26 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "pressure_memory_half_life",
         "pressure_memory_decay_ratio",
         "pressure_memory_decay_event",
+        "bid_queue_ahead",
+        "ask_queue_ahead",
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "execution_adjusted_edge_ticks",
+        "best_execution_side",
     }.issubset(sample_columns)
+    execution_sample_columns = set(pd.read_csv(tmp_path / "execution_adjusted_sample.csv", nrows=1).columns)
+    assert {
+        "lcri",
+        "publishable_side",
+        "best_execution_side",
+        "execution_adjusted_edge_ticks",
+        "bid_fill_probability",
+        "ask_fill_probability",
+    }.issubset(execution_sample_columns)
+    execution_summary = json.loads((tmp_path / "execution_adjusted_edge_summary.json").read_text())
+    assert execution_summary["rows"] == 750
+    assert "tradable_share" in execution_summary
+    assert "publishable_side_conflict_share" in execution_summary
     assert metadata_summary["artifacts_with_metadata"] > 0
     assert metadata_summary["total_size_bytes"] > 0
     assert metadata_summary["largest_artifact"] != "none"
@@ -179,6 +201,9 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["heldout_transition_lift.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["alpha_event_release_review_packet.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["alpha_event_drift_gate.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["execution_adjusted_edge_summary.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_execution_adjusted_edge_summary.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["execution_adjusted_sample.csv"]["size_bytes"] > 0
     assert len(manifest["artifact_metadata"]["metrics.csv"]["sha256"]) == 64
     summary = (tmp_path / "research_summary.md").read_text()
     assert "# LCRI Research Summary" in summary
@@ -211,6 +236,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## Heldout transition lift" in summary
     assert "## Hidden resiliency asymmetry summary" in summary
     assert "## Adverse selection phase-shift summary" in summary
+    assert "## Execution-adjusted edge summary" in summary
 
     verify_report(tmp_path)
 

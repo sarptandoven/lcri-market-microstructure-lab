@@ -90,6 +90,13 @@ from lcri_lab.features import (
     compute_features,
     tag_liquidity_regimes,
 )
+from lcri_lab.execution import (
+    FillProbabilityConfig,
+    add_execution_adjusted_edge,
+    add_passive_fill_probabilities,
+    add_queue_position_features,
+    execution_adjusted_edge_summary,
+)
 from lcri_lab.labels import add_transaction_cost_labels
 from lcri_lab.memory import (
     add_liquidity_memory_half_life,
@@ -121,7 +128,12 @@ from lcri_lab.simulator import SimulationConfig, simulate_order_books
 
 __all__ = [
     "ARTIFACT_VERSION",
+    "FillProbabilityConfig",
     "absorption_regime_metrics",
+    "add_execution_adjusted_edge",
+    "add_passive_fill_probabilities",
+    "add_queue_position_features",
+    "execution_adjusted_edge_summary",
     "add_transaction_cost_labels",
     "add_microstructure_alpha_stack",
     "alpha_event_drift_gate",

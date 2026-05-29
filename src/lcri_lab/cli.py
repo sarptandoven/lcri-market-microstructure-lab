@@ -81,8 +81,15 @@ from lcri_lab.alpha import (
     alpha_event_window_diagnostics,
     alpha_event_window_summary,
 )
+from lcri_lab.execution import (
+    add_execution_adjusted_edge,
+    add_passive_fill_probabilities,
+    add_queue_position_features,
+    execution_adjusted_edge_summary,
+)
 from lcri_lab.features import add_regime_transition_features
 from lcri_lab.ingest import normalize_l2_snapshots
+from lcri_lab.labels import add_transaction_cost_labels
 from lcri_lab.memory import (
     add_liquidity_memory_half_life,
     add_pressure_memory,
@@ -93,6 +100,7 @@ from lcri_lab.memory import (
 )
 from lcri_lab.model import ARTIFACT_VERSION, LCRIModel, ModelConfig
 from lcri_lab.plotting import write_figures
+from lcri_lab.publishability import add_publishability_gate
 from lcri_lab.reporting import (
     artifact_coverage_matrix,
     artifact_coverage_summary,
@@ -262,12 +270,19 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     output.mkdir(parents=True, exist_ok=True)
     (output / "figures").mkdir(parents=True, exist_ok=True)
 
-    books = simulate_order_books(SimulationConfig(rows=rows, seed=seed))
+    simulation_config = SimulationConfig(rows=rows, seed=seed)
+    books = simulate_order_books(simulation_config)
     train = books.sample(frac=train_frac, random_state=seed)
     heldout = books.drop(index=train.index)
     model = LCRIModel().fit(train)
-    scored = _add_reversal_pressure_stack(add_regime_transition_features(model.score_frame(books)))
-    heldout_scored = _add_reversal_pressure_stack(add_regime_transition_features(model.score_frame(heldout)))
+    scored = _add_execution_adjusted_stack(
+        _add_reversal_pressure_stack(add_regime_transition_features(model.score_frame(books))),
+        tick_size=simulation_config.tick_size,
+    )
+    heldout_scored = _add_execution_adjusted_stack(
+        _add_reversal_pressure_stack(add_regime_transition_features(model.score_frame(heldout))),
+        tick_size=simulation_config.tick_size,
+    )
 
     metrics = evaluate_signals(scored)
     heldout_metrics = evaluate_signals(heldout_scored)
@@ -457,6 +472,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         )
     except (TypeError, ValueError):
         pass
+    execution_summary = execution_adjusted_edge_summary(scored)
+    heldout_execution_summary = execution_adjusted_edge_summary(heldout_scored)
 
     artifact_paths = [
         "lcri-model.json",
@@ -559,6 +576,9 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "alpha_event_drift_gate.json",
         "alpha_event_release_review_packet.csv",
         "alpha_event_review_verification_summary.json",
+        "execution_adjusted_edge_summary.json",
+        "heldout_execution_adjusted_edge_summary.json",
+        "execution_adjusted_sample.csv",
         "research_summary.md",
         "artifact_coverage_matrix.csv",
         "artifact_coverage_summary.json",
@@ -750,6 +770,23 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     alpha_release_packet.to_csv(output / "alpha_event_release_review_packet.csv", index=False)
     alpha_event_verification_summary = alpha_event_review_verification_summary(output)
     write_json(output / "alpha_event_review_verification_summary.json", alpha_event_verification_summary)
+    write_json(output / "execution_adjusted_edge_summary.json", execution_summary)
+    write_json(output / "heldout_execution_adjusted_edge_summary.json", heldout_execution_summary)
+    scored[
+        [
+            "lcri",
+            "lcri_probability",
+            "publishable_side",
+            "best_execution_side",
+            "execution_adjusted_edge_ticks",
+            "long_fill_adjusted_edge_ticks",
+            "short_fill_adjusted_edge_ticks",
+            "bid_fill_probability",
+            "ask_fill_probability",
+            "bid_adverse_fill_probability",
+            "ask_adverse_fill_probability",
+        ]
+    ].head(500).to_csv(output / "execution_adjusted_sample.csv", index=False)
     write_figures(
         scored,
         by_regime,
@@ -853,6 +890,11 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         heldout_hidden_resiliency_asymmetry_summary=heldout_resiliency_asymmetry,
         adverse_selection_phase_shift_summary=adverse_phase_shift,
         heldout_adverse_selection_phase_shift_summary=heldout_adverse_phase_shift,
+    )
+    _append_execution_adjusted_summary(
+        output / "research_summary.md",
+        execution_summary=execution_summary,
+        heldout_execution_summary=heldout_execution_summary,
     )
     coverage_matrix = artifact_coverage_matrix(artifact_paths)
     coverage_matrix.to_csv(output / "artifact_coverage_matrix.csv", index=False)
@@ -1021,6 +1063,35 @@ def _add_reversal_pressure_stack(frame: pd.DataFrame) -> pd.DataFrame:
         return_col="future_return_ticks",
         depth_col="total_depth",
     )
+
+
+def _add_execution_adjusted_stack(frame: pd.DataFrame, *, tick_size: float) -> pd.DataFrame:
+    """Attach queue-fill, publishability, and execution-adjusted LCRI diagnostics."""
+    labeled = add_transaction_cost_labels(frame, tick_size=tick_size)
+    gated = add_publishability_gate(labeled)
+    queued = add_queue_position_features(gated)
+    fills = add_passive_fill_probabilities(queued)
+    return add_execution_adjusted_edge(fills)
+
+
+def _append_execution_adjusted_summary(
+    path: Path,
+    *,
+    execution_summary: dict[str, float | int | str],
+    heldout_execution_summary: dict[str, float | int | str],
+) -> None:
+    lines = [
+        "",
+        "## Execution-adjusted edge summary",
+        "",
+        *[f"- {key}: {value}" for key, value in execution_summary.items()],
+        "",
+        "## Heldout execution-adjusted edge summary",
+        "",
+        *[f"- {key}: {value}" for key, value in heldout_execution_summary.items()],
+        "",
+    ]
+    path.write_text(path.read_text() + "\n".join(lines))
 
 
 def verify_report(report_dir: Path) -> None:

@@ -205,3 +205,16 @@ def test_public_api_exports_alpha_event_score_weighted_drift() -> None:
 def test_public_api_exports_alpha_event_release_review_packet() -> None:
     assert callable(lcri_lab.alpha_event_release_review_packet)
     assert "alpha_event_release_review_packet" in lcri_lab.__all__
+
+
+def test_public_api_exports_execution_adjusted_queue_fill_tools() -> None:
+    assert lcri_lab.FillProbabilityConfig().queue_position_fraction == 0.50
+    assert callable(lcri_lab.add_queue_position_features)
+    assert callable(lcri_lab.add_passive_fill_probabilities)
+    assert callable(lcri_lab.add_execution_adjusted_edge)
+    assert callable(lcri_lab.execution_adjusted_edge_summary)
+    assert "FillProbabilityConfig" in lcri_lab.__all__
+    assert "add_queue_position_features" in lcri_lab.__all__
+    assert "add_passive_fill_probabilities" in lcri_lab.__all__
+    assert "add_execution_adjusted_edge" in lcri_lab.__all__
+    assert "execution_adjusted_edge_summary" in lcri_lab.__all__
