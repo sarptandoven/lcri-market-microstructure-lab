@@ -98,6 +98,8 @@ from lcri_lab.execution import (
     execution_adjusted_edge_summary,
     execution_publishability_review_packet,
     passive_fill_edge_curve,
+    passive_fill_event_regime_summary,
+    passive_fill_event_window_diagnostics,
 )
 from lcri_lab.labels import add_transaction_cost_labels
 from lcri_lab.memory import (
@@ -138,6 +140,8 @@ __all__ = [
     "execution_adjusted_edge_summary",
     "execution_publishability_review_packet",
     "passive_fill_edge_curve",
+    "passive_fill_event_regime_summary",
+    "passive_fill_event_window_diagnostics",
     "add_transaction_cost_labels",
     "add_microstructure_alpha_stack",
     "alpha_event_drift_gate",

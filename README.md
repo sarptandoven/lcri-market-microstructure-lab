@@ -256,6 +256,7 @@ tests/
 - Real order book feeds must be normalized into the snapshot schema before scoring.
 - The current baseline is transparent and ridge-regularized; nonlinear stress enters through explicit basis terms rather than a black-box estimator.
 - Queue-position-aware passive fill probability is snapshot-proxy based, not an event-level queue simulator.
+- Passive-fill event windows now surface side-specific post-fill drift by regime; they should be calibrated against event-level add/cancel/trade data before live use.
 
 ## Next steps
 
@@ -267,5 +268,5 @@ tests/
 - Audit feature stability by liquidity regime before model promotion.
 - Compare directional metrics against cost-aware tradable labels.
 - Calibrate queue-position-aware fill probability against event-level add/cancel/trade data.
-- Add event-window regime tagging beyond the current rolling transition features.
+- Promote passive-fill event-window regime diagnostics into demo/report artifacts after calibration.
 - Add model cards with fitted coefficients and residual scales.

@@ -87,6 +87,8 @@ from lcri_lab.execution import (
     add_queue_position_features,
     execution_adjusted_edge_summary,
     execution_publishability_review_packet,
+    passive_fill_event_regime_summary,
+    passive_fill_event_window_diagnostics,
 )
 from lcri_lab.features import add_regime_transition_features
 from lcri_lab.ingest import normalize_l2_snapshots
@@ -478,6 +480,22 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_execution_summary = execution_adjusted_edge_summary(heldout_scored)
     execution_publishability_packet = execution_publishability_review_packet(scored)
     heldout_execution_publishability_packet = execution_publishability_review_packet(heldout_scored)
+    passive_fill_events = passive_fill_event_window_diagnostics(
+        scored,
+        threshold=0.75,
+        window=3,
+        regime_col="pressure_memory_decay_state",
+    )
+    passive_fill_event_regimes = passive_fill_event_regime_summary(passive_fill_events)
+    heldout_passive_fill_events = passive_fill_event_window_diagnostics(
+        heldout_scored,
+        threshold=0.75,
+        window=3,
+        regime_col="pressure_memory_decay_state",
+    )
+    heldout_passive_fill_event_regimes = passive_fill_event_regime_summary(
+        heldout_passive_fill_events
+    )
 
     artifact_paths = [
         "lcri-model.json",
@@ -584,6 +602,10 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         "heldout_execution_adjusted_edge_summary.json",
         "execution_publishability_review_packet.csv",
         "heldout_execution_publishability_review_packet.csv",
+        "passive_fill_event_windows.csv",
+        "passive_fill_event_regime_summary.csv",
+        "heldout_passive_fill_event_windows.csv",
+        "heldout_passive_fill_event_regime_summary.csv",
         "execution_adjusted_sample.csv",
         "research_summary.md",
         "artifact_coverage_matrix.csv",
@@ -784,6 +806,16 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_execution_publishability_packet.to_csv(
         output / "heldout_execution_publishability_review_packet.csv", index=False
     )
+    passive_fill_events.to_csv(output / "passive_fill_event_windows.csv", index=False)
+    passive_fill_event_regimes.to_csv(
+        output / "passive_fill_event_regime_summary.csv", index=False
+    )
+    heldout_passive_fill_events.to_csv(
+        output / "heldout_passive_fill_event_windows.csv", index=False
+    )
+    heldout_passive_fill_event_regimes.to_csv(
+        output / "heldout_passive_fill_event_regime_summary.csv", index=False
+    )
     scored[
         [
             "lcri",
@@ -907,6 +939,8 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         output / "research_summary.md",
         execution_summary=execution_summary,
         heldout_execution_summary=heldout_execution_summary,
+        passive_fill_event_regimes=passive_fill_event_regimes,
+        heldout_passive_fill_event_regimes=heldout_passive_fill_event_regimes,
     )
     coverage_matrix = artifact_coverage_matrix(artifact_paths)
     coverage_matrix.to_csv(output / "artifact_coverage_matrix.csv", index=False)
@@ -1091,7 +1125,11 @@ def _append_execution_adjusted_summary(
     *,
     execution_summary: dict[str, float | int | str],
     heldout_execution_summary: dict[str, float | int | str],
+    passive_fill_event_regimes: pd.DataFrame,
+    heldout_passive_fill_event_regimes: pd.DataFrame,
 ) -> None:
+    regime_lines = _passive_fill_regime_summary_lines(passive_fill_event_regimes)
+    heldout_regime_lines = _passive_fill_regime_summary_lines(heldout_passive_fill_event_regimes)
     lines = [
         "",
         "## Execution-adjusted edge summary",
@@ -1102,8 +1140,33 @@ def _append_execution_adjusted_summary(
         "",
         *[f"- {key}: {value}" for key, value in heldout_execution_summary.items()],
         "",
+        "## Passive-fill event-window regime diagnostics",
+        "",
+        *regime_lines,
+        "",
+        "## Heldout passive-fill event-window regime diagnostics",
+        "",
+        *heldout_regime_lines,
+        "",
     ]
     path.write_text(path.read_text() + "\n".join(lines))
+
+
+def _passive_fill_regime_summary_lines(summary: pd.DataFrame) -> list[str]:
+    if summary.empty:
+        return ["- no high-probability passive-fill events at threshold 0.75"]
+    rows = []
+    for row in summary.head(5).to_dict("records"):
+        rows.append(
+            "- "
+            f"{row['event_regime']}: events={row['events']}, "
+            f"adverse_post_edge_share={row['adverse_post_edge_share']:.3f}, "
+            f"mean_post_minus_pre_realized_edge="
+            f"{row['mean_post_minus_pre_realized_edge']:.3f}, "
+            f"worst_post_minus_pre_realized_edge="
+            f"{row['worst_post_minus_pre_realized_edge']:.3f}"
+        )
+    return rows
 
 
 def verify_report(report_dir: Path) -> None:

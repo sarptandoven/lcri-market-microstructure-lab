@@ -108,6 +108,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_execution_adjusted_edge_summary.json").exists()
     assert (tmp_path / "execution_publishability_review_packet.csv").exists()
     assert (tmp_path / "heldout_execution_publishability_review_packet.csv").exists()
+    assert (tmp_path / "passive_fill_event_windows.csv").exists()
+    assert (tmp_path / "passive_fill_event_regime_summary.csv").exists()
+    assert (tmp_path / "heldout_passive_fill_event_windows.csv").exists()
+    assert (tmp_path / "heldout_passive_fill_event_regime_summary.csv").exists()
     assert (tmp_path / "execution_adjusted_sample.csv").exists()
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
@@ -218,6 +222,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["heldout_execution_adjusted_edge_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["execution_publishability_review_packet.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_execution_publishability_review_packet.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["passive_fill_event_windows.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_passive_fill_event_windows.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["execution_adjusted_sample.csv"]["size_bytes"] > 0
     assert len(manifest["artifact_metadata"]["metrics.csv"]["sha256"]) == 64
     summary = (tmp_path / "research_summary.md").read_text()
@@ -252,6 +260,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## Hidden resiliency asymmetry summary" in summary
     assert "## Adverse selection phase-shift summary" in summary
     assert "## Execution-adjusted edge summary" in summary
+    assert "## Passive-fill event-window regime diagnostics" in summary
 
     verify_report(tmp_path)
 

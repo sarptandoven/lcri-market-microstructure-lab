@@ -7,6 +7,8 @@ from lcri_lab.execution import (
     add_passive_fill_probabilities,
     add_queue_position_features,
     execution_adjusted_edge_summary,
+    passive_fill_event_regime_summary,
+    passive_fill_event_window_diagnostics,
     execution_publishability_review_packet,
     passive_fill_edge_curve,
 )
@@ -177,6 +179,64 @@ def test_passive_fill_edge_curve_rejects_invalid_inputs() -> None:
         passive_fill_edge_curve(pd.DataFrame(), bins=0)
     with pytest.raises(ValueError, match="missing passive fill edge curve columns"):
         passive_fill_edge_curve(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_passive_fill_event_window_diagnostics_tracks_side_specific_drift() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "long", "short", "short", "abstain"],
+            "regime": ["thin", "thin", "stressed", "stressed", "thin"],
+            "bid_fill_probability": [0.20, 0.90, 0.40, 0.30, 0.95],
+            "ask_fill_probability": [0.10, 0.20, 0.85, 0.88, 0.95],
+            "bid_adverse_fill_probability": [0.05, 0.30, 0.20, 0.20, 0.10],
+            "ask_adverse_fill_probability": [0.10, 0.20, 0.35, 0.40, 0.10],
+            "execution_adjusted_edge_ticks": [0.10, 0.70, 0.90, 1.10, -0.20],
+            "long_net_return_ticks": [0.20, 0.40, -0.10, -0.30, 0.00],
+            "short_net_return_ticks": [-0.20, -0.60, 1.00, -0.20, 0.00],
+        }
+    )
+
+    events = passive_fill_event_window_diagnostics(
+        frame,
+        threshold=0.80,
+        window=1,
+        regime_col="regime",
+    )
+
+    assert events["event_index"].tolist() == [1, 2, 3]
+    assert events["event_side"].tolist() == ["long", "short", "short"]
+    assert events["event_regime"].tolist() == ["thin", "stressed", "stressed"]
+    assert events["event_fill_probability"].tolist() == pytest.approx([0.90, 0.85, 0.88])
+    assert events["event_adverse_fill_probability"].tolist() == pytest.approx([0.30, 0.35, 0.40])
+    assert events["pre_realized_edge_sum"].tolist() == pytest.approx([0.20, -0.60, 1.00])
+    assert events["post_realized_edge_sum"].tolist() == pytest.approx([-0.10, -0.20, 0.00])
+    assert events["post_minus_pre_realized_edge"].tolist() == pytest.approx([-0.30, 0.40, -1.00])
+
+
+def test_passive_fill_event_regime_summary_ranks_adverse_execution_windows() -> None:
+    events = pd.DataFrame(
+        {
+            "event_regime": ["thin", "stressed", "stressed"],
+            "event_fill_probability": [0.90, 0.85, 0.88],
+            "event_adverse_fill_probability": [0.30, 0.35, 0.40],
+            "event_edge_ticks": [0.70, 0.90, 1.10],
+            "post_minus_pre_realized_edge": [-0.30, 0.40, -1.00],
+        }
+    )
+
+    summary = passive_fill_event_regime_summary(events)
+
+    assert summary["event_regime"].tolist() == ["thin", "stressed"]
+    assert summary["events"].tolist() == [1, 2]
+    assert summary["adverse_post_edge_share"].tolist() == pytest.approx([1.00, 0.50])
+    assert summary["mean_event_fill_probability"].tolist() == pytest.approx([0.90, 0.865])
+    assert summary["mean_event_adverse_fill_probability"].tolist() == pytest.approx([0.30, 0.375])
+    assert summary["mean_post_minus_pre_realized_edge"].tolist() == pytest.approx([-0.30, -0.30])
+
+
+def test_passive_fill_event_window_rejects_invalid_threshold() -> None:
+    with pytest.raises(ValueError, match="threshold"):
+        passive_fill_event_window_diagnostics(pd.DataFrame(), threshold=1.5)
 
 
 def test_execution_publishability_review_packet_surfaces_queue_gate_conflicts() -> None:

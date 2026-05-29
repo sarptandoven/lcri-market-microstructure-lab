@@ -349,6 +349,166 @@ def passive_fill_edge_curve(
     return pd.DataFrame(rows)[list(_empty_passive_fill_edge_curve().columns)]
 
 
+def passive_fill_event_window_diagnostics(
+    frame: pd.DataFrame,
+    *,
+    threshold: float = 0.75,
+    window: int = 3,
+    side_col: str = "best_execution_side",
+    long_return_col: str = "long_net_return_ticks",
+    short_return_col: str = "short_net_return_ticks",
+    regime_col: str | None = None,
+) -> pd.DataFrame:
+    """Measure realized edge drift around high-probability passive-fill events.
+
+    The fill model can look attractive exactly when adverse-selection risk is
+    highest. This diagnostic isolates rows where the side-specific passive-fill
+    probability breaches ``threshold`` and compares realized, side-consistent
+    edge before and after the event. Grouping by an optional regime column turns
+    the output into an event-window regime table for publishability review.
+    """
+    if not isinstance(window, int) or isinstance(window, bool):
+        raise ValueError("window must be an integer")
+    if window < 1:
+        raise ValueError("window must be at least 1")
+    if not math.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
+        raise ValueError("threshold must be finite and between 0 and 1")
+
+    required = {
+        side_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+        "execution_adjusted_edge_ticks",
+        long_return_col,
+        short_return_col,
+    }
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(frame, required, "passive fill event window")
+    if frame.empty:
+        return _empty_passive_fill_event_windows()
+
+    numeric_columns = [
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+        "execution_adjusted_edge_ticks",
+        long_return_col,
+        short_return_col,
+    ]
+    values = _finite_values(frame, numeric_columns, "passive fill event window")
+    side = frame[side_col].astype(str).reset_index(drop=True)
+    original_index = pd.Series(frame.index, index=range(len(frame)))
+    event_fill = pd.Series(
+        np.select(
+            [side == "long", side == "short"],
+            [values["bid_fill_probability"], values["ask_fill_probability"]],
+            default=0.0,
+        ),
+        index=range(len(frame)),
+    )
+    event_adverse = pd.Series(
+        np.select(
+            [side == "long", side == "short"],
+            [values["bid_adverse_fill_probability"], values["ask_adverse_fill_probability"]],
+            default=0.0,
+        ),
+        index=range(len(frame)),
+    )
+    event_edge = values["execution_adjusted_edge_ticks"].reset_index(drop=True)
+    long_returns = values[long_return_col].reset_index(drop=True)
+    short_returns = values[short_return_col].reset_index(drop=True)
+    regimes = (
+        frame[regime_col].astype(str).reset_index(drop=True)
+        if regime_col is not None
+        else pd.Series("all", index=range(len(frame)))
+    )
+
+    event_positions = event_fill.index[(side.isin(["long", "short"])) & (event_fill >= threshold)]
+    rows: list[dict[str, float | int | str]] = []
+    for position in event_positions:
+        event_side = side.iloc[position]
+        realized = long_returns if event_side == "long" else short_returns
+        pre_start = max(0, int(position) - window)
+        post_end = min(len(frame), int(position) + window + 1)
+        pre = realized.iloc[pre_start:position]
+        post = realized.iloc[int(position) + 1 : post_end]
+        pre_sum = float(pre.sum()) if len(pre) else 0.0
+        post_sum = float(post.sum()) if len(post) else 0.0
+        rows.append(
+            {
+                "event_index": original_index.iloc[position],
+                "event_side": str(event_side),
+                "event_regime": str(regimes.iloc[position]),
+                "event_fill_probability": float(event_fill.iloc[position]),
+                "event_adverse_fill_probability": float(event_adverse.iloc[position]),
+                "event_edge_ticks": float(event_edge.iloc[position]),
+                "pre_realized_edge_sum": pre_sum,
+                "post_realized_edge_sum": post_sum,
+                "post_minus_pre_realized_edge": float(post_sum - pre_sum),
+                "window_rows": int(len(pre) + len(post) + 1),
+            }
+        )
+    if not rows:
+        return _empty_passive_fill_event_windows()
+    return pd.DataFrame(rows)[list(_empty_passive_fill_event_windows().columns)]
+
+
+def passive_fill_event_regime_summary(events: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate passive-fill event windows by execution regime."""
+    columns = list(_empty_passive_fill_event_regime_summary().columns)
+    if events.empty:
+        return _empty_passive_fill_event_regime_summary()
+    required = {
+        "event_regime",
+        "event_fill_probability",
+        "event_adverse_fill_probability",
+        "event_edge_ticks",
+        "post_minus_pre_realized_edge",
+    }
+    _require_columns(events, required, "passive fill event regime summary")
+    values = _finite_values(
+        events,
+        [
+            "event_fill_probability",
+            "event_adverse_fill_probability",
+            "event_edge_ticks",
+            "post_minus_pre_realized_edge",
+        ],
+        "passive fill event regime summary",
+    )
+    data = values.copy()
+    data["event_regime"] = events["event_regime"].astype(str)
+
+    rows: list[dict[str, float | int | str]] = []
+    for regime, group in data.groupby("event_regime", sort=True):
+        drift = group["post_minus_pre_realized_edge"]
+        adverse = int((drift < 0.0).sum())
+        rows.append(
+            {
+                "event_regime": str(regime),
+                "events": int(len(group)),
+                "adverse_post_edge_events": adverse,
+                "adverse_post_edge_share": float(adverse / len(group)),
+                "mean_event_fill_probability": float(group["event_fill_probability"].mean()),
+                "mean_event_adverse_fill_probability": float(
+                    group["event_adverse_fill_probability"].mean()
+                ),
+                "mean_event_edge_ticks": float(group["event_edge_ticks"].mean()),
+                "mean_post_minus_pre_realized_edge": float(drift.mean()),
+                "worst_post_minus_pre_realized_edge": float(drift.min()),
+            }
+        )
+    return pd.DataFrame(rows)[columns].sort_values(
+        ["adverse_post_edge_share", "worst_post_minus_pre_realized_edge"],
+        ascending=[False, True],
+        ignore_index=True,
+    )
+
+
 def _empty_passive_fill_edge_curve() -> pd.DataFrame:
     return pd.DataFrame(
         columns=[
@@ -361,6 +521,39 @@ def _empty_passive_fill_edge_curve() -> pd.DataFrame:
             "mean_realized_edge_ticks",
             "positive_edge_rate",
             "mean_execution_adjusted_edge_ticks",
+        ]
+    )
+
+
+def _empty_passive_fill_event_windows() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "event_index",
+            "event_side",
+            "event_regime",
+            "event_fill_probability",
+            "event_adverse_fill_probability",
+            "event_edge_ticks",
+            "pre_realized_edge_sum",
+            "post_realized_edge_sum",
+            "post_minus_pre_realized_edge",
+            "window_rows",
+        ]
+    )
+
+
+def _empty_passive_fill_event_regime_summary() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "event_regime",
+            "events",
+            "adverse_post_edge_events",
+            "adverse_post_edge_share",
+            "mean_event_fill_probability",
+            "mean_event_adverse_fill_probability",
+            "mean_event_edge_ticks",
+            "mean_post_minus_pre_realized_edge",
+            "worst_post_minus_pre_realized_edge",
         ]
     )
 
