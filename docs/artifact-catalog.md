@@ -133,6 +133,10 @@ surfaces without opening every file:
 - `passive_fill_event_windows.csv`: high passive-fill-probability event windows
   with side-specific pre/post realized edge drift plus modal pre/post memory-decay
   regime transitions.
+- `passive_fill_event_lead_lag_profile.csv`: event-regime x relative-offset
+  realized-edge profile around high-probability passive fills, exposing whether
+  adverse selection appears before, on, or after the fill event rather than only
+  inside aggregate pre/post sums.
 - `passive_fill_event_regime_summary.csv`: regime aggregation of passive-fill
   event-window drift, adverse-post-event share, and worst drift.
 - `passive_fill_event_transition_summary.csv`: transition-path aggregation of

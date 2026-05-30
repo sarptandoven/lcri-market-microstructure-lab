@@ -121,6 +121,8 @@ reports/
   lcri_gap_delta_summary.json
   transition_lift.csv
   heldout_transition_lift.csv
+  passive_fill_event_lead_lag_profile.csv
+  heldout_passive_fill_event_lead_lag_profile.csv
   transition_robustness.json
   heldout_transition_robustness.json
   research_summary.md
@@ -258,7 +260,7 @@ tests/
 - The current baseline is transparent and ridge-regularized; nonlinear stress enters through explicit basis terms rather than a black-box estimator.
 - Queue-position-aware passive fill probability is snapshot-proxy based for demos, but the execution module also includes an event-level realized-fill adapter that maps configurable venue-specific trade/cancel event-type and side aliases into side-specific `bid_realized_fill`/`ask_realized_fill` labels with symbol/session grouping. Demo calibration labels now use configurable-horizon visible best-level depletion versus estimated queue-ahead instead of only next-mid touches.
 - Passive-fill calibration curves can compare that proxy to side-specific realized fill flags, but event-level add/cancel/trade data remains the live-calibration target.
-- Passive-fill event windows now surface side-specific post-fill drift by regime and are emitted as demo/report artifacts with calibration summaries.
+- Passive-fill event windows now surface side-specific post-fill drift by regime and are emitted as demo/report artifacts with calibration summaries. Lead/lag profiles (`passive_fill_event_lead_lag_profile.csv` and heldout counterpart) expose offset-level realized-edge toxicity around high-probability fills so pre-fill warning, event-row selection, and post-fill decay are not hidden inside aggregate window sums.
 
 ## Next steps
 

@@ -13,6 +13,7 @@ from lcri_lab.execution import (
     passive_fill_calibration_curve,
     passive_fill_calibration_summary,
     passive_fill_event_regime_summary,
+    passive_fill_event_lead_lag_profile,
     passive_fill_event_lifecycle_summary,
     passive_fill_event_toxicity_scorecard,
     passive_fill_event_transition_scorecard,
@@ -987,6 +988,51 @@ def test_passive_fill_event_window_diagnostics_tracks_side_specific_drift() -> N
     assert events["pre_realized_edge_sum"].tolist() == pytest.approx([0.20, -0.60, 1.00])
     assert events["post_realized_edge_sum"].tolist() == pytest.approx([-0.10, -0.20, 0.00])
     assert events["post_minus_pre_realized_edge"].tolist() == pytest.approx([-0.30, 0.40, -1.00])
+
+
+def test_passive_fill_event_lead_lag_profile_tracks_offset_toxicity_by_regime() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "long", "short", "short", "abstain"],
+            "regime": ["thin", "thin", "stressed", "stressed", "thin"],
+            "bid_fill_probability": [0.20, 0.90, 0.40, 0.30, 0.95],
+            "ask_fill_probability": [0.10, 0.20, 0.85, 0.88, 0.95],
+            "bid_adverse_fill_probability": [0.05, 0.30, 0.20, 0.20, 0.10],
+            "ask_adverse_fill_probability": [0.10, 0.20, 0.35, 0.40, 0.10],
+            "execution_adjusted_edge_ticks": [0.10, 0.70, 0.90, 1.10, -0.20],
+            "long_net_return_ticks": [0.20, 0.40, -0.10, -0.30, 0.00],
+            "short_net_return_ticks": [-0.20, -0.60, 1.00, -0.20, 0.00],
+        }
+    )
+
+    profile = passive_fill_event_lead_lag_profile(
+        frame,
+        threshold=0.80,
+        window=1,
+        regime_col="regime",
+    )
+
+    assert profile.columns.tolist() == [
+        "event_regime",
+        "relative_offset",
+        "observations",
+        "mean_realized_edge_ticks",
+        "adverse_realized_edge_share",
+        "cumulative_mean_realized_edge_ticks",
+    ]
+    assert profile["event_regime"].tolist() == [
+        "stressed",
+        "stressed",
+        "stressed",
+        "thin",
+        "thin",
+        "thin",
+    ]
+    assert profile["relative_offset"].tolist() == [-1, 0, 1, -1, 0, 1]
+    assert profile["observations"].tolist() == [2, 2, 2, 1, 1, 1]
+    assert profile["mean_realized_edge_ticks"].tolist() == pytest.approx([0.20, 0.40, -0.10, 0.20, 0.40, -0.10])
+    assert profile["adverse_realized_edge_share"].tolist() == pytest.approx([0.50, 0.50, 0.50, 0.00, 0.00, 1.00])
+    assert profile["cumulative_mean_realized_edge_ticks"].tolist() == pytest.approx([0.20, 0.60, 0.50, 0.20, 0.60, 0.50])
 
 
 def test_passive_fill_event_window_diagnostics_labels_regime_transitions() -> None:

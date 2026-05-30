@@ -93,6 +93,7 @@ from lcri_lab.execution import (
     execution_publishability_review_packet,
     passive_fill_calibration_curve,
     passive_fill_calibration_summary,
+    passive_fill_event_lead_lag_profile,
     passive_fill_event_regime_summary,
     passive_fill_event_toxicity_scorecard,
     passive_fill_event_transition_scorecard,
@@ -529,6 +530,12 @@ def run_demo(
         window=3,
         regime_col="pressure_memory_decay_state",
     )
+    passive_fill_event_lead_lag = passive_fill_event_lead_lag_profile(
+        scored,
+        threshold=0.75,
+        window=3,
+        regime_col="pressure_memory_decay_state",
+    )
     passive_fill_event_regimes = passive_fill_event_regime_summary(passive_fill_events)
     passive_fill_event_transitions = passive_fill_event_transition_summary(passive_fill_events)
     passive_fill_event_toxicity = passive_fill_event_toxicity_scorecard(passive_fill_event_regimes)
@@ -536,6 +543,12 @@ def run_demo(
         passive_fill_event_transitions
     )
     heldout_passive_fill_events = passive_fill_event_window_diagnostics(
+        heldout_scored,
+        threshold=0.75,
+        window=3,
+        regime_col="pressure_memory_decay_state",
+    )
+    heldout_passive_fill_event_lead_lag = passive_fill_event_lead_lag_profile(
         heldout_scored,
         threshold=0.75,
         window=3,
@@ -744,11 +757,13 @@ def run_demo(
         "execution_publishability_release_gate.json",
         "heldout_execution_publishability_release_gate.json",
         "passive_fill_event_windows.csv",
+        "passive_fill_event_lead_lag_profile.csv",
         "passive_fill_event_regime_summary.csv",
         "passive_fill_event_transition_summary.csv",
         "passive_fill_event_toxicity_scorecard.json",
         "passive_fill_event_transition_toxicity_scorecard.json",
         "heldout_passive_fill_event_windows.csv",
+        "heldout_passive_fill_event_lead_lag_profile.csv",
         "heldout_passive_fill_event_regime_summary.csv",
         "heldout_passive_fill_event_transition_summary.csv",
         "heldout_passive_fill_event_toxicity_scorecard.json",
@@ -979,6 +994,9 @@ def run_demo(
         heldout_execution_publishability_gate,
     )
     passive_fill_events.to_csv(output / "passive_fill_event_windows.csv", index=False)
+    passive_fill_event_lead_lag.to_csv(
+        output / "passive_fill_event_lead_lag_profile.csv", index=False
+    )
     passive_fill_event_regimes.to_csv(
         output / "passive_fill_event_regime_summary.csv", index=False
     )
@@ -992,6 +1010,9 @@ def run_demo(
     )
     heldout_passive_fill_events.to_csv(
         output / "heldout_passive_fill_event_windows.csv", index=False
+    )
+    heldout_passive_fill_event_lead_lag.to_csv(
+        output / "heldout_passive_fill_event_lead_lag_profile.csv", index=False
     )
     heldout_passive_fill_event_regimes.to_csv(
         output / "heldout_passive_fill_event_regime_summary.csv", index=False

@@ -2097,6 +2097,125 @@ def passive_fill_event_window_diagnostics(
     return pd.DataFrame(rows)[list(_empty_passive_fill_event_windows().columns)]
 
 
+def passive_fill_event_lead_lag_profile(
+    frame: pd.DataFrame,
+    *,
+    threshold: float = 0.75,
+    window: int = 3,
+    side_col: str = "best_execution_side",
+    long_return_col: str = "long_net_return_ticks",
+    short_return_col: str = "short_net_return_ticks",
+    regime_col: str | None = None,
+) -> pd.DataFrame:
+    """Profile side-consistent realized edge at each offset around fill events.
+
+    Aggregate event-window sums can hide whether toxicity arrives before the fill,
+    at the fill snapshot, or only after queue priority is achieved. This profile
+    keeps relative offsets explicit and groups by the event regime so execution
+    reviews can identify lead/lag adverse-selection structure rather than only a
+    pre-vs-post total.
+    """
+    if not isinstance(window, int) or isinstance(window, bool):
+        raise ValueError("window must be an integer")
+    if window < 1:
+        raise ValueError("window must be at least 1")
+    if not math.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
+        raise ValueError("threshold must be finite and between 0 and 1")
+
+    required = {
+        side_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        long_return_col,
+        short_return_col,
+    }
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(frame, required, "passive fill event lead lag profile")
+
+    columns = [
+        "event_regime",
+        "relative_offset",
+        "observations",
+        "mean_realized_edge_ticks",
+        "adverse_realized_edge_share",
+        "cumulative_mean_realized_edge_ticks",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    values = _finite_values(
+        frame,
+        [
+            "bid_fill_probability",
+            "ask_fill_probability",
+            long_return_col,
+            short_return_col,
+        ],
+        "passive fill event lead lag profile",
+    )
+    side = frame[side_col].astype(str).reset_index(drop=True)
+    long_returns = values[long_return_col].reset_index(drop=True)
+    short_returns = values[short_return_col].reset_index(drop=True)
+    regimes = (
+        frame[regime_col].astype(str).reset_index(drop=True)
+        if regime_col is not None
+        else pd.Series("all", index=range(len(frame)))
+    )
+    event_fill = pd.Series(
+        np.select(
+            [side == "long", side == "short"],
+            [values["bid_fill_probability"], values["ask_fill_probability"]],
+            default=0.0,
+        ),
+        index=range(len(frame)),
+    )
+    event_positions = event_fill.index[(side.isin(["long", "short"])) & (event_fill >= threshold)]
+
+    observations: list[dict[str, float | int | str]] = []
+    for position in event_positions:
+        position_int = int(position)
+        event_side = side.iloc[position_int]
+        realized = long_returns if event_side == "long" else short_returns
+        event_regime = str(regimes.iloc[position_int])
+        for relative_offset in range(-window, window + 1):
+            row_position = position_int + relative_offset
+            if 0 <= row_position < len(frame):
+                observations.append(
+                    {
+                        "event_regime": event_regime,
+                        "relative_offset": int(relative_offset),
+                        "realized_edge_ticks": float(realized.iloc[row_position]),
+                    }
+                )
+    if not observations:
+        return pd.DataFrame(columns=columns)
+
+    data = pd.DataFrame(observations)
+    rows: list[dict[str, float | int | str]] = []
+    for (event_regime, relative_offset), group in data.groupby(
+        ["event_regime", "relative_offset"], sort=True
+    ):
+        edge = group["realized_edge_ticks"]
+        rows.append(
+            {
+                "event_regime": str(event_regime),
+                "relative_offset": int(relative_offset),
+                "observations": int(len(group)),
+                "mean_realized_edge_ticks": float(edge.mean()),
+                "adverse_realized_edge_share": float((edge < 0.0).mean()),
+            }
+        )
+    profile = pd.DataFrame(rows).sort_values(
+        ["event_regime", "relative_offset"], ignore_index=True
+    )
+    profile["cumulative_mean_realized_edge_ticks"] = profile.groupby(
+        "event_regime", sort=False
+    )["mean_realized_edge_ticks"].cumsum()
+    return profile[columns]
+
+
+
 def passive_fill_event_regime_summary(events: pd.DataFrame) -> pd.DataFrame:
     """Aggregate passive-fill event windows by execution regime."""
     columns = list(_empty_passive_fill_event_regime_summary().columns)
