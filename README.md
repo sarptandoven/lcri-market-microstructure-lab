@@ -66,7 +66,7 @@ The included simulator generates this schema. Real market data can be scored aft
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
-lcri-lab run-demo --rows 20000 --seed 7 --train-frac 0.70
+lcri-lab run-demo --rows 20000 --seed 7 --train-frac 0.70 --passive-fill-horizon 2
 pytest -q
 ruff check .
 ```
@@ -195,7 +195,7 @@ lcri-lab score \
 Run the synthetic research workflow with a reproducible training split:
 
 ```bash
-lcri-lab run-demo --rows 20000 --seed 7 --train-frac 0.70
+lcri-lab run-demo --rows 20000 --seed 7 --train-frac 0.70 --passive-fill-horizon 2
 ```
 
 ## Evaluation
@@ -256,8 +256,8 @@ tests/
 - The included workflow uses synthetic data.
 - Real order book feeds must be normalized into the snapshot schema before scoring.
 - The current baseline is transparent and ridge-regularized; nonlinear stress enters through explicit basis terms rather than a black-box estimator.
-- Queue-position-aware passive fill probability is snapshot-proxy based, not an event-level queue simulator.
-- Passive-fill calibration curves can compare that proxy to side-specific realized fill flags, but the realized flags still need event-level add/cancel/trade data for live calibration.
+- Queue-position-aware passive fill probability is snapshot-proxy based, not an event-level queue simulator; demo calibration labels now use configurable-horizon visible best-level depletion versus estimated queue-ahead instead of only next-mid touches. The public realized-fill proxy also accepts grouping columns to avoid label leakage across symbols, venues, or sessions in batched books.
+- Passive-fill calibration curves can compare that proxy to side-specific realized fill flags, but event-level add/cancel/trade data remains the live-calibration target.
 - Passive-fill event windows now surface side-specific post-fill drift by regime and are emitted as demo/report artifacts with calibration summaries.
 
 ## Next steps

@@ -215,6 +215,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     )
     assert "expected_calibration_error" in passive_fill_calibration_summary
     assert "weighted_brier_score" in passive_fill_calibration_summary
+    assert passive_fill_calibration_summary["realization_horizon_snapshots"] == 2
     queue_surface_columns = set(
         pd.read_csv(tmp_path / "queue_position_fill_surface.csv", nrows=1).columns
     )

@@ -87,6 +87,7 @@ from lcri_lab.execution import (
     add_execution_adjusted_edge,
     add_passive_fill_probabilities,
     add_queue_position_features,
+    add_queue_position_realized_fill_proxy,
     execution_adjusted_edge_summary,
     execution_publishability_review_packet,
     passive_fill_calibration_curve,
@@ -223,6 +224,7 @@ def main() -> None:
     demo.add_argument("--rows", type=int, default=20_000)
     demo.add_argument("--seed", type=int, default=7)
     demo.add_argument("--train-frac", type=float, default=0.70)
+    demo.add_argument("--passive-fill-horizon", type=int, default=2)
     demo.add_argument("--output", type=Path, default=Path("reports"))
 
     normalize = subparsers.add_parser("normalize", help="normalize flat L2 snapshots")
@@ -253,7 +255,13 @@ def main() -> None:
 
     args = parser.parse_args()
     if args.command == "run-demo":
-        run_demo(rows=args.rows, seed=args.seed, train_frac=args.train_frac, output=args.output)
+        run_demo(
+            rows=args.rows,
+            seed=args.seed,
+            train_frac=args.train_frac,
+            output=args.output,
+            passive_fill_horizon=args.passive_fill_horizon,
+        )
     elif args.command == "normalize":
         normalize_snapshots(
             input_path=args.input,
@@ -279,9 +287,19 @@ def main() -> None:
         verify_report(report_dir=args.report_dir)
 
 
-def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> None:
+def run_demo(
+    rows: int,
+    seed: int,
+    output: Path,
+    train_frac: float = 0.70,
+    passive_fill_horizon: int = 2,
+) -> None:
     if not 0.0 < train_frac < 1.0:
         raise ValueError("train_frac must be between 0 and 1")
+    if not isinstance(passive_fill_horizon, int) or isinstance(passive_fill_horizon, bool):
+        raise ValueError("passive_fill_horizon must be an integer")
+    if passive_fill_horizon < 1:
+        raise ValueError("passive_fill_horizon must be at least 1")
 
     output.mkdir(parents=True, exist_ok=True)
     (output / "figures").mkdir(parents=True, exist_ok=True)
@@ -528,8 +546,14 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
     heldout_passive_fill_event_transition_toxicity = passive_fill_event_transition_scorecard(
         heldout_passive_fill_event_transitions
     )
-    passive_fill_labeled = _add_passive_fill_realization_proxy(scored)
-    heldout_passive_fill_labeled = _add_passive_fill_realization_proxy(heldout_scored)
+    passive_fill_labeled = _add_passive_fill_realization_proxy(
+        scored,
+        horizon=passive_fill_horizon,
+    )
+    heldout_passive_fill_labeled = _add_passive_fill_realization_proxy(
+        heldout_scored,
+        horizon=passive_fill_horizon,
+    )
     passive_fill_calibration = passive_fill_calibration_curve(
         passive_fill_labeled,
         regime_col="pressure_memory_decay_state",
@@ -539,9 +563,11 @@ def run_demo(rows: int, seed: int, output: Path, train_frac: float = 0.70) -> No
         regime_col="pressure_memory_decay_state",
     )
     passive_fill_calibration_stats = passive_fill_calibration_summary(passive_fill_calibration)
+    passive_fill_calibration_stats["realization_horizon_snapshots"] = passive_fill_horizon
     heldout_passive_fill_calibration_stats = passive_fill_calibration_summary(
         heldout_passive_fill_calibration
     )
+    heldout_passive_fill_calibration_stats["realization_horizon_snapshots"] = passive_fill_horizon
     queue_fill_surface = queue_position_fill_surface(
         passive_fill_labeled,
         regime_col="pressure_memory_decay_state",
@@ -1274,27 +1300,17 @@ def _add_execution_adjusted_stack(frame: pd.DataFrame, *, tick_size: float) -> p
     return add_execution_adjusted_edge(fills)
 
 
-def _add_passive_fill_realization_proxy(frame: pd.DataFrame) -> pd.DataFrame:
-    """Attach demo passive-fill labels from the next mid-price path.
+def _add_passive_fill_realization_proxy(frame: pd.DataFrame, *, horizon: int = 1) -> pd.DataFrame:
+    """Attach demo passive-fill labels from queue depletion over a snapshot horizon.
 
     The synthetic demo has snapshots rather than order-level executions. For the
-    queue-position calibration surface we use a conservative touch proxy: a bid
-    quote is counted as filled when the next mid-price moves down by at least
-    half a tick, while an ask quote is counted as filled when the next mid-price
-    moves up by at least half a tick. This keeps demo artifacts execution-aware
-    without claiming event-level queue reconstruction.
+    queue-position calibration surface we infer conservative passive fills from
+    visible best-level depletion versus the estimated queue ahead, including full
+    depletion when a future snapshot loses the current best bid/ask level. This
+    is still a snapshot proxy, but it is queue-position-aware rather than only a
+    next-mid touch label.
     """
-    required = {"future_return_ticks"}
-    missing = sorted(required - set(frame.columns))
-    if missing:
-        raise ValueError(f"missing passive fill realization proxy columns: {missing}")
-    output = frame.copy()
-    move = output["future_return_ticks"].astype(float)
-    if not move.abs().lt(float("inf")).all():
-        raise ValueError("passive fill realization proxy returns must be finite")
-    output["bid_realized_fill"] = (move <= -0.5).astype(float)
-    output["ask_realized_fill"] = (move >= 0.5).astype(float)
-    return output
+    return add_queue_position_realized_fill_proxy(frame, horizon=horizon)
 
 
 def _append_execution_adjusted_summary(

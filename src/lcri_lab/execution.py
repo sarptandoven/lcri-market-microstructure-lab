@@ -118,6 +118,142 @@ def add_queue_position_features(
     return output
 
 
+def add_queue_position_realized_fill_proxy(
+    frame: pd.DataFrame,
+    *,
+    horizon: int = 1,
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    bid_realized_col: str = "bid_realized_fill",
+    ask_realized_col: str = "ask_realized_fill",
+) -> pd.DataFrame:
+    """Infer passive fill labels from visible queue depletion over a snapshot horizon.
+
+    Event-level add/cancel/trade data is the gold standard for queue priority, but
+    the lab's core artifacts often operate on L2 snapshots. This proxy marks a
+    passive bid as filled when any of the next ``horizon`` snapshots either loses
+    the current best bid price level or depletes at least the estimated bid queue
+    ahead; passive asks are handled symmetrically when the best ask level is lost
+    upward or same-price visible size depletion clears the estimated ask queue
+    ahead. ``group_cols`` prevents fill labels from leaking across independent
+    symbols, venues, or sessions when a batch contains interleaved books.
+    """
+    if not isinstance(horizon, int) or isinstance(horizon, bool):
+        raise ValueError("horizon must be an integer")
+    if horizon < 1:
+        raise ValueError("horizon must be at least 1")
+    required = {
+        "bid_px_1",
+        "ask_px_1",
+        "bid_sz_1",
+        "ask_sz_1",
+        "bid_queue_ahead",
+        "ask_queue_ahead",
+    }
+    _require_columns(frame, required, "queue position realized fill proxy")
+    if group_cols is None:
+        grouping_columns: list[str] = []
+    elif isinstance(group_cols, str):
+        grouping_columns = [group_cols]
+    else:
+        grouping_columns = list(group_cols)
+    if group_cols is not None and not grouping_columns:
+        raise ValueError("group_cols must be a non-empty sequence when provided")
+    if grouping_columns:
+        _require_columns(frame, set(grouping_columns), "queue position realized fill proxy group")
+    if frame.empty:
+        output = frame.copy()
+        output["bid_visible_depletion"] = pd.Series(dtype=float)
+        output["ask_visible_depletion"] = pd.Series(dtype=float)
+        output["bid_queue_depletion_ratio"] = pd.Series(dtype=float)
+        output["ask_queue_depletion_ratio"] = pd.Series(dtype=float)
+        output[bid_realized_col] = pd.Series(dtype=float)
+        output[ask_realized_col] = pd.Series(dtype=float)
+        return output
+
+    values = _finite_values(frame, sorted(required), "queue position realized fill proxy")
+    size_columns = ["bid_sz_1", "ask_sz_1", "bid_queue_ahead", "ask_queue_ahead"]
+    if (values[size_columns] < 0.0).any().any():
+        raise ValueError("queue position realized fill proxy sizes must be non-negative")
+
+    def future_value(column: str, offset: int) -> pd.Series:
+        if not grouping_columns:
+            return values[column].shift(-offset)
+        keys = [frame[group_col] for group_col in grouping_columns]
+        return values[column].groupby(keys, sort=False, dropna=False).shift(-offset)
+
+    bid_depletion = pd.Series(0.0, index=frame.index)
+    ask_depletion = pd.Series(0.0, index=frame.index)
+    has_future = pd.Series(False, index=frame.index)
+    for offset in range(1, horizon + 1):
+        future_bid_px = future_value("bid_px_1", offset)
+        future_ask_px = future_value("ask_px_1", offset)
+        future_bid_sz = future_value("bid_sz_1", offset)
+        future_ask_sz = future_value("ask_sz_1", offset)
+        valid_future = (
+            future_bid_px.notna()
+            & future_ask_px.notna()
+            & future_bid_sz.notna()
+            & future_ask_sz.notna()
+        )
+        has_future = has_future | valid_future
+
+        bid_level_lost = valid_future & (future_bid_px < values["bid_px_1"])
+        ask_level_lost = valid_future & (future_ask_px > values["ask_px_1"])
+        bid_same_level = valid_future & (future_bid_px == values["bid_px_1"])
+        ask_same_level = valid_future & (future_ask_px == values["ask_px_1"])
+
+        bid_same_depletion = (values["bid_sz_1"] - future_bid_sz).clip(lower=0.0).fillna(0.0)
+        ask_same_depletion = (values["ask_sz_1"] - future_ask_sz).clip(lower=0.0).fillna(0.0)
+        bid_step_depletion = pd.Series(
+            np.where(
+                bid_level_lost,
+                values["bid_sz_1"],
+                np.where(bid_same_level, bid_same_depletion, 0.0),
+            ),
+            index=frame.index,
+        )
+        ask_step_depletion = pd.Series(
+            np.where(
+                ask_level_lost,
+                values["ask_sz_1"],
+                np.where(ask_same_level, ask_same_depletion, 0.0),
+            ),
+            index=frame.index,
+        )
+        bid_depletion = bid_depletion.combine(bid_step_depletion, max)
+        ask_depletion = ask_depletion.combine(ask_step_depletion, max)
+
+    bid_queue = values["bid_queue_ahead"]
+    ask_queue = values["ask_queue_ahead"]
+    bid_ratio = pd.Series(
+        np.where(
+            bid_queue > 0.0,
+            bid_depletion / bid_queue.replace(0.0, np.nan),
+            np.where(bid_depletion > 0.0, 1.0, 0.0),
+        ),
+        index=frame.index,
+    )
+    ask_ratio = pd.Series(
+        np.where(
+            ask_queue > 0.0,
+            ask_depletion / ask_queue.replace(0.0, np.nan),
+            np.where(ask_depletion > 0.0, 1.0, 0.0),
+        ),
+        index=frame.index,
+    )
+
+    output = frame.copy()
+    output["bid_visible_depletion"] = bid_depletion
+    output["ask_visible_depletion"] = ask_depletion
+    output["bid_queue_depletion_ratio"] = bid_ratio
+    output["ask_queue_depletion_ratio"] = ask_ratio
+    bid_realized = has_future & np.where(bid_queue > 0.0, bid_depletion >= bid_queue, bid_depletion > 0.0)
+    ask_realized = has_future & np.where(ask_queue > 0.0, ask_depletion >= ask_queue, ask_depletion > 0.0)
+    output[bid_realized_col] = bid_realized.astype(float)
+    output[ask_realized_col] = ask_realized.astype(float)
+    return output
+
+
 def add_passive_fill_probabilities(
     frame: pd.DataFrame,
     *,

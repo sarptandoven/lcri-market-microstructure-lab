@@ -6,6 +6,7 @@ from lcri_lab.execution import (
     add_execution_adjusted_edge,
     add_passive_fill_probabilities,
     add_queue_position_features,
+    add_queue_position_realized_fill_proxy,
     execution_adjusted_edge_summary,
     passive_fill_calibration_curve,
     passive_fill_calibration_summary,
@@ -48,6 +49,99 @@ def test_queue_position_features_estimate_visible_queue_ahead() -> None:
     assert output["bid_queue_share"].tolist() == pytest.approx([25.0 / 150.0, 100.0 / 450.0])
     assert output["ask_queue_share"].tolist() == pytest.approx([50.0 / 250.0, 25.0 / 150.0])
     assert output["queue_position_imbalance"].tolist() == pytest.approx([-25.0, 75.0])
+
+
+def test_queue_position_realized_fill_proxy_uses_visible_depletion_and_price_loss() -> None:
+    frame = pd.DataFrame(
+        {
+            "bid_px_1": [100.0, 100.0, 99.0],
+            "ask_px_1": [101.0, 101.0, 102.0],
+            "bid_sz_1": [100.0, 60.0, 120.0],
+            "ask_sz_1": [80.0, 50.0, 90.0],
+            "bid_queue_ahead": [40.0, 40.0, 40.0],
+            "ask_queue_ahead": [30.0, 30.0, 30.0],
+        }
+    )
+
+    output = add_queue_position_realized_fill_proxy(frame)
+
+    assert output["bid_visible_depletion"].tolist() == pytest.approx([40.0, 60.0, 0.0])
+    assert output["ask_visible_depletion"].tolist() == pytest.approx([30.0, 50.0, 0.0])
+    assert output["bid_queue_depletion_ratio"].tolist() == pytest.approx([1.00, 1.50, 0.0])
+    assert output["ask_queue_depletion_ratio"].tolist() == pytest.approx([1.0, 5.0 / 3.0, 0.0])
+    assert output["bid_realized_fill"].tolist() == pytest.approx([1.0, 1.0, 0.0])
+    assert output["ask_realized_fill"].tolist() == pytest.approx([1.0, 1.0, 0.0])
+
+
+def test_queue_position_realized_fill_proxy_handles_front_of_queue_without_last_row_fill() -> None:
+    frame = pd.DataFrame(
+        {
+            "bid_px_1": [100.0, 100.0],
+            "ask_px_1": [101.0, 101.0],
+            "bid_sz_1": [100.0, 100.0],
+            "ask_sz_1": [80.0, 80.0],
+            "bid_queue_ahead": [0.0, 0.0],
+            "ask_queue_ahead": [0.0, 0.0],
+        }
+    )
+
+    output = add_queue_position_realized_fill_proxy(frame)
+
+    assert output["bid_queue_depletion_ratio"].tolist() == pytest.approx([0.0, 0.0])
+    assert output["ask_queue_depletion_ratio"].tolist() == pytest.approx([0.0, 0.0])
+    assert output["bid_realized_fill"].tolist() == pytest.approx([0.0, 0.0])
+    assert output["ask_realized_fill"].tolist() == pytest.approx([0.0, 0.0])
+
+
+def test_queue_position_realized_fill_proxy_horizon_captures_later_queue_clear() -> None:
+    frame = pd.DataFrame(
+        {
+            "bid_px_1": [100.0, 100.0, 99.0],
+            "ask_px_1": [101.0, 101.0, 102.0],
+            "bid_sz_1": [100.0, 85.0, 120.0],
+            "ask_sz_1": [80.0, 70.0, 90.0],
+            "bid_queue_ahead": [40.0, 40.0, 40.0],
+            "ask_queue_ahead": [30.0, 30.0, 30.0],
+        }
+    )
+
+    one_step = add_queue_position_realized_fill_proxy(frame, horizon=1)
+    two_step = add_queue_position_realized_fill_proxy(frame, horizon=2)
+
+    assert one_step["bid_visible_depletion"].tolist() == pytest.approx([15.0, 85.0, 0.0])
+    assert one_step["ask_visible_depletion"].tolist() == pytest.approx([10.0, 70.0, 0.0])
+    assert one_step["bid_realized_fill"].tolist() == pytest.approx([0.0, 1.0, 0.0])
+    assert one_step["ask_realized_fill"].tolist() == pytest.approx([0.0, 1.0, 0.0])
+    assert two_step["bid_visible_depletion"].tolist() == pytest.approx([100.0, 85.0, 0.0])
+    assert two_step["ask_visible_depletion"].tolist() == pytest.approx([80.0, 70.0, 0.0])
+    assert two_step["bid_realized_fill"].tolist() == pytest.approx([1.0, 1.0, 0.0])
+    assert two_step["ask_realized_fill"].tolist() == pytest.approx([1.0, 1.0, 0.0])
+
+
+def test_queue_position_realized_fill_proxy_respects_group_boundaries() -> None:
+    frame = pd.DataFrame(
+        {
+            "symbol": ["A", "B", "B"],
+            "bid_px_1": [100.0, 99.0, 99.0],
+            "ask_px_1": [101.0, 102.0, 102.0],
+            "bid_sz_1": [100.0, 120.0, 70.0],
+            "ask_sz_1": [80.0, 90.0, 45.0],
+            "bid_queue_ahead": [40.0, 40.0, 40.0],
+            "ask_queue_ahead": [30.0, 30.0, 30.0],
+        }
+    )
+
+    output = add_queue_position_realized_fill_proxy(frame, group_cols=["symbol"])
+
+    assert output["bid_visible_depletion"].tolist() == pytest.approx([0.0, 50.0, 0.0])
+    assert output["ask_visible_depletion"].tolist() == pytest.approx([0.0, 45.0, 0.0])
+    assert output["bid_realized_fill"].tolist() == pytest.approx([0.0, 1.0, 0.0])
+    assert output["ask_realized_fill"].tolist() == pytest.approx([0.0, 1.0, 0.0])
+
+
+def test_queue_position_realized_fill_proxy_rejects_missing_queue_state() -> None:
+    with pytest.raises(ValueError, match="missing queue position realized fill proxy columns"):
+        add_queue_position_realized_fill_proxy(pd.DataFrame({"bid_px_1": [100.0]}))
 
 
 def test_passive_fill_probabilities_move_with_pressure_and_queue() -> None:
