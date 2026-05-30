@@ -323,6 +323,7 @@ def add_alpha_event_window_regimes(
     return_col: str = "gross_return_ticks",
     window: int = 3,
     threshold: float = 0.0,
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
 ) -> pd.DataFrame:
     """Label every row by proximity to alpha-toxicity event windows.
 
@@ -330,14 +331,21 @@ def add_alpha_event_window_regimes(
     strata: ``pre_event`` rows reveal pressure buildup before toxic thresholds,
     ``event`` rows capture the threshold crossing itself, and ``post_event`` rows
     capture immediate aftermath for evaluation and release-review slices.
+    ``group_cols`` isolates independent symbols, venues, or sessions so event
+    windows cannot leak across unrelated books in batched research runs.
     """
     _validate_event_regime_window(window)
     if not np.isfinite(threshold):
         raise ValueError("threshold must be finite")
-    _require_columns(frame, [event_col, score_col, return_col], label="alpha event window regime")
+    grouping_columns = _normalize_group_cols(group_cols)
+    _require_columns(
+        frame,
+        [event_col, score_col, return_col, *grouping_columns],
+        label="alpha event window regime",
+    )
 
     output = frame.copy()
-    data = output[[event_col, score_col, return_col]].copy()
+    data = output[[event_col, score_col, return_col, *grouping_columns]].copy()
     for column in [event_col, score_col, return_col]:
         data[column] = data[column].astype(float)
     _require_finite(
@@ -345,19 +353,25 @@ def add_alpha_event_window_regimes(
         label="alpha event regime inputs",
     )
 
-    event_positions = np.flatnonzero(data[event_col].to_numpy(dtype=float) > threshold)
-    if len(event_positions) == 0:
-        distance = np.full(len(output), len(output) + window, dtype=int)
+    distance = pd.Series(len(output) + window, index=output.index, dtype=int)
+    if grouping_columns:
+        grouped_positions = data.groupby(grouping_columns, sort=False, dropna=False).indices.values()
     else:
-        distance = np.array(
-            [_nearest_event_distance(position, event_positions) for position in range(len(output))]
-        )
+        grouped_positions = [np.arange(len(data))]
+    event_mask = data[event_col].to_numpy(dtype=float) > threshold
+    for positions in grouped_positions:
+        positions_array = np.asarray(positions, dtype=int)
+        event_positions = positions_array[event_mask[positions_array]]
+        if len(event_positions) == 0:
+            continue
+        for position in positions_array:
+            distance.iloc[position] = _nearest_event_distance(position, event_positions)
 
     regimes = np.select(
         [
-            distance == 0,
-            (distance < 0) & (np.abs(distance) <= window),
-            (distance > 0) & (distance <= window),
+            distance.to_numpy(dtype=int) == 0,
+            (distance.to_numpy(dtype=int) < 0) & (np.abs(distance.to_numpy(dtype=int)) <= window),
+            (distance.to_numpy(dtype=int) > 0) & (distance.to_numpy(dtype=int) <= window),
         ],
         ["event", "pre_event", "post_event"],
         default="calm",
@@ -815,6 +829,17 @@ def _validate_event_regime_window(window: int) -> None:
 def _nearest_event_distance(position: int, event_positions: np.ndarray) -> int:
     signed = position - event_positions.astype(int)
     return int(signed[np.argmin(np.abs(signed))])
+
+
+def _normalize_group_cols(group_cols: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    if group_cols is None:
+        return []
+    if isinstance(group_cols, str):
+        return [group_cols]
+    columns = list(group_cols)
+    if not columns:
+        raise ValueError("group_cols must be a non-empty sequence when provided")
+    return columns
 
 
 def _validate_window(window: int) -> None:

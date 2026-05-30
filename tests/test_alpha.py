@@ -216,6 +216,45 @@ def test_alpha_event_window_regime_summary_surfaces_adverse_pre_event_pockets() 
     assert pre["adverse_return_share"] == pytest.approx(1.0)
 
 
+def test_add_alpha_event_window_regimes_respects_group_boundaries() -> None:
+    frame = pd.DataFrame(
+        {
+            "symbol": ["A", "A", "B", "B"],
+            "phase_shift_alpha": [0.0, 1.4, 0.0, 0.0],
+            "microstructure_alpha_score": [0.1, 2.0, 0.3, 0.4],
+            "gross_return_ticks": [1.0, -2.0, 3.0, 4.0],
+        }
+    )
+
+    labelled = add_alpha_event_window_regimes(
+        frame,
+        window=1,
+        threshold=1.0,
+        group_cols="symbol",
+    )
+
+    assert labelled["alpha_event_window_regime"].tolist() == [
+        "pre_event",
+        "event",
+        "calm",
+        "calm",
+    ]
+    assert labelled["alpha_event_distance"].tolist() == [-1, 0, 5, 5]
+
+
+def test_add_alpha_event_window_regimes_rejects_empty_group_columns() -> None:
+    frame = pd.DataFrame(
+        {
+            "phase_shift_alpha": [0.0],
+            "microstructure_alpha_score": [0.1],
+            "gross_return_ticks": [1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="group_cols"):
+        add_alpha_event_window_regimes(frame, group_cols=[])
+
+
 def test_add_alpha_event_window_regimes_rejects_invalid_window() -> None:
     with pytest.raises(ValueError, match="window"):
         add_alpha_event_window_regimes(pd.DataFrame({"phase_shift_alpha": [1.0]}), window=0)
