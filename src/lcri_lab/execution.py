@@ -2778,6 +2778,109 @@ def _rank_probability_bins(probability: pd.Series, bins: int) -> pd.Series:
     return bin_ids.astype(int) + 1
 
 
+def execution_publishability_release_gate(
+    review_packet: pd.DataFrame,
+    *,
+    quality_gate: dict[str, float | int | str] | None = None,
+    capacity_stability: dict[str, float | int | str | bool] | None = None,
+    max_conflict_share: float = 0.25,
+    max_high_priority_conflict_share: float = 0.10,
+) -> dict[str, float | int | str | bool]:
+    """Reduce execution-aware artifacts into an owner-facing release gate.
+
+    The review packet catches pre/post execution gate conflicts, while queue
+    quality and capacity-stability summaries test whether passive fill evidence
+    is calibrated and out-of-sample durable. This reducer deliberately keeps the
+    output JSON-like so demos and reports can publish a single execution release
+    decision instead of scattering the evidence across multiple tables.
+    """
+    for name, value in {
+        "max_conflict_share": max_conflict_share,
+        "max_high_priority_conflict_share": max_high_priority_conflict_share,
+    }.items():
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be finite and in [0.0, 1.0]")
+
+    required = {"rows", "conflict_rows", "review_priority"}
+    if review_packet.empty:
+        total_rows = 0
+        conflict_rows = 0
+        weighted_conflict_share = 0.0
+        high_priority_conflict_rows = 0
+        high_priority_conflict_share = 0.0
+    else:
+        _require_columns(review_packet, required, "execution publishability release gate")
+        values = _finite_values(
+            review_packet,
+            ["rows", "conflict_rows", "review_priority"],
+            "execution publishability release gate",
+        )
+        if (values[["rows", "conflict_rows", "review_priority"]] < 0.0).any().any():
+            raise ValueError("execution publishability release gate counts must be non-negative")
+        total_rows = int(values["rows"].sum())
+        conflict_rows = int(values["conflict_rows"].sum())
+        weighted_conflict_share = float(conflict_rows / total_rows) if total_rows else 0.0
+        high_priority = values["review_priority"] >= 3.0
+        high_priority_conflict_rows = int(values.loc[high_priority, "conflict_rows"].sum())
+        high_priority_conflict_share = (
+            float(high_priority_conflict_rows / total_rows) if total_rows else 0.0
+        )
+
+    quality_label = str(
+        (quality_gate or {}).get("quality_gate_label", "missing_queue_execution_quality_gate")
+    )
+    capacity_label = str(
+        (capacity_stability or {}).get(
+            "capacity_stability_label", "missing_capacity_stability_gate"
+        )
+    )
+
+    blocking_reasons: list[str] = []
+    review_reasons: list[str] = []
+    if total_rows == 0:
+        review_reasons.append("empty_execution_review_packet")
+    if weighted_conflict_share > max_conflict_share:
+        blocking_reasons.append("execution_conflict_share_exceeds_limit")
+    if high_priority_conflict_share > max_high_priority_conflict_share:
+        blocking_reasons.append("high_priority_execution_conflicts_exceed_limit")
+    if quality_label in {"empty_queue_execution_surface", "queue_execution_blocked"}:
+        blocking_reasons.append(quality_label)
+    elif quality_label in {"queue_execution_review", "missing_queue_execution_quality_gate"}:
+        review_reasons.append(quality_label)
+    if capacity_label in {"capacity_not_replicated", "capacity_fragile"}:
+        blocking_reasons.append(capacity_label)
+    elif capacity_label == "missing_capacity_stability_gate":
+        review_reasons.append(capacity_label)
+
+    if blocking_reasons:
+        decision = "block"
+        label = "execution_release_blocked"
+        passes = False
+    elif review_reasons:
+        decision = "review"
+        label = "execution_release_review"
+        passes = False
+    else:
+        decision = "pass"
+        label = "execution_release_publishable"
+        passes = True
+
+    return {
+        "total_rows": total_rows,
+        "conflict_rows": conflict_rows,
+        "weighted_conflict_share": weighted_conflict_share,
+        "high_priority_conflict_rows": high_priority_conflict_rows,
+        "high_priority_conflict_share": high_priority_conflict_share,
+        "quality_gate_label": quality_label,
+        "capacity_stability_label": capacity_label,
+        "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
+        "review_reasons": ";".join(review_reasons) if review_reasons else "none",
+        "decision": decision,
+        "passes": passes,
+        "release_gate_label": label,
+    }
+
+
 def execution_publishability_review_packet(frame: pd.DataFrame) -> pd.DataFrame:
     """Aggregate pre/post-execution publishability conflicts for review.
 

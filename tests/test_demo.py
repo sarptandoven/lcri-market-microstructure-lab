@@ -109,6 +109,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_execution_adjusted_edge_summary.json").exists()
     assert (tmp_path / "execution_publishability_review_packet.csv").exists()
     assert (tmp_path / "heldout_execution_publishability_review_packet.csv").exists()
+    assert (tmp_path / "execution_publishability_release_gate.json").exists()
+    assert (tmp_path / "heldout_execution_publishability_release_gate.json").exists()
     assert (tmp_path / "passive_fill_event_windows.csv").exists()
     assert (tmp_path / "passive_fill_event_regime_summary.csv").exists()
     assert (tmp_path / "passive_fill_event_transition_summary.csv").exists()
@@ -170,6 +172,16 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert execution_summary["rows"] == 750
     assert "tradable_share" in execution_summary
     assert "publishable_side_conflict_share" in execution_summary
+    release_gate = json.loads((tmp_path / "execution_publishability_release_gate.json").read_text())
+    assert release_gate["decision"] in {"pass", "review", "block"}
+    assert "weighted_conflict_share" in release_gate
+    assert "quality_gate_label" in release_gate
+    assert "capacity_stability_label" in release_gate
+    heldout_release_gate = json.loads(
+        (tmp_path / "heldout_execution_publishability_release_gate.json").read_text()
+    )
+    assert heldout_release_gate["decision"] in {"pass", "review", "block"}
+    assert "release_gate_label" in heldout_release_gate
     event_toxicity = json.loads((tmp_path / "passive_fill_event_toxicity_scorecard.json").read_text())
     assert "event_toxicity_label" in event_toxicity
     assert "weighted_mean_post_minus_pre_realized_edge" in event_toxicity
@@ -330,6 +342,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["heldout_execution_adjusted_edge_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["execution_publishability_review_packet.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_execution_publishability_review_packet.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["execution_publishability_release_gate.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_execution_publishability_release_gate.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_windows.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_toxicity_scorecard.json"]["size_bytes"] > 0
@@ -382,6 +396,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## Hidden resiliency asymmetry summary" in summary
     assert "## Adverse selection phase-shift summary" in summary
     assert "## Execution-adjusted edge summary" in summary
+    assert "## Execution publishability release gate" in summary
     assert "## Passive-fill event-window regime diagnostics" in summary
     assert "## Passive-fill event-window toxicity scorecard" in summary
     assert "## Passive-fill realization horizon sweep" in summary

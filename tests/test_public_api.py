@@ -229,6 +229,7 @@ def test_public_api_exports_execution_adjusted_queue_fill_tools() -> None:
     assert callable(lcri_lab.add_execution_adjusted_edge)
     assert callable(lcri_lab.execution_adjusted_edge_summary)
     assert callable(lcri_lab.execution_publishability_review_packet)
+    assert callable(lcri_lab.execution_publishability_release_gate)
     assert callable(lcri_lab.passive_fill_calibration_curve)
     assert callable(lcri_lab.passive_fill_calibration_summary)
     assert callable(lcri_lab.passive_fill_event_window_diagnostics)
@@ -241,6 +242,7 @@ def test_public_api_exports_execution_adjusted_queue_fill_tools() -> None:
     assert "add_execution_adjusted_edge" in lcri_lab.__all__
     assert "execution_adjusted_edge_summary" in lcri_lab.__all__
     assert "execution_publishability_review_packet" in lcri_lab.__all__
+    assert "execution_publishability_release_gate" in lcri_lab.__all__
     assert "passive_fill_calibration_curve" in lcri_lab.__all__
     assert "passive_fill_calibration_summary" in lcri_lab.__all__
     assert "passive_fill_event_window_diagnostics" in lcri_lab.__all__

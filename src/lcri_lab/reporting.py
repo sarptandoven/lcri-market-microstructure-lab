@@ -545,6 +545,73 @@ def verify_execution_publishability_review_artifacts(
     return errors
 
 
+def verify_execution_publishability_release_gate(
+    output_dir: Path, artifact: str = "execution_publishability_release_gate.json"
+) -> list[str]:
+    """Return errors for malformed execution publishability release gates."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing execution publishability release gate: {artifact}"]
+    gate = json.loads(path.read_text())
+    required = {
+        "total_rows",
+        "conflict_rows",
+        "weighted_conflict_share",
+        "high_priority_conflict_rows",
+        "high_priority_conflict_share",
+        "quality_gate_label",
+        "capacity_stability_label",
+        "blocking_reasons",
+        "review_reasons",
+        "decision",
+        "passes",
+        "release_gate_label",
+    }
+    missing = sorted(required - set(gate))
+    if missing:
+        return [f"incomplete execution publishability release gate {artifact}: {missing}"]
+
+    errors: list[str] = []
+    numeric_keys = [
+        "total_rows",
+        "conflict_rows",
+        "weighted_conflict_share",
+        "high_priority_conflict_rows",
+        "high_priority_conflict_share",
+    ]
+    numeric = {key: float(gate[key]) for key in numeric_keys}
+    if not all(math.isfinite(value) for value in numeric.values()):
+        errors.append(f"non-finite execution publishability release gate values in {artifact}")
+    if any(numeric[key] < 0.0 for key in ["total_rows", "conflict_rows", "high_priority_conflict_rows"]):
+        errors.append(f"negative execution publishability release gate counts in {artifact}")
+    if not 0.0 <= numeric["weighted_conflict_share"] <= 1.0:
+        errors.append(f"bounded execution release conflict share violated in {artifact}")
+    if not 0.0 <= numeric["high_priority_conflict_share"] <= 1.0:
+        errors.append(f"bounded execution release high-priority conflict share violated in {artifact}")
+    if numeric["conflict_rows"] > numeric["total_rows"]:
+        errors.append(f"execution release conflict rows exceed total rows in {artifact}")
+    if numeric["high_priority_conflict_rows"] > numeric["total_rows"]:
+        errors.append(f"execution release high-priority conflict rows exceed total rows in {artifact}")
+    if str(gate["decision"]) not in {"pass", "review", "block"}:
+        errors.append(f"invalid execution release decision in {artifact}: {gate['decision']}")
+    if not isinstance(gate["passes"], bool):
+        errors.append(f"non-boolean execution release passes flag in {artifact}")
+    elif gate["passes"] != (str(gate["decision"]) == "pass"):
+        errors.append(f"execution release passes flag contradicts decision in {artifact}")
+    expected_label = {
+        "pass": "execution_release_publishable",
+        "review": "execution_release_review",
+        "block": "execution_release_blocked",
+    }.get(str(gate["decision"]))
+    if expected_label is not None and str(gate["release_gate_label"]) != expected_label:
+        errors.append(f"execution release label contradicts decision in {artifact}")
+    if not str(gate["quality_gate_label"]):
+        errors.append(f"blank execution release quality gate label in {artifact}")
+    if not str(gate["capacity_stability_label"]):
+        errors.append(f"blank execution release capacity stability label in {artifact}")
+    return errors
+
+
 def verify_passive_fill_realization_horizon_sweep(
     output_dir: Path, artifact: str = "passive_fill_realization_horizon_sweep.csv"
 ) -> list[str]:

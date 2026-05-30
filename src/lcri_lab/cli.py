@@ -89,6 +89,7 @@ from lcri_lab.execution import (
     add_queue_position_features,
     add_queue_position_realized_fill_proxy,
     execution_adjusted_edge_summary,
+    execution_publishability_release_gate,
     execution_publishability_review_packet,
     passive_fill_calibration_curve,
     passive_fill_calibration_summary,
@@ -101,6 +102,7 @@ from lcri_lab.execution import (
     queue_position_capacity_frontier,
     queue_position_capacity_stability,
     queue_position_edge_decay,
+    queue_position_execution_quality_gate,
     queue_position_fill_surface,
     queue_position_fraction_sweep,
 )
@@ -142,6 +144,7 @@ from lcri_lab.reporting import (
     verify_hidden_resiliency_asymmetry_summary,
     verify_adverse_selection_phase_shift_summary,
     verify_execution_publishability_review_artifacts,
+    verify_execution_publishability_release_gate,
     verify_passive_fill_realization_horizon_sweep,
     verify_phase_shift_artifact_review,
     verify_lcri_fragility_gate_alignment,
@@ -607,6 +610,24 @@ def run_demo(
     )
     queue_edge_decay = queue_position_edge_decay(queue_fill_surface)
     heldout_queue_edge_decay = queue_position_edge_decay(heldout_queue_fill_surface)
+    queue_execution_quality_gate = queue_position_execution_quality_gate(
+        queue_fill_surface,
+        queue_edge_decay,
+    )
+    heldout_queue_execution_quality_gate = queue_position_execution_quality_gate(
+        heldout_queue_fill_surface,
+        heldout_queue_edge_decay,
+    )
+    execution_publishability_gate = execution_publishability_release_gate(
+        execution_publishability_packet,
+        quality_gate=queue_execution_quality_gate,
+        capacity_stability=queue_capacity_stability,
+    )
+    heldout_execution_publishability_gate = execution_publishability_release_gate(
+        heldout_execution_publishability_packet,
+        quality_gate=heldout_queue_execution_quality_gate,
+        capacity_stability=queue_capacity_stability,
+    )
 
     artifact_paths = [
         "lcri-model.json",
@@ -714,6 +735,8 @@ def run_demo(
         "heldout_execution_adjusted_edge_summary.json",
         "execution_publishability_review_packet.csv",
         "heldout_execution_publishability_review_packet.csv",
+        "execution_publishability_release_gate.json",
+        "heldout_execution_publishability_release_gate.json",
         "passive_fill_event_windows.csv",
         "passive_fill_event_regime_summary.csv",
         "passive_fill_event_transition_summary.csv",
@@ -942,6 +965,11 @@ def run_demo(
     heldout_execution_publishability_packet.to_csv(
         output / "heldout_execution_publishability_review_packet.csv", index=False
     )
+    write_json(output / "execution_publishability_release_gate.json", execution_publishability_gate)
+    write_json(
+        output / "heldout_execution_publishability_release_gate.json",
+        heldout_execution_publishability_gate,
+    )
     passive_fill_events.to_csv(output / "passive_fill_event_windows.csv", index=False)
     passive_fill_event_regimes.to_csv(
         output / "passive_fill_event_regime_summary.csv", index=False
@@ -1133,6 +1161,8 @@ def run_demo(
         heldout_passive_fill_event_transition_toxicity=heldout_passive_fill_event_transition_toxicity,
         passive_fill_calibration_summary=passive_fill_calibration_stats,
         heldout_passive_fill_calibration_summary=heldout_passive_fill_calibration_stats,
+        execution_publishability_gate=execution_publishability_gate,
+        heldout_execution_publishability_gate=heldout_execution_publishability_gate,
         passive_fill_horizon_sweep=passive_fill_horizon_sweep,
         heldout_passive_fill_horizon_sweep=heldout_passive_fill_horizon_sweep,
         queue_fill_surface=queue_fill_surface,
@@ -1290,6 +1320,11 @@ def run_demo(
     print(f"lcri fracture reversal gate: {output / 'lcri_fracture_reversal_gate.json'}")
     print(f"transition robustness: {output / 'transition_robustness.json'}")
     print(f"heldout transition robustness: {output / 'heldout_transition_robustness.json'}")
+    print(f"execution publishability release gate: {output / 'execution_publishability_release_gate.json'}")
+    print(
+        "heldout execution publishability release gate: "
+        f"{output / 'heldout_execution_publishability_release_gate.json'}"
+    )
     print(f"summary: {output / 'research_summary.md'}")
     print(f"artifact coverage matrix: {output / 'artifact_coverage_matrix.csv'}")
     print(f"manifest: {output / 'artifact_manifest.json'}")
@@ -1349,6 +1384,8 @@ def _append_execution_adjusted_summary(
     heldout_passive_fill_event_transition_toxicity: dict[str, float | int | str],
     passive_fill_calibration_summary: dict[str, float | int | str],
     heldout_passive_fill_calibration_summary: dict[str, float | int | str],
+    execution_publishability_gate: dict[str, float | int | str | bool],
+    heldout_execution_publishability_gate: dict[str, float | int | str | bool],
     passive_fill_horizon_sweep: pd.DataFrame,
     heldout_passive_fill_horizon_sweep: pd.DataFrame,
     queue_fill_surface: pd.DataFrame,
@@ -1378,6 +1415,12 @@ def _append_execution_adjusted_summary(
     )
     heldout_passive_calibration_lines = _passive_fill_calibration_summary_lines(
         heldout_passive_fill_calibration_summary
+    )
+    execution_gate_lines = _execution_publishability_release_gate_lines(
+        execution_publishability_gate
+    )
+    heldout_execution_gate_lines = _execution_publishability_release_gate_lines(
+        heldout_execution_publishability_gate
     )
     passive_horizon_lines = _passive_fill_horizon_sweep_lines(passive_fill_horizon_sweep)
     heldout_passive_horizon_lines = _passive_fill_horizon_sweep_lines(
@@ -1437,6 +1480,14 @@ def _append_execution_adjusted_summary(
         "## Heldout passive-fill calibration summary",
         "",
         *heldout_passive_calibration_lines,
+        "",
+        "## Execution publishability release gate",
+        "",
+        *execution_gate_lines,
+        "",
+        "## Heldout execution publishability release gate",
+        "",
+        *heldout_execution_gate_lines,
         "",
         "## Passive-fill realization horizon sweep",
         "",
@@ -1555,6 +1606,26 @@ def _passive_fill_calibration_summary_lines(summary: dict[str, float | int | str
         "worst_absolute_calibration_error",
     ]
     return [f"- {key}: {summary.get(key, 'n/a')}" for key in keys]
+
+
+def _execution_publishability_release_gate_lines(
+    gate: dict[str, float | int | str | bool],
+) -> list[str]:
+    if not gate:
+        return ["- no execution publishability release gate"]
+    keys = [
+        "decision",
+        "passes",
+        "release_gate_label",
+        "total_rows",
+        "weighted_conflict_share",
+        "high_priority_conflict_share",
+        "quality_gate_label",
+        "capacity_stability_label",
+        "blocking_reasons",
+        "review_reasons",
+    ]
+    return [f"- {key}: {gate.get(key, 'n/a')}" for key in keys]
 
 
 def _passive_fill_horizon_sweep_lines(sweep: pd.DataFrame) -> list[str]:
@@ -1741,6 +1812,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_execution_publishability_review_packet.csv"
             )
             if "heldout_execution_publishability_review_packet.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_execution_publishability_release_gate(report_dir)
+            if "execution_publishability_release_gate.json" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_execution_publishability_release_gate(
+                report_dir, "heldout_execution_publishability_release_gate.json"
+            )
+            if "heldout_execution_publishability_release_gate.json" in manifest_artifacts
             else []
         ),
         *(

@@ -18,6 +18,7 @@ from lcri_lab.execution import (
     passive_fill_event_transition_scorecard,
     passive_fill_event_transition_summary,
     passive_fill_event_window_diagnostics,
+    execution_publishability_release_gate,
     execution_publishability_review_packet,
     passive_fill_edge_curve,
     passive_fill_realization_horizon_sweep,
@@ -1299,6 +1300,85 @@ def test_execution_publishability_review_packet_handles_empty_frames() -> None:
         "review_note",
     ]
     assert packet.empty
+
+
+def test_execution_publishability_release_gate_blocks_fragile_capacity() -> None:
+    review_packet = pd.DataFrame(
+        {
+            "publishable_side": ["long", "long"],
+            "best_execution_side": ["long", "abstain"],
+            "rows": [75, 25],
+            "conflict_rows": [0, 25],
+            "conflict_share": [0.0, 1.0],
+            "mean_execution_adjusted_edge_ticks": [0.24, -0.02],
+            "mean_best_fill_probability": [0.62, 0.0],
+            "mean_best_adverse_fill_probability": [0.15, 0.0],
+            "mean_publishable_fill_probability": [0.62, 0.48],
+            "mean_edge_drag_ticks": [0.0, -0.12],
+            "review_priority": [0, 3],
+            "review_note": ["agree", "pre-execution signal abstains"],
+        }
+    )
+    quality_gate = {
+        "quality_gate_label": "queue_execution_publishable",
+        "blocked_regimes": 0,
+    }
+    capacity_stability = {
+        "capacity_stability_label": "capacity_fragile",
+        "capacity_fraction_gap": -0.20,
+        "capacity_edge_gap_ticks": -0.05,
+        "capacity_tradable_share_gap": -0.02,
+        "dominant_side_changed": False,
+    }
+
+    gate = execution_publishability_release_gate(
+        review_packet,
+        quality_gate=quality_gate,
+        capacity_stability=capacity_stability,
+        max_conflict_share=0.30,
+    )
+
+    assert gate["decision"] == "block"
+    assert gate["passes"] is False
+    assert gate["release_gate_label"] == "execution_release_blocked"
+    assert gate["total_rows"] == 100
+    assert gate["weighted_conflict_share"] == pytest.approx(0.25)
+    assert gate["high_priority_conflict_rows"] == 25
+    assert gate["capacity_stability_label"] == "capacity_fragile"
+    assert "capacity_fragile" in gate["blocking_reasons"]
+
+
+def test_execution_publishability_release_gate_passes_clean_execution_evidence() -> None:
+    review_packet = pd.DataFrame(
+        {
+            "publishable_side": ["long", "abstain"],
+            "best_execution_side": ["long", "abstain"],
+            "rows": [80, 20],
+            "conflict_rows": [0, 0],
+            "conflict_share": [0.0, 0.0],
+            "mean_execution_adjusted_edge_ticks": [0.31, 0.0],
+            "mean_best_fill_probability": [0.66, 0.0],
+            "mean_best_adverse_fill_probability": [0.10, 0.0],
+            "mean_publishable_fill_probability": [0.66, 0.0],
+            "mean_edge_drag_ticks": [0.0, 0.0],
+            "review_priority": [0, 0],
+            "review_note": ["agree", "agree"],
+        }
+    )
+    quality_gate = {"quality_gate_label": "queue_execution_publishable"}
+    capacity_stability = {"capacity_stability_label": "capacity_stable"}
+
+    gate = execution_publishability_release_gate(
+        review_packet,
+        quality_gate=quality_gate,
+        capacity_stability=capacity_stability,
+    )
+
+    assert gate["decision"] == "pass"
+    assert gate["passes"] is True
+    assert gate["release_gate_label"] == "execution_release_publishable"
+    assert gate["blocking_reasons"] == "none"
+    assert gate["review_reasons"] == "none"
 
 
 def test_execution_adjusted_edge_summary_handles_empty_frames() -> None:

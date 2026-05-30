@@ -125,6 +125,11 @@ surfaces without opening every file:
 - `execution_publishability_review_packet.csv`: reviewer packet joining original
   publishability side with best execution side, fill probabilities, edge drag, and
   conflict priority.
+- `execution_publishability_release_gate.json` (when emitted by downstream
+  report scripts): owner-facing gate that combines the review packet with queue
+  execution quality and capacity-stability labels into `pass`/`review`/`block`,
+  preventing demo sign-off when passive alpha depends on fragile queue capacity or
+  high-priority execution conflicts.
 - `passive_fill_event_windows.csv`: high passive-fill-probability event windows
   with side-specific pre/post realized edge drift plus modal pre/post memory-decay
   regime transitions.
