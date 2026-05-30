@@ -2912,6 +2912,157 @@ def passive_fill_event_toxicity_scorecard(
     }
 
 
+def passive_fill_event_lifecycle_policy_curve(
+    events: pd.DataFrame,
+    *,
+    thresholds: tuple[float, ...] = (0.60, 0.70, 0.80, 0.90),
+    max_adverse_post_edge_share: float = 0.60,
+    min_mean_post_minus_pre_edge: float = -0.25,
+) -> pd.DataFrame:
+    """Sweep full lifecycle path cutoffs for passive-fill event policies.
+
+    Transition-level policy curves can hide that the same pre→post move is benign
+    in one event-row liquidity state and toxic in another. This surface keeps the
+    pre-window, event-row, and post-window regimes together so execution reviewers
+    can suppress only the fragile lifecycle paths rather than blocking an entire
+    transition family.
+    """
+    columns = [
+        "lifecycle_path",
+        "pre_window_regime",
+        "event_regime",
+        "post_window_regime",
+        "threshold",
+        "total_events",
+        "candidate_events",
+        "event_share",
+        "mean_event_fill_probability",
+        "mean_event_adverse_fill_probability",
+        "mean_event_edge_ticks",
+        "mean_pre_realized_edge_sum",
+        "mean_post_realized_edge_sum",
+        "mean_post_minus_pre_realized_edge",
+        "adverse_post_edge_share",
+        "policy_label",
+    ]
+    if not thresholds:
+        raise ValueError("thresholds must be a non-empty sequence")
+    clean_thresholds = [float(threshold) for threshold in thresholds]
+    if any(not math.isfinite(threshold) or not 0.0 <= threshold <= 1.0 for threshold in clean_thresholds):
+        raise ValueError("threshold values must be in [0.0, 1.0]")
+    for name, value in {
+        "max_adverse_post_edge_share": max_adverse_post_edge_share,
+        "min_mean_post_minus_pre_edge": min_mean_post_minus_pre_edge,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= max_adverse_post_edge_share <= 1.0:
+        raise ValueError("max_adverse_post_edge_share must be in [0.0, 1.0]")
+
+    required = {
+        "pre_window_regime",
+        "event_regime",
+        "post_window_regime",
+        "event_fill_probability",
+        "event_adverse_fill_probability",
+        "event_edge_ticks",
+        "pre_realized_edge_sum",
+        "post_realized_edge_sum",
+        "post_minus_pre_realized_edge",
+    }
+    if events.empty:
+        return pd.DataFrame(columns=columns)
+    _require_columns(events, required, "passive fill event lifecycle policy")
+    values = _finite_values(
+        events,
+        [
+            "event_fill_probability",
+            "event_adverse_fill_probability",
+            "event_edge_ticks",
+            "pre_realized_edge_sum",
+            "post_realized_edge_sum",
+            "post_minus_pre_realized_edge",
+        ],
+        "passive fill event lifecycle policy",
+    )
+    if (
+        (values[["event_fill_probability", "event_adverse_fill_probability"]] < 0.0)
+        | (values[["event_fill_probability", "event_adverse_fill_probability"]] > 1.0)
+    ).any().any():
+        raise ValueError("event fill probabilities must be in [0.0, 1.0]")
+
+    state = values.copy()
+    state["pre_window_regime"] = events["pre_window_regime"].astype(str)
+    state["event_regime"] = events["event_regime"].astype(str)
+    state["post_window_regime"] = events["post_window_regime"].astype(str)
+    state["lifecycle_path"] = (
+        state["pre_window_regime"]
+        + "|"
+        + state["event_regime"]
+        + "|"
+        + state["post_window_regime"]
+    )
+
+    rows: list[dict[str, float | int | str]] = []
+    for lifecycle_path, group in state.groupby("lifecycle_path", sort=True):
+        total_events = len(group)
+        for threshold in sorted(clean_thresholds):
+            candidate = group[group["event_fill_probability"] >= threshold]
+            candidate_events = len(candidate)
+            common = {
+                "lifecycle_path": str(lifecycle_path),
+                "pre_window_regime": str(group["pre_window_regime"].iloc[0]),
+                "event_regime": str(group["event_regime"].iloc[0]),
+                "post_window_regime": str(group["post_window_regime"].iloc[0]),
+                "threshold": float(threshold),
+                "total_events": int(total_events),
+                "candidate_events": int(candidate_events),
+                "event_share": float(candidate_events / total_events),
+            }
+            if candidate_events == 0:
+                rows.append(
+                    {
+                        **common,
+                        "mean_event_fill_probability": 0.0,
+                        "mean_event_adverse_fill_probability": 0.0,
+                        "mean_event_edge_ticks": 0.0,
+                        "mean_pre_realized_edge_sum": 0.0,
+                        "mean_post_realized_edge_sum": 0.0,
+                        "mean_post_minus_pre_realized_edge": 0.0,
+                        "adverse_post_edge_share": 0.0,
+                        "policy_label": "no_lifecycle_policy_events",
+                    }
+                )
+                continue
+            adverse_share = float((candidate["post_minus_pre_realized_edge"] < 0.0).mean())
+            mean_post_delta = float(candidate["post_minus_pre_realized_edge"].mean())
+            if mean_post_delta < min_mean_post_minus_pre_edge:
+                label = "lifecycle_policy_blocked"
+            elif adverse_share > max_adverse_post_edge_share:
+                label = "lifecycle_policy_review"
+            elif threshold >= 0.80:
+                label = "selective_lifecycle_policy"
+            else:
+                label = "broad_lifecycle_policy"
+            rows.append(
+                {
+                    **common,
+                    "mean_event_fill_probability": float(candidate["event_fill_probability"].mean()),
+                    "mean_event_adverse_fill_probability": float(
+                        candidate["event_adverse_fill_probability"].mean()
+                    ),
+                    "mean_event_edge_ticks": float(candidate["event_edge_ticks"].mean()),
+                    "mean_pre_realized_edge_sum": float(candidate["pre_realized_edge_sum"].mean()),
+                    "mean_post_realized_edge_sum": float(candidate["post_realized_edge_sum"].mean()),
+                    "mean_post_minus_pre_realized_edge": mean_post_delta,
+                    "adverse_post_edge_share": adverse_share,
+                    "policy_label": label,
+                }
+            )
+    return pd.DataFrame(rows, columns=columns)
+
+
+
 def passive_fill_event_transition_policy_curve(
     events: pd.DataFrame,
     *,

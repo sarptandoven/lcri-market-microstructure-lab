@@ -96,6 +96,7 @@ from lcri_lab.execution import (
     passive_fill_calibration_summary,
     passive_fill_event_lead_lag_profile,
     passive_fill_event_lead_lag_scorecard,
+    passive_fill_event_lifecycle_policy_curve,
     passive_fill_event_regime_summary,
     passive_fill_event_toxicity_scorecard,
     passive_fill_event_transition_policy_curve,
@@ -155,6 +156,7 @@ from lcri_lab.reporting import (
     verify_execution_publishability_review_artifacts,
     verify_execution_publishability_release_gate,
     verify_passive_fill_realization_horizon_sweep,
+    verify_passive_fill_event_lifecycle_policy_curve,
     verify_passive_fill_event_transition_policy_curve,
     verify_passive_fill_threshold_policy_curve,
     verify_phase_shift_artifact_review,
@@ -549,6 +551,7 @@ def run_demo(
     )
     passive_fill_event_regimes = passive_fill_event_regime_summary(passive_fill_events)
     passive_fill_event_transitions = passive_fill_event_transition_summary(passive_fill_events)
+    passive_fill_event_lifecycle_policy = passive_fill_event_lifecycle_policy_curve(passive_fill_events)
     passive_fill_event_transition_policy = passive_fill_event_transition_policy_curve(passive_fill_events)
     passive_fill_event_toxicity = passive_fill_event_toxicity_scorecard(passive_fill_event_regimes)
     passive_fill_event_transition_toxicity = passive_fill_event_transition_scorecard(
@@ -573,6 +576,9 @@ def run_demo(
         heldout_passive_fill_events
     )
     heldout_passive_fill_event_transitions = passive_fill_event_transition_summary(
+        heldout_passive_fill_events
+    )
+    heldout_passive_fill_event_lifecycle_policy = passive_fill_event_lifecycle_policy_curve(
         heldout_passive_fill_events
     )
     heldout_passive_fill_event_transition_policy = passive_fill_event_transition_policy_curve(
@@ -811,6 +817,7 @@ def run_demo(
         "passive_fill_event_lead_lag_scorecard.csv",
         "passive_fill_event_regime_summary.csv",
         "passive_fill_event_transition_summary.csv",
+        "passive_fill_event_lifecycle_policy_curve.csv",
         "passive_fill_event_transition_policy_curve.csv",
         "passive_fill_event_toxicity_scorecard.json",
         "passive_fill_event_transition_toxicity_scorecard.json",
@@ -819,6 +826,7 @@ def run_demo(
         "heldout_passive_fill_event_lead_lag_scorecard.csv",
         "heldout_passive_fill_event_regime_summary.csv",
         "heldout_passive_fill_event_transition_summary.csv",
+        "heldout_passive_fill_event_lifecycle_policy_curve.csv",
         "heldout_passive_fill_event_transition_policy_curve.csv",
         "heldout_passive_fill_event_toxicity_scorecard.json",
         "heldout_passive_fill_event_transition_toxicity_scorecard.json",
@@ -1066,6 +1074,9 @@ def run_demo(
     passive_fill_event_transitions.to_csv(
         output / "passive_fill_event_transition_summary.csv", index=False
     )
+    passive_fill_event_lifecycle_policy.to_csv(
+        output / "passive_fill_event_lifecycle_policy_curve.csv", index=False
+    )
     passive_fill_event_transition_policy.to_csv(
         output / "passive_fill_event_transition_policy_curve.csv", index=False
     )
@@ -1088,6 +1099,9 @@ def run_demo(
     )
     heldout_passive_fill_event_transitions.to_csv(
         output / "heldout_passive_fill_event_transition_summary.csv", index=False
+    )
+    heldout_passive_fill_event_lifecycle_policy.to_csv(
+        output / "heldout_passive_fill_event_lifecycle_policy_curve.csv", index=False
     )
     heldout_passive_fill_event_transition_policy.to_csv(
         output / "heldout_passive_fill_event_transition_policy_curve.csv", index=False
@@ -1993,6 +2007,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_passive_fill_threshold_policy_curve.csv"
             )
             if "heldout_passive_fill_threshold_policy_curve.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_passive_fill_event_lifecycle_policy_curve(report_dir)
+            if "passive_fill_event_lifecycle_policy_curve.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_passive_fill_event_lifecycle_policy_curve(
+                report_dir, "heldout_passive_fill_event_lifecycle_policy_curve.csv"
+            )
+            if "heldout_passive_fill_event_lifecycle_policy_curve.csv" in manifest_artifacts
             else []
         ),
         *(

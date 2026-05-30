@@ -142,6 +142,10 @@ surfaces without opening every file:
 - `passive_fill_event_transition_summary.csv`: transition-path aggregation of
   passive-fill event toxicity, highlighting boundary states such as calm→thin or
   thin→stress where fills may become adverse despite high predicted fill odds.
+- `passive_fill_event_lifecycle_policy_curve.csv`: pre-window | event-row |
+  post-window regime policy surface that sweeps fill-probability cutoffs, exposing
+  lifecycle states where a transition should be selectively traded, reviewed, or
+  blocked rather than suppressing the whole transition family.
 - `passive_fill_calibration_curve.csv`: side-specific passive-fill calibration
   curve that bins predicted fill probability against realized fill proxy by regime.
 - `passive_fill_calibration_summary.json`: row-weighted passive-fill calibration

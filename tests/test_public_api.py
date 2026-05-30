@@ -87,6 +87,11 @@ def test_public_api_exports_passive_fill_event_lead_lag_scorecard() -> None:
     assert "passive_fill_event_lead_lag_scorecard" in lcri_lab.__all__
 
 
+def test_public_api_exports_passive_fill_event_lifecycle_policy_curve() -> None:
+    assert callable(lcri_lab.passive_fill_event_lifecycle_policy_curve)
+    assert "passive_fill_event_lifecycle_policy_curve" in lcri_lab.__all__
+
+
 def test_public_api_exports_signal_lift_summary() -> None:
     assert callable(lcri_lab.summarize_signal_lift)
     assert "summarize_signal_lift" in lcri_lab.__all__
