@@ -459,6 +459,27 @@ def test_verify_report_checks_execution_publishability_packets(tmp_path: Path) -
         verify_report(tmp_path)
 
 
+def test_verify_report_checks_execution_adjusted_lcri_side_attribution(tmp_path: Path) -> None:
+    (tmp_path / "execution_adjusted_lcri_side_attribution.csv").write_text(
+        "lcri_side,rows,tradable_rows,execution_conflict_rows,execution_conflict_share,"
+        "mean_signal_confidence,mean_execution_adjusted_edge_ticks,"
+        "mean_fill_probability_advantage,mean_adverse_fill_probability_advantage,"
+        "dominant_execution_side,review_label\n"
+        "long,2,3,4,1.4,1.2,0.1,0.2,0.3,sideways,unknown\n"
+    )
+    (tmp_path / "artifact_manifest.json").write_text(
+        json.dumps(
+            {
+                "artifacts": ["execution_adjusted_lcri_side_attribution.csv"],
+                "artifact_metadata": {},
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="execution-adjusted LCRI side attribution"):
+        verify_report(tmp_path)
+
+
 def test_verify_report_checks_passive_fill_threshold_policy_curve(tmp_path: Path) -> None:
     (tmp_path / "passive_fill_threshold_policy_curve.csv").write_text(
         "threshold,candidate_rows,trade_share,long_rows,short_rows,"

@@ -3618,6 +3618,143 @@ def execution_adjusted_edge_summary(frame: pd.DataFrame) -> dict[str, float | in
     }
 
 
+def _empty_execution_adjusted_lcri_side_attribution() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "lcri_side",
+            "rows",
+            "tradable_rows",
+            "execution_conflict_rows",
+            "execution_conflict_share",
+            "mean_signal_confidence",
+            "mean_execution_adjusted_edge_ticks",
+            "mean_fill_probability_advantage",
+            "mean_adverse_fill_probability_advantage",
+            "dominant_execution_side",
+            "review_label",
+        ]
+    )
+
+
+def execution_adjusted_lcri_side_attribution(
+    frame: pd.DataFrame,
+    *,
+    signal_col: str = "lcri",
+    probability_col: str = "lcri_probability",
+) -> pd.DataFrame:
+    """Attribute raw LCRI side survival, inversion, and friction after execution gating.
+
+    This diagnostic turns execution-adjusted LCRI into an auditable review artifact:
+    it groups rows by the raw LCRI side, then quantifies whether queue-aware passive
+    execution preserves that side, forces abstention, or inverts the tradable side.
+    The fill advantage is same-side minus opposite-side passive fill probability;
+    the adverse metric is the same-side adverse-fill drag that must be paid to trade.
+    """
+    if frame.empty:
+        return _empty_execution_adjusted_lcri_side_attribution()
+
+    required = {
+        signal_col,
+        probability_col,
+        "best_execution_side",
+        "execution_adjusted_edge_ticks",
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+    }
+    _require_columns(frame, required, "execution-adjusted LCRI side attribution")
+    values = _finite_values(
+        frame,
+        [
+            signal_col,
+            probability_col,
+            "execution_adjusted_edge_ticks",
+            "bid_fill_probability",
+            "ask_fill_probability",
+            "bid_adverse_fill_probability",
+            "ask_adverse_fill_probability",
+        ],
+        "execution-adjusted LCRI side attribution",
+    )
+    probability = values[probability_col]
+    if not probability.between(0.0, 1.0).all():
+        raise ValueError("execution-adjusted LCRI side attribution probabilities must be in [0, 1]")
+
+    signal = values[signal_col]
+    side = pd.Series(
+        np.select([signal > 0.0, signal < 0.0], ["long", "short"], default="neutral"),
+        index=frame.index,
+    )
+    best_side = frame["best_execution_side"].astype(str)
+    valid_sides = {"long", "short", "abstain"}
+    unknown_sides = sorted(set(best_side) - valid_sides)
+    if unknown_sides:
+        raise ValueError(f"unknown execution sides: {unknown_sides}")
+
+    diagnostics = pd.DataFrame(index=frame.index)
+    diagnostics["lcri_side"] = side
+    diagnostics["best_execution_side"] = best_side
+    diagnostics["execution_adjusted_edge_ticks"] = values["execution_adjusted_edge_ticks"]
+    diagnostics["tradable"] = best_side != "abstain"
+    diagnostics["execution_conflict"] = (side != "neutral") & (best_side != side)
+    diagnostics["signal_confidence"] = np.select(
+        [side == "long", side == "short"],
+        [probability, 1.0 - probability],
+        default=0.50,
+    )
+    diagnostics["fill_probability_advantage"] = np.select(
+        [side == "long", side == "short"],
+        [values["bid_fill_probability"] - values["ask_fill_probability"],
+         values["ask_fill_probability"] - values["bid_fill_probability"]],
+        default=0.0,
+    )
+    diagnostics["adverse_fill_probability_advantage"] = np.select(
+        [side == "long", side == "short"],
+        [values["bid_adverse_fill_probability"], values["ask_adverse_fill_probability"]],
+        default=0.0,
+    )
+
+    rows: list[dict[str, float | int | str]] = []
+    for side_name in ["long", "short", "neutral"]:
+        group = diagnostics[diagnostics["lcri_side"] == side_name]
+        if group.empty:
+            continue
+        side_counts = group.loc[group["tradable"], "best_execution_side"].value_counts()
+        dominant_side = "none" if side_counts.empty else str(side_counts.idxmax())
+        conflict_share = float(group["execution_conflict"].mean())
+        if side_name == "neutral":
+            review_label = "neutral_signal"
+        elif dominant_side not in {"none", side_name}:
+            review_label = "execution_side_inversion_review"
+        elif conflict_share > 0.0:
+            review_label = "execution_friction_review"
+        else:
+            review_label = "execution_side_preserved"
+        rows.append(
+            {
+                "lcri_side": side_name,
+                "rows": int(len(group)),
+                "tradable_rows": int(group["tradable"].sum()),
+                "execution_conflict_rows": int(group["execution_conflict"].sum()),
+                "execution_conflict_share": conflict_share,
+                "mean_signal_confidence": float(group["signal_confidence"].mean()),
+                "mean_execution_adjusted_edge_ticks": float(
+                    group["execution_adjusted_edge_ticks"].mean()
+                ),
+                "mean_fill_probability_advantage": float(
+                    group["fill_probability_advantage"].mean()
+                ),
+                "mean_adverse_fill_probability_advantage": float(
+                    group["adverse_fill_probability_advantage"].mean()
+                ),
+                "dominant_execution_side": dominant_side,
+                "review_label": review_label,
+            }
+        )
+    return pd.DataFrame(rows)[list(_empty_execution_adjusted_lcri_side_attribution().columns)]
+
+
 def _empty_execution_adjusted_lcri_quantile_diagnostics() -> pd.DataFrame:
     return pd.DataFrame(
         columns=[

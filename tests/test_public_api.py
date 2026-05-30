@@ -62,6 +62,11 @@ def test_public_api_exports_execution_adjusted_lcri_quantile_diagnostics() -> No
     assert "execution_adjusted_lcri_quantile_diagnostics" in lcri_lab.__all__
 
 
+def test_public_api_exports_execution_adjusted_lcri_side_attribution() -> None:
+    assert callable(lcri_lab.execution_adjusted_lcri_side_attribution)
+    assert "execution_adjusted_lcri_side_attribution" in lcri_lab.__all__
+
+
 def test_public_api_exports_queue_position_regime_capacity_frontier() -> None:
     assert callable(lcri_lab.queue_position_regime_capacity_frontier)
     assert "queue_position_regime_capacity_frontier" in lcri_lab.__all__

@@ -545,6 +545,79 @@ def verify_execution_publishability_review_artifacts(
     return errors
 
 
+def verify_execution_adjusted_lcri_side_attribution(
+    output_dir: Path, artifact: str = "execution_adjusted_lcri_side_attribution.csv"
+) -> list[str]:
+    """Return errors for malformed execution-adjusted LCRI side attribution artifacts."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing execution-adjusted LCRI side attribution: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "lcri_side",
+        "rows",
+        "tradable_rows",
+        "execution_conflict_rows",
+        "execution_conflict_share",
+        "mean_signal_confidence",
+        "mean_execution_adjusted_edge_ticks",
+        "mean_fill_probability_advantage",
+        "mean_adverse_fill_probability_advantage",
+        "dominant_execution_side",
+        "review_label",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete execution-adjusted LCRI side attribution {artifact}: {missing}"]
+
+    numeric_columns = list(required - {"lcri_side", "dominant_execution_side", "review_label"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    valid_lcri_sides = {"long", "short", "neutral"}
+    valid_execution_sides = {"long", "short", "none"}
+    valid_labels = {
+        "execution_side_preserved",
+        "execution_friction_review",
+        "execution_side_inversion_review",
+        "neutral_signal",
+    }
+    unknown_lcri_sides = sorted(set(frame["lcri_side"].astype(str)) - valid_lcri_sides)
+    unknown_execution_sides = sorted(
+        set(frame["dominant_execution_side"].astype(str)) - valid_execution_sides
+    )
+    unknown_labels = sorted(set(frame["review_label"].astype(str)) - valid_labels)
+    if unknown_lcri_sides:
+        errors.append(f"unknown LCRI sides in {artifact}: {unknown_lcri_sides}")
+    if unknown_execution_sides:
+        errors.append(f"unknown dominant execution sides in {artifact}: {unknown_execution_sides}")
+    if unknown_labels:
+        errors.append(f"unknown execution-adjusted LCRI side attribution labels in {artifact}: {unknown_labels}")
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite execution-adjusted LCRI side attribution values in {artifact}")
+    count_columns = ["rows", "tradable_rows", "execution_conflict_rows"]
+    if not numeric[count_columns].ge(0.0).all().all():
+        errors.append(f"negative execution-adjusted LCRI side attribution counts in {artifact}")
+    probability_columns = [
+        "execution_conflict_share",
+        "mean_signal_confidence",
+        "mean_adverse_fill_probability_advantage",
+    ]
+    if not numeric[probability_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        errors.append(f"bounded execution-adjusted LCRI side attribution probabilities violated in {artifact}")
+    if (numeric["tradable_rows"] > numeric["rows"]).any():
+        errors.append(f"execution-adjusted LCRI tradable rows exceed rows in {artifact}")
+    if (numeric["execution_conflict_rows"] > numeric["rows"]).any():
+        errors.append(f"execution-adjusted LCRI conflict rows exceed rows in {artifact}")
+    neutral = frame["lcri_side"].astype(str) == "neutral"
+    if neutral.any():
+        neutral_numeric = numeric.loc[neutral]
+        if not neutral_numeric["execution_conflict_rows"].eq(0.0).all():
+            errors.append(f"neutral execution-adjusted LCRI rows report conflicts in {artifact}")
+        if not (frame.loc[neutral, "review_label"].astype(str) == "neutral_signal").all():
+            errors.append(f"neutral execution-adjusted LCRI rows have non-neutral labels in {artifact}")
+    return errors
+
+
 def verify_execution_publishability_release_gate(
     output_dir: Path, artifact: str = "execution_publishability_release_gate.json"
 ) -> list[str]:

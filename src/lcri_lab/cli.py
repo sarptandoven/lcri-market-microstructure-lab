@@ -89,6 +89,7 @@ from lcri_lab.execution import (
     add_queue_position_features,
     add_queue_position_realized_fill_proxy,
     execution_adjusted_edge_summary,
+    execution_adjusted_lcri_side_attribution,
     execution_publishability_release_gate,
     execution_publishability_review_packet,
     passive_fill_calibration_curve,
@@ -146,6 +147,7 @@ from lcri_lab.reporting import (
     verify_generalization_stability_confidence_summary,
     verify_hidden_resiliency_asymmetry_summary,
     verify_adverse_selection_phase_shift_summary,
+    verify_execution_adjusted_lcri_side_attribution,
     verify_execution_publishability_review_artifacts,
     verify_execution_publishability_release_gate,
     verify_passive_fill_realization_horizon_sweep,
@@ -653,6 +655,8 @@ def run_demo(
         quality_gate=heldout_queue_execution_quality_gate,
         capacity_stability=queue_capacity_stability,
     )
+    execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(scored)
+    heldout_execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(heldout_scored)
 
     artifact_paths = [
         "lcri-model.json",
@@ -758,6 +762,8 @@ def run_demo(
         "alpha_event_review_verification_summary.json",
         "execution_adjusted_edge_summary.json",
         "heldout_execution_adjusted_edge_summary.json",
+        "execution_adjusted_lcri_side_attribution.csv",
+        "heldout_execution_adjusted_lcri_side_attribution.csv",
         "execution_publishability_review_packet.csv",
         "heldout_execution_publishability_review_packet.csv",
         "execution_publishability_release_gate.json",
@@ -1078,6 +1084,12 @@ def run_demo(
     write_json(output / "queue_position_capacity_stability.json", queue_capacity_stability)
     queue_edge_decay.to_csv(output / "queue_position_edge_decay.csv", index=False)
     heldout_queue_edge_decay.to_csv(output / "heldout_queue_position_edge_decay.csv", index=False)
+    execution_lcri_side_attribution.to_csv(
+        output / "execution_adjusted_lcri_side_attribution.csv", index=False
+    )
+    heldout_execution_lcri_side_attribution.to_csv(
+        output / "heldout_execution_adjusted_lcri_side_attribution.csv", index=False
+    )
     scored[
         [
             "lcri",
@@ -1861,6 +1873,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_execution_publishability_review_packet.csv"
             )
             if "heldout_execution_publishability_review_packet.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_execution_adjusted_lcri_side_attribution(report_dir)
+            if "execution_adjusted_lcri_side_attribution.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_execution_adjusted_lcri_side_attribution(
+                report_dir, "heldout_execution_adjusted_lcri_side_attribution.csv"
+            )
+            if "heldout_execution_adjusted_lcri_side_attribution.csv" in manifest_artifacts
             else []
         ),
         *(

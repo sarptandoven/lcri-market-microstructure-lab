@@ -109,6 +109,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_execution_adjusted_edge_summary.json").exists()
     assert (tmp_path / "execution_publishability_review_packet.csv").exists()
     assert (tmp_path / "heldout_execution_publishability_review_packet.csv").exists()
+    assert (tmp_path / "execution_adjusted_lcri_side_attribution.csv").exists()
+    assert (tmp_path / "heldout_execution_adjusted_lcri_side_attribution.csv").exists()
     assert (tmp_path / "execution_publishability_release_gate.json").exists()
     assert (tmp_path / "heldout_execution_publishability_release_gate.json").exists()
     assert (tmp_path / "passive_fill_event_windows.csv").exists()
@@ -229,6 +231,18 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "review_priority",
         "review_note",
     }.issubset(execution_packet_columns)
+    execution_lcri_side_columns = set(
+        pd.read_csv(tmp_path / "execution_adjusted_lcri_side_attribution.csv", nrows=1).columns
+    )
+    assert {
+        "lcri_side",
+        "tradable_rows",
+        "execution_conflict_share",
+        "mean_signal_confidence",
+        "mean_fill_probability_advantage",
+        "dominant_execution_side",
+        "review_label",
+    }.issubset(execution_lcri_side_columns)
     passive_fill_calibration_columns = set(
         pd.read_csv(tmp_path / "passive_fill_calibration_curve.csv", nrows=1).columns
     )
@@ -371,6 +385,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["heldout_execution_adjusted_edge_summary.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["execution_publishability_review_packet.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_execution_publishability_review_packet.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["execution_adjusted_lcri_side_attribution.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_execution_adjusted_lcri_side_attribution.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["execution_publishability_release_gate.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_execution_publishability_release_gate.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_windows.csv"]["size_bytes"] > 0

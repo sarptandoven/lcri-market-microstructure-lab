@@ -358,6 +358,53 @@ def test_execution_adjusted_edge_summary_quantifies_tradability_drag() -> None:
     assert summary["dominant_execution_side"] == "long"
 
 
+def test_execution_adjusted_lcri_side_attribution_explains_execution_conflicts() -> None:
+    from lcri_lab.execution import execution_adjusted_lcri_side_attribution
+
+    frame = pd.DataFrame(
+        {
+            "lcri": [2.0, 1.5, -2.0, -1.0, 0.0],
+            "lcri_probability": [0.80, 0.70, 0.25, 0.35, 0.50],
+            "best_execution_side": ["long", "abstain", "long", "long", "abstain"],
+            "execution_adjusted_edge_ticks": [0.8, -0.2, 0.7, 0.1, 0.0],
+            "bid_fill_probability": [0.70, 0.20, 0.20, 0.60, 0.40],
+            "ask_fill_probability": [0.30, 0.30, 0.80, 0.20, 0.40],
+            "bid_adverse_fill_probability": [0.10, 0.50, 0.20, 0.10, 0.20],
+            "ask_adverse_fill_probability": [0.20, 0.40, 0.10, 0.60, 0.20],
+        }
+    )
+
+    attribution = execution_adjusted_lcri_side_attribution(frame)
+
+    assert attribution.columns.tolist() == [
+        "lcri_side",
+        "rows",
+        "tradable_rows",
+        "execution_conflict_rows",
+        "execution_conflict_share",
+        "mean_signal_confidence",
+        "mean_execution_adjusted_edge_ticks",
+        "mean_fill_probability_advantage",
+        "mean_adverse_fill_probability_advantage",
+        "dominant_execution_side",
+        "review_label",
+    ]
+    assert attribution["lcri_side"].tolist() == ["long", "short", "neutral"]
+    assert attribution["rows"].tolist() == [2, 2, 1]
+    assert attribution["tradable_rows"].tolist() == [1, 2, 0]
+    assert attribution["execution_conflict_rows"].tolist() == [1, 2, 0]
+    assert attribution["execution_conflict_share"].tolist() == pytest.approx([0.5, 1.0, 0.0])
+    assert attribution["mean_signal_confidence"].tolist() == pytest.approx([0.75, 0.70, 0.50])
+    assert attribution["mean_fill_probability_advantage"].tolist() == pytest.approx([0.15, 0.10, 0.0])
+    assert attribution["mean_adverse_fill_probability_advantage"].tolist() == pytest.approx([0.30, 0.35, 0.0])
+    assert attribution["dominant_execution_side"].tolist() == ["long", "long", "none"]
+    assert attribution["review_label"].tolist() == [
+        "execution_friction_review",
+        "execution_side_inversion_review",
+        "neutral_signal",
+    ]
+
+
 def test_execution_adjusted_lcri_quantile_diagnostics_measures_signal_survival() -> None:
     frame = pd.DataFrame(
         {
