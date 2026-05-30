@@ -28,6 +28,7 @@ from lcri_lab.execution import (
     queue_position_capacity_frontier,
     queue_position_capacity_stability,
     queue_position_execution_quality_gate,
+    queue_position_regime_capacity_frontier,
     queue_position_edge_decay,
     queue_position_fill_calibration_surface,
     queue_position_fill_surface,
@@ -650,6 +651,42 @@ def test_queue_position_capacity_frontier_rejects_invalid_inputs() -> None:
         queue_position_capacity_frontier(pd.DataFrame(), min_tradable_share=1.5)
     with pytest.raises(ValueError, match="missing queue position capacity frontier columns"):
         queue_position_capacity_frontier(pd.DataFrame({"queue_position_fraction": [0.0]}))
+
+
+def test_queue_position_regime_capacity_frontier_finds_brittle_regime_capacity() -> None:
+    sweep = pd.DataFrame(
+        {
+            "regime": ["open", "open", "open", "stress", "stress", "stress"],
+            "queue_position_fraction": [0.0, 0.5, 1.0, 0.0, 0.5, 1.0],
+            "rows": [50, 50, 50, 40, 40, 40],
+            "mean_execution_adjusted_edge_ticks": [0.80, 0.45, 0.20, 0.70, 0.10, -0.20],
+            "tradable_share": [0.90, 0.72, 0.55, 0.82, 0.45, 0.20],
+            "dominant_execution_side": ["long", "long", "long", "short", "short", "none"],
+        }
+    )
+
+    frontier = queue_position_regime_capacity_frontier(
+        sweep,
+        min_edge_ticks=0.25,
+        min_tradable_share=0.70,
+    )
+
+    assert frontier["regime"].tolist() == ["open", "stress"]
+    assert frontier["rows"].tolist() == [3, 3]
+    assert frontier["viable_rows"].tolist() == [2, 1]
+    assert frontier["max_viable_queue_position_fraction"].tolist() == pytest.approx([0.5, 0.0])
+    assert frontier["capacity_shortfall_fraction"].tolist() == pytest.approx([0.5, 1.0])
+    assert frontier["capacity_brittleness_label"].tolist() == [
+        "regime_capacity_partial",
+        "regime_capacity_front_only",
+    ]
+
+
+def test_queue_position_regime_capacity_frontier_rejects_bad_sweep() -> None:
+    with pytest.raises(ValueError, match="regime_col"):
+        queue_position_regime_capacity_frontier(pd.DataFrame(), regime_col="")
+    with pytest.raises(ValueError, match="missing queue position regime capacity frontier columns"):
+        queue_position_regime_capacity_frontier(pd.DataFrame({"regime": ["open"]}))
 
 
 def test_queue_position_capacity_stability_compares_research_and_heldout_frontiers() -> None:

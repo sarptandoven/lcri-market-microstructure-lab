@@ -739,6 +739,75 @@ def queue_position_capacity_frontier(
     return result
 
 
+def queue_position_regime_capacity_frontier(
+    sweep: pd.DataFrame,
+    *,
+    regime_col: str = "regime",
+    min_edge_ticks: float = 0.0,
+    min_tradable_share: float = 0.50,
+) -> pd.DataFrame:
+    """Compute queue-capacity frontiers separately by liquidity/event regime.
+
+    Global queue capacity can hide that passive edge only survives in benign
+    regimes. This reducer applies ``queue_position_capacity_frontier`` within each
+    regime and adds a brittleness label plus the capacity shortfall to a full-depth
+    queue placement, making execution capacity publishability auditable by state.
+    """
+    if not isinstance(regime_col, str) or not regime_col:
+        raise ValueError("regime_col must be a non-empty string")
+    columns = [
+        regime_col,
+        "rows",
+        "viable_rows",
+        "front_queue_position_fraction",
+        "max_viable_queue_position_fraction",
+        "front_mean_execution_adjusted_edge_ticks",
+        "max_viable_mean_execution_adjusted_edge_ticks",
+        "edge_decay_to_capacity_ticks",
+        "front_tradable_share",
+        "max_viable_tradable_share",
+        "tradable_share_decay_to_capacity",
+        "dominant_execution_side_at_capacity",
+        "capacity_label",
+        "capacity_shortfall_fraction",
+        "capacity_brittleness_label",
+    ]
+    if sweep.empty:
+        return pd.DataFrame(columns=columns)
+    required = {
+        regime_col,
+        "queue_position_fraction",
+        "rows",
+        "mean_execution_adjusted_edge_ticks",
+        "tradable_share",
+        "dominant_execution_side",
+    }
+    _require_columns(sweep, required, "queue position regime capacity frontier")
+
+    rows: list[dict[str, float | int | str]] = []
+    for regime, regime_sweep in sweep.groupby(regime_col, sort=True, dropna=False):
+        frontier = queue_position_capacity_frontier(
+            regime_sweep,
+            min_edge_ticks=min_edge_ticks,
+            min_tradable_share=min_tradable_share,
+        )
+        max_fraction = float(frontier["max_viable_queue_position_fraction"])
+        shortfall = max(0.0, 1.0 - max_fraction)
+        frontier.update(
+            {
+                regime_col: str(regime),
+                "capacity_shortfall_fraction": shortfall,
+                "capacity_brittleness_label": _queue_regime_capacity_brittleness_label(
+                    viable_rows=int(frontier["viable_rows"]),
+                    max_fraction=max_fraction,
+                    capacity_label=str(frontier["capacity_label"]),
+                ),
+            }
+        )
+        rows.append(frontier)
+    return pd.DataFrame(rows, columns=columns)
+
+
 def queue_position_capacity_stability(
     research_frontier: dict[str, float | int | str],
     heldout_frontier: dict[str, float | int | str],
@@ -2859,6 +2928,18 @@ def _queue_capacity_label(*, max_fraction: float, edge_decay: float, tradable_de
     if max_fraction >= 0.50:
         return "queue_capacity_constrained"
     return "front_queue_only_capacity"
+
+
+def _queue_regime_capacity_brittleness_label(
+    *, viable_rows: int, max_fraction: float, capacity_label: str
+) -> str:
+    if viable_rows <= 0 or capacity_label == "no_viable_passive_capacity":
+        return "regime_capacity_not_viable"
+    if max_fraction <= 0.0:
+        return "regime_capacity_front_only"
+    if max_fraction < 0.75:
+        return "regime_capacity_partial"
+    return "regime_capacity_resilient"
 
 
 def _queue_capacity_stability_label(
