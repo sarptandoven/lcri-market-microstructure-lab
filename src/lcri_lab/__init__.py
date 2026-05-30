@@ -136,7 +136,9 @@ from lcri_lab.execution import (
     queue_position_fill_calibration_surface,
     queue_position_fill_surface,
     queue_position_fraction_sweep,
+    queue_position_regime_capacity_concentration,
     queue_position_regime_capacity_frontier,
+    queue_position_regime_fraction_sweep,
 )
 from lcri_lab.labels import add_transaction_cost_labels
 from lcri_lab.memory import (
@@ -202,7 +204,9 @@ __all__ = [
     "queue_position_fill_calibration_surface",
     "queue_position_fill_surface",
     "queue_position_fraction_sweep",
+    "queue_position_regime_capacity_concentration",
     "queue_position_regime_capacity_frontier",
+    "queue_position_regime_fraction_sweep",
     "add_transaction_cost_labels",
     "add_alpha_event_window_regimes",
     "add_microstructure_alpha_stack",

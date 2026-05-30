@@ -110,6 +110,9 @@ from lcri_lab.execution import (
     queue_position_execution_quality_gate,
     queue_position_fill_surface,
     queue_position_fraction_sweep,
+    queue_position_regime_capacity_concentration,
+    queue_position_regime_capacity_frontier,
+    queue_position_regime_fraction_sweep,
 )
 from lcri_lab.features import add_regime_transition_features
 from lcri_lab.ingest import normalize_l2_snapshots
@@ -628,6 +631,14 @@ def run_demo(
     )
     queue_fraction_sweep = queue_position_fraction_sweep(scored)
     heldout_queue_fraction_sweep = queue_position_fraction_sweep(heldout_scored)
+    queue_regime_fraction_sweep = queue_position_regime_fraction_sweep(
+        scored,
+        regime_col="pressure_memory_decay_state",
+    )
+    heldout_queue_regime_fraction_sweep = queue_position_regime_fraction_sweep(
+        heldout_scored,
+        regime_col="pressure_memory_decay_state",
+    )
     queue_capacity_frontier = queue_position_capacity_frontier(
         queue_fraction_sweep,
         min_edge_ticks=0.0,
@@ -637,6 +648,26 @@ def run_demo(
         heldout_queue_fraction_sweep,
         min_edge_ticks=0.0,
         min_tradable_share=0.50,
+    )
+    queue_regime_capacity_frontier = queue_position_regime_capacity_frontier(
+        queue_regime_fraction_sweep,
+        regime_col="pressure_memory_decay_state",
+        min_edge_ticks=0.0,
+        min_tradable_share=0.50,
+    )
+    heldout_queue_regime_capacity_frontier = queue_position_regime_capacity_frontier(
+        heldout_queue_regime_fraction_sweep,
+        regime_col="pressure_memory_decay_state",
+        min_edge_ticks=0.0,
+        min_tradable_share=0.50,
+    )
+    queue_regime_capacity_concentration = queue_position_regime_capacity_concentration(
+        queue_regime_capacity_frontier,
+        regime_col="pressure_memory_decay_state",
+    )
+    heldout_queue_regime_capacity_concentration = queue_position_regime_capacity_concentration(
+        heldout_queue_regime_capacity_frontier,
+        regime_col="pressure_memory_decay_state",
     )
     queue_capacity_stability = queue_position_capacity_stability(
         queue_capacity_frontier,
@@ -803,8 +834,14 @@ def run_demo(
         "heldout_queue_position_fill_surface.csv",
         "queue_position_fraction_sweep.csv",
         "heldout_queue_position_fraction_sweep.csv",
+        "queue_position_regime_fraction_sweep.csv",
+        "heldout_queue_position_regime_fraction_sweep.csv",
         "queue_position_capacity_frontier.json",
         "heldout_queue_position_capacity_frontier.json",
+        "queue_position_regime_capacity_frontier.csv",
+        "heldout_queue_position_regime_capacity_frontier.csv",
+        "queue_position_regime_capacity_concentration.json",
+        "heldout_queue_position_regime_capacity_concentration.json",
         "queue_position_capacity_stability.json",
         "queue_position_edge_decay.csv",
         "heldout_queue_position_edge_decay.csv",
@@ -1092,9 +1129,29 @@ def run_demo(
     heldout_queue_fraction_sweep.to_csv(
         output / "heldout_queue_position_fraction_sweep.csv", index=False
     )
+    queue_regime_fraction_sweep.to_csv(
+        output / "queue_position_regime_fraction_sweep.csv", index=False
+    )
+    heldout_queue_regime_fraction_sweep.to_csv(
+        output / "heldout_queue_position_regime_fraction_sweep.csv", index=False
+    )
     write_json(output / "queue_position_capacity_frontier.json", queue_capacity_frontier)
     write_json(
         output / "heldout_queue_position_capacity_frontier.json", heldout_queue_capacity_frontier
+    )
+    queue_regime_capacity_frontier.to_csv(
+        output / "queue_position_regime_capacity_frontier.csv", index=False
+    )
+    heldout_queue_regime_capacity_frontier.to_csv(
+        output / "heldout_queue_position_regime_capacity_frontier.csv", index=False
+    )
+    write_json(
+        output / "queue_position_regime_capacity_concentration.json",
+        queue_regime_capacity_concentration,
+    )
+    write_json(
+        output / "heldout_queue_position_regime_capacity_concentration.json",
+        heldout_queue_regime_capacity_concentration,
     )
     write_json(output / "queue_position_capacity_stability.json", queue_capacity_stability)
     queue_edge_decay.to_csv(output / "queue_position_edge_decay.csv", index=False)

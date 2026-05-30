@@ -141,8 +141,14 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_queue_position_fill_surface.csv").exists()
     assert (tmp_path / "queue_position_fraction_sweep.csv").exists()
     assert (tmp_path / "heldout_queue_position_fraction_sweep.csv").exists()
+    assert (tmp_path / "queue_position_regime_fraction_sweep.csv").exists()
+    assert (tmp_path / "heldout_queue_position_regime_fraction_sweep.csv").exists()
     assert (tmp_path / "queue_position_capacity_frontier.json").exists()
     assert (tmp_path / "heldout_queue_position_capacity_frontier.json").exists()
+    assert (tmp_path / "queue_position_regime_capacity_frontier.csv").exists()
+    assert (tmp_path / "heldout_queue_position_regime_capacity_frontier.csv").exists()
+    assert (tmp_path / "queue_position_regime_capacity_concentration.json").exists()
+    assert (tmp_path / "heldout_queue_position_regime_capacity_concentration.json").exists()
     assert (tmp_path / "queue_position_capacity_stability.json").exists()
     assert (tmp_path / "queue_position_edge_decay.csv").exists()
     assert (tmp_path / "heldout_queue_position_edge_decay.csv").exists()
@@ -322,6 +328,27 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     capacity_frontier = json.loads((tmp_path / "queue_position_capacity_frontier.json").read_text())
     assert "max_viable_queue_position_fraction" in capacity_frontier
     assert "capacity_label" in capacity_frontier
+    regime_sweep_columns = set(
+        pd.read_csv(tmp_path / "queue_position_regime_fraction_sweep.csv", nrows=1).columns
+    )
+    assert {
+        "pressure_memory_decay_state",
+        "queue_position_fraction",
+        "mean_execution_adjusted_edge_ticks",
+        "tradable_share",
+    }.issubset(regime_sweep_columns)
+    regime_frontier_columns = set(
+        pd.read_csv(tmp_path / "queue_position_regime_capacity_frontier.csv", nrows=1).columns
+    )
+    assert {
+        "pressure_memory_decay_state",
+        "max_viable_queue_position_fraction",
+        "capacity_shortfall_fraction",
+        "capacity_brittleness_label",
+    }.issubset(regime_frontier_columns)
+    concentration = json.loads((tmp_path / "queue_position_regime_capacity_concentration.json").read_text())
+    assert "capacity_concentration_label" in concentration
+    assert "front_only_or_no_capacity_share" in concentration
     capacity_stability = json.loads((tmp_path / "queue_position_capacity_stability.json").read_text())
     assert "capacity_fraction_gap" in capacity_stability
     assert "capacity_stability_label" in capacity_stability
@@ -419,8 +446,14 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["heldout_queue_position_fill_surface.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["queue_position_fraction_sweep.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_queue_position_fraction_sweep.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["queue_position_regime_fraction_sweep.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_queue_position_regime_fraction_sweep.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["queue_position_capacity_frontier.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_queue_position_capacity_frontier.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["queue_position_regime_capacity_frontier.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_queue_position_regime_capacity_frontier.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["queue_position_regime_capacity_concentration.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_queue_position_regime_capacity_concentration.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["queue_position_capacity_stability.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["queue_position_edge_decay.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_queue_position_edge_decay.csv"]["size_bytes"] > 0

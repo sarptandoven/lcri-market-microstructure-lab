@@ -29,11 +29,13 @@ from lcri_lab.execution import (
     queue_position_capacity_frontier,
     queue_position_capacity_stability,
     queue_position_execution_quality_gate,
+    queue_position_regime_capacity_concentration,
     queue_position_regime_capacity_frontier,
     queue_position_edge_decay,
     queue_position_fill_calibration_surface,
     queue_position_fill_surface,
     queue_position_fraction_sweep,
+    queue_position_regime_fraction_sweep,
 )
 
 
@@ -637,6 +639,35 @@ def test_queue_position_fraction_sweep_rejects_invalid_fractions() -> None:
         queue_position_fraction_sweep(_book_frame(), fractions=[-0.1])
 
 
+def test_queue_position_regime_fraction_sweep_keeps_state_capacity_auditable() -> None:
+    frame = _book_frame().assign(
+        lcri_probability=[0.25, 0.75],
+        long_net_return_ticks=[1.0, 1.5],
+        short_net_return_ticks=[1.5, 1.0],
+        liquidity_state=["open", "thin"],
+    )
+
+    sweep = queue_position_regime_fraction_sweep(
+        frame,
+        regime_col="liquidity_state",
+        fractions=[0.0, 0.5],
+        levels=2,
+        fill_config=FillProbabilityConfig(adverse_selection_scale=0.25),
+    )
+
+    assert sweep["liquidity_state"].tolist() == ["open", "open", "thin", "thin"]
+    assert sweep["queue_position_fraction"].tolist() == pytest.approx([0.0, 0.5, 0.0, 0.5])
+    assert sweep["rows"].tolist() == [1, 1, 1, 1]
+    assert set(sweep["dominant_execution_side"]).issubset({"long", "short", "none"})
+
+
+def test_queue_position_regime_fraction_sweep_rejects_bad_regime_inputs() -> None:
+    with pytest.raises(ValueError, match="regime_col"):
+        queue_position_regime_fraction_sweep(pd.DataFrame(), regime_col="")
+    with pytest.raises(ValueError, match="missing queue position regime fraction sweep columns"):
+        queue_position_regime_fraction_sweep(pd.DataFrame({"regime": ["open"]}))
+
+
 def test_queue_position_capacity_frontier_finds_deepest_viable_quote_placement() -> None:
     sweep = pd.DataFrame(
         {
@@ -735,6 +766,47 @@ def test_queue_position_regime_capacity_frontier_rejects_bad_sweep() -> None:
         queue_position_regime_capacity_frontier(pd.DataFrame(), regime_col="")
     with pytest.raises(ValueError, match="missing queue position regime capacity frontier columns"):
         queue_position_regime_capacity_frontier(pd.DataFrame({"regime": ["open"]}))
+
+
+def test_queue_position_regime_capacity_concentration_flags_state_dependency() -> None:
+    frontier = pd.DataFrame(
+        {
+            "regime": ["open", "thin", "stress"],
+            "viable_rows": [3, 1, 0],
+            "max_viable_queue_position_fraction": [0.75, 0.0, 0.0],
+            "max_viable_mean_execution_adjusted_edge_ticks": [0.42, 0.08, 0.0],
+            "capacity_shortfall_fraction": [0.25, 1.0, 1.0],
+            "capacity_brittleness_label": [
+                "regime_capacity_partial",
+                "regime_capacity_front_only",
+                "regime_no_viable_capacity",
+            ],
+        }
+    )
+
+    concentration = queue_position_regime_capacity_concentration(frontier)
+
+    assert concentration == {
+        "regimes": 3,
+        "viable_regimes": 2,
+        "viable_regime_share": pytest.approx(2.0 / 3.0),
+        "front_only_or_no_capacity_regimes": 2,
+        "front_only_or_no_capacity_share": pytest.approx(2.0 / 3.0),
+        "full_capacity_regimes": 0,
+        "mean_max_viable_queue_position_fraction": pytest.approx(0.25),
+        "median_max_viable_queue_position_fraction": pytest.approx(0.0),
+        "mean_capacity_shortfall_fraction": pytest.approx(0.75),
+        "worst_capacity_regime": "stress",
+        "worst_capacity_brittleness_label": "regime_no_viable_capacity",
+        "capacity_concentration_label": "capacity_regime_concentrated",
+    }
+
+
+def test_queue_position_regime_capacity_concentration_rejects_bad_frontier() -> None:
+    with pytest.raises(ValueError, match="regime_col"):
+        queue_position_regime_capacity_concentration(pd.DataFrame(), regime_col="")
+    with pytest.raises(ValueError, match="missing queue position regime capacity concentration columns"):
+        queue_position_regime_capacity_concentration(pd.DataFrame({"regime": ["open"]}))
 
 
 def test_queue_position_capacity_stability_compares_research_and_heldout_frontiers() -> None:

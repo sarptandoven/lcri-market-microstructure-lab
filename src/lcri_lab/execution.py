@@ -631,6 +631,67 @@ def queue_position_fraction_sweep(
     return pd.DataFrame(rows)[list(_empty_queue_position_fraction_sweep().columns)]
 
 
+def queue_position_regime_fraction_sweep(
+    frame: pd.DataFrame,
+    *,
+    regime_col: str = "regime",
+    fractions: list[float] | tuple[float, ...] = (0.0, 0.25, 0.50, 0.75, 1.0),
+    levels: int = 5,
+    fill_config: FillProbabilityConfig | None = None,
+    pressure_col: str = "lcri",
+    signal_col: str = "lcri",
+    probability_col: str = "lcri_probability",
+    long_net_col: str = "long_net_return_ticks",
+    short_net_col: str = "short_net_return_ticks",
+) -> pd.DataFrame:
+    """Run quote-placement passive capacity sweeps independently by regime.
+
+    This is the state-aware companion to ``queue_position_fraction_sweep``. It
+    keeps each liquidity/event regime separate before capacity-frontier reduction,
+    preventing benign high-liquidity states from masking that passive queue edge is
+    front-of-queue-only or absent in thin/stress regimes.
+    """
+    if not isinstance(regime_col, str) or not regime_col:
+        raise ValueError("regime_col must be a non-empty string")
+    columns = [regime_col, *list(_empty_queue_position_fraction_sweep().columns)]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    required = {
+        regime_col,
+        pressure_col,
+        signal_col,
+        probability_col,
+        long_net_col,
+        short_net_col,
+        "spread_ticks",
+        "volatility",
+        "replenishment_rate",
+    }
+    required.update({f"bid_sz_{level}" for level in range(1, levels + 1)})
+    required.update({f"ask_sz_{level}" for level in range(1, levels + 1)})
+    _require_columns(frame, required, "queue position regime fraction sweep")
+
+    rows: list[pd.DataFrame] = []
+    for regime, regime_frame in frame.groupby(regime_col, sort=True, dropna=False):
+        sweep = queue_position_fraction_sweep(
+            regime_frame,
+            fractions=fractions,
+            levels=levels,
+            fill_config=fill_config,
+            pressure_col=pressure_col,
+            signal_col=signal_col,
+            probability_col=probability_col,
+            long_net_col=long_net_col,
+            short_net_col=short_net_col,
+        )
+        sweep.insert(0, regime_col, str(regime))
+        rows.append(sweep)
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    return pd.concat(rows, ignore_index=True)[columns]
+
+
 def queue_position_capacity_frontier(
     sweep: pd.DataFrame,
     *,
@@ -806,6 +867,126 @@ def queue_position_regime_capacity_frontier(
         )
         rows.append(frontier)
     return pd.DataFrame(rows, columns=columns)
+
+
+def queue_position_regime_capacity_concentration(
+    frontier: pd.DataFrame,
+    *,
+    regime_col: str = "regime",
+    max_front_only_share: float = 0.25,
+    min_viable_regime_share: float = 0.75,
+) -> dict[str, float | int | str]:
+    """Summarize whether passive queue capacity is concentrated in few regimes.
+
+    Regime-specific frontiers are useful but easy to overstate: a global passive
+    edge is not publishable when most liquidity states only work at the very
+    front of queue or have no viable capacity. This reducer converts the regime
+    frontier into a compact release-review statistic that highlights state
+    dependency before capacity is promoted into demo or paper claims.
+    """
+    if not isinstance(regime_col, str) or not regime_col:
+        raise ValueError("regime_col must be a non-empty string")
+    for name, value in {
+        "max_front_only_share": max_front_only_share,
+        "min_viable_regime_share": min_viable_regime_share,
+    }.items():
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be finite and in [0.0, 1.0]")
+
+    empty: dict[str, float | int | str] = {
+        "regimes": 0,
+        "viable_regimes": 0,
+        "viable_regime_share": 0.0,
+        "front_only_or_no_capacity_regimes": 0,
+        "front_only_or_no_capacity_share": 0.0,
+        "full_capacity_regimes": 0,
+        "mean_max_viable_queue_position_fraction": 0.0,
+        "median_max_viable_queue_position_fraction": 0.0,
+        "mean_capacity_shortfall_fraction": 0.0,
+        "worst_capacity_regime": "none",
+        "worst_capacity_brittleness_label": "none",
+        "capacity_concentration_label": "no_regime_capacity_data",
+    }
+    if frontier.empty:
+        return empty
+
+    required = {
+        regime_col,
+        "viable_rows",
+        "max_viable_queue_position_fraction",
+        "max_viable_mean_execution_adjusted_edge_ticks",
+        "capacity_shortfall_fraction",
+        "capacity_brittleness_label",
+    }
+    _require_columns(frontier, required, "queue position regime capacity concentration")
+    values = _finite_values(
+        frontier,
+        [
+            "viable_rows",
+            "max_viable_queue_position_fraction",
+            "max_viable_mean_execution_adjusted_edge_ticks",
+            "capacity_shortfall_fraction",
+        ],
+        "queue position regime capacity concentration",
+    )
+    if (values["viable_rows"] < 0.0).any():
+        raise ValueError("queue position regime capacity concentration viable_rows must be non-negative")
+    if not values["max_viable_queue_position_fraction"].between(0.0, 1.0).all():
+        raise ValueError(
+            "queue position regime capacity concentration fractions must be in [0.0, 1.0]"
+        )
+    if not values["capacity_shortfall_fraction"].between(0.0, 1.0).all():
+        raise ValueError(
+            "queue position regime capacity concentration shortfalls must be in [0.0, 1.0]"
+        )
+
+    data = values.copy()
+    data[regime_col] = frontier[regime_col].astype(str)
+    data["capacity_brittleness_label"] = frontier["capacity_brittleness_label"].astype(str)
+    regimes = int(len(data))
+    viable = data["viable_rows"] > 0.0
+    front_only_or_none = (data["max_viable_queue_position_fraction"] <= 0.0) | (~viable)
+    full_capacity = data["max_viable_queue_position_fraction"] >= 1.0
+    viable_regimes = int(viable.sum())
+    front_only_or_no_capacity_regimes = int(front_only_or_none.sum())
+    viable_share = float(viable_regimes / regimes) if regimes else 0.0
+    front_only_share = (
+        float(front_only_or_no_capacity_regimes / regimes) if regimes else 0.0
+    )
+    worst = data.sort_values(
+        [
+            "max_viable_queue_position_fraction",
+            "max_viable_mean_execution_adjusted_edge_ticks",
+            regime_col,
+        ],
+        ascending=[True, True, True],
+    ).iloc[0]
+    if viable_regimes == 0:
+        label = "no_viable_regime_capacity"
+    elif front_only_share > max_front_only_share or viable_share < min_viable_regime_share:
+        label = "capacity_regime_concentrated"
+    else:
+        label = "capacity_regime_diversified"
+
+    return {
+        "regimes": regimes,
+        "viable_regimes": viable_regimes,
+        "viable_regime_share": viable_share,
+        "front_only_or_no_capacity_regimes": front_only_or_no_capacity_regimes,
+        "front_only_or_no_capacity_share": front_only_share,
+        "full_capacity_regimes": int(full_capacity.sum()),
+        "mean_max_viable_queue_position_fraction": float(
+            data["max_viable_queue_position_fraction"].mean()
+        ),
+        "median_max_viable_queue_position_fraction": float(
+            data["max_viable_queue_position_fraction"].median()
+        ),
+        "mean_capacity_shortfall_fraction": float(data["capacity_shortfall_fraction"].mean()),
+        "worst_capacity_regime": str(worst[regime_col]),
+        "worst_capacity_brittleness_label": str(worst["capacity_brittleness_label"]),
+        "capacity_concentration_label": label,
+    }
+
 
 
 def queue_position_capacity_stability(
