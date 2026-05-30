@@ -57,6 +57,11 @@ def test_public_api_exports_baseline_nonlinear_publishability_summary() -> None:
     assert "baseline_nonlinear_publishability_summary" in lcri_lab.__all__
 
 
+def test_public_api_exports_baseline_regime_publishability_summary() -> None:
+    assert callable(lcri_lab.baseline_regime_publishability_summary)
+    assert "baseline_regime_publishability_summary" in lcri_lab.__all__
+
+
 def test_public_api_exports_execution_adjusted_lcri_quantile_diagnostics() -> None:
     assert callable(lcri_lab.execution_adjusted_lcri_quantile_diagnostics)
     assert "execution_adjusted_lcri_quantile_diagnostics" in lcri_lab.__all__

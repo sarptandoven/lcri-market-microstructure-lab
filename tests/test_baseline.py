@@ -9,6 +9,7 @@ from lcri_lab.baseline import (
     baseline_liquidity_stress_curve,
     baseline_nonlinear_publishability_summary,
     baseline_regime_basis_comparison,
+    baseline_regime_publishability_summary,
     baseline_rolling_basis_comparison,
     baseline_rolling_basis_summary,
     compute_lcri,
@@ -276,6 +277,71 @@ def test_baseline_regime_basis_comparison_rejects_missing_regime_column() -> Non
 
     with pytest.raises(ValueError, match="missing regime basis comparison columns"):
         baseline_regime_basis_comparison(features, train_window=40, test_window=20)
+
+
+def test_baseline_regime_publishability_summary_requires_every_regime_supported() -> None:
+    comparison = pd.DataFrame(
+        {
+            "regime": ["normal", "stressed", "thin", "normal", "stressed", "thin"],
+            "basis": [
+                "core",
+                "core",
+                "core",
+                "nonlinear_liquidity",
+                "nonlinear_liquidity",
+                "nonlinear_liquidity",
+            ],
+            "folds": [3, 3, 3, 3, 3, 3],
+            "test_rows": [180, 120, 90, 180, 120, 90],
+            "mean_test_rmse_lift_vs_core": [0.0, 0.0, 0.0, 0.62, 0.58, 0.54],
+            "positive_lift_rate": [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+            "winner_rate": [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+            "worst_fold_lift": [0.0, 0.0, 0.0, 0.51, 0.49, 0.47],
+            "publishability_note": [
+                "core_reference",
+                "core_reference",
+                "core_reference",
+                "regime_persistent_nonlinear_lift",
+                "regime_persistent_nonlinear_lift",
+                "regime_persistent_nonlinear_lift",
+            ],
+        }
+    )
+
+    summary = baseline_regime_publishability_summary(comparison, min_regime_lift=0.50)
+
+    assert summary == {
+        "regimes": 3,
+        "supported_regimes": 3,
+        "unsupported_regimes": 0,
+        "min_regime_mean_lift": pytest.approx(0.54),
+        "min_regime_worst_fold_lift": pytest.approx(0.47),
+        "min_regime_winner_rate": pytest.approx(1.0),
+        "weakest_regime": "thin",
+        "publishable": True,
+        "review_note": "nonlinear_lift_regime_robust",
+    }
+
+
+def test_baseline_regime_publishability_summary_flags_weak_regime() -> None:
+    comparison = pd.DataFrame(
+        {
+            "regime": ["normal", "stressed"],
+            "basis": ["nonlinear_liquidity", "nonlinear_liquidity"],
+            "mean_test_rmse_lift_vs_core": [0.55, 0.12],
+            "positive_lift_rate": [1.0, 0.50],
+            "winner_rate": [1.0, 0.50],
+            "worst_fold_lift": [0.45, -0.05],
+        }
+    )
+
+    summary = baseline_regime_publishability_summary(comparison, min_regime_lift=0.30)
+
+    assert summary["publishable"] is False
+    assert summary["supported_regimes"] == 1
+    assert summary["unsupported_regimes"] == 1
+    assert summary["weakest_regime"] == "stressed"
+    assert summary["review_note"] == "nonlinear_lift_regime_fragile"
 
 
 def test_baseline_rolling_basis_summary_scores_persistent_nonlinear_lift() -> None:

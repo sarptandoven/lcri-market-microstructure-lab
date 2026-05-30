@@ -464,6 +464,83 @@ def baseline_regime_basis_comparison(
     return pd.DataFrame(rows, columns=columns)
 
 
+def baseline_regime_publishability_summary(
+    regime_comparison: pd.DataFrame,
+    *,
+    min_regime_lift: float = 0.0,
+) -> dict[str, bool | float | int | str]:
+    """Gate nonlinear baseline publishability on per-regime holdout persistence.
+
+    Aggregate nonlinear lift can be publishable-looking while failing exactly in
+    the stressed or thin books that LCRI is meant to diagnose. This summary takes
+    ``baseline_regime_basis_comparison`` output and requires the nonlinear basis
+    to clear a minimum mean lift, positive-lift persistence, and winner persistence
+    in every observed regime; it also exposes the weakest regime for review triage.
+    """
+    if not math.isfinite(min_regime_lift):
+        raise ValueError("min_regime_lift must be finite")
+    required = {
+        "regime",
+        "basis",
+        "mean_test_rmse_lift_vs_core",
+        "positive_lift_rate",
+        "winner_rate",
+        "worst_fold_lift",
+    }
+    missing = sorted(required - set(regime_comparison.columns))
+    if missing:
+        raise ValueError(f"missing regime publishability columns: {missing}")
+
+    nonlinear = regime_comparison[
+        regime_comparison["basis"].astype(str) == "nonlinear_liquidity"
+    ].copy()
+    if nonlinear.empty:
+        raise ValueError("regime_comparison must include nonlinear_liquidity basis")
+
+    metrics = nonlinear[
+        [
+            "mean_test_rmse_lift_vs_core",
+            "positive_lift_rate",
+            "winner_rate",
+            "worst_fold_lift",
+        ]
+    ].astype(float)
+    if not np.isfinite(metrics.to_numpy()).all():
+        raise ValueError("regime publishability metrics must be finite")
+
+    nonlinear = nonlinear.assign(
+        mean_lift=metrics["mean_test_rmse_lift_vs_core"],
+        positive_lift_rate=metrics["positive_lift_rate"],
+        winner_rate=metrics["winner_rate"],
+        worst_fold_lift=metrics["worst_fold_lift"],
+    )
+    supported = (
+        (nonlinear["mean_lift"] >= min_regime_lift)
+        & (nonlinear["positive_lift_rate"] >= 1.0)
+        & (nonlinear["winner_rate"] >= 1.0)
+    )
+    weakest_index = nonlinear["mean_lift"].astype(float).idxmin()
+    weakest_regime = str(nonlinear.loc[weakest_index, "regime"])
+    supported_regimes = int(supported.sum())
+    regimes = int(nonlinear["regime"].astype(str).nunique())
+    publishable = bool(supported_regimes == len(nonlinear) == regimes)
+    review_note = (
+        "nonlinear_lift_regime_robust" if publishable else "nonlinear_lift_regime_fragile"
+    )
+
+    return {
+        "regimes": regimes,
+        "supported_regimes": supported_regimes,
+        "unsupported_regimes": int(regimes - supported_regimes),
+        "min_regime_mean_lift": float(nonlinear["mean_lift"].min()),
+        "min_regime_worst_fold_lift": float(nonlinear["worst_fold_lift"].min()),
+        "min_regime_winner_rate": float(nonlinear["winner_rate"].min()),
+        "weakest_regime": weakest_regime,
+        "publishable": publishable,
+        "review_note": review_note,
+    }
+
+
 def baseline_rolling_basis_summary(
     rolling: pd.DataFrame,
     *,
