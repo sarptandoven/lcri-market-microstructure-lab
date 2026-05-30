@@ -58,6 +58,23 @@ def _finite_values(frame: pd.DataFrame, columns: list[str], label: str) -> pd.Da
     return values
 
 
+def _normalize_group_columns(
+    frame: pd.DataFrame,
+    group_cols: str | list[str] | tuple[str, ...] | None,
+    label: str,
+) -> list[str]:
+    if group_cols is None:
+        return []
+    if isinstance(group_cols, str):
+        grouping_columns = [group_cols]
+    else:
+        grouping_columns = list(group_cols)
+    if not grouping_columns:
+        raise ValueError("group_cols must be a non-empty sequence when provided")
+    _require_columns(frame, set(grouping_columns), label)
+    return grouping_columns
+
+
 def _logistic(value: pd.Series) -> pd.Series:
     clipped = value.clip(-40.0, 40.0)
     return 1.0 / (1.0 + np.exp(-clipped))
@@ -2240,6 +2257,7 @@ def passive_fill_event_window_diagnostics(
     long_return_col: str = "long_net_return_ticks",
     short_return_col: str = "short_net_return_ticks",
     regime_col: str | None = None,
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
 ) -> pd.DataFrame:
     """Measure realized edge drift around high-probability passive-fill events.
 
@@ -2248,6 +2266,8 @@ def passive_fill_event_window_diagnostics(
     probability breaches ``threshold`` and compares realized, side-consistent
     edge before and after the event. Grouping by an optional regime column turns
     the output into an event-window regime table for publishability review.
+    ``group_cols`` prevents pre/post windows from leaking across symbols,
+    venues, dates, or sessions in batched order-book panels.
     """
     if not isinstance(window, int) or isinstance(window, bool):
         raise ValueError("window must be an integer")
@@ -2268,6 +2288,9 @@ def passive_fill_event_window_diagnostics(
     }
     if regime_col is not None:
         required.add(regime_col)
+    grouping_columns = _normalize_group_columns(
+        frame, group_cols, "passive fill event window group"
+    )
     _require_columns(frame, required, "passive fill event window")
     if frame.empty:
         return _empty_passive_fill_event_windows()
@@ -2308,23 +2331,31 @@ def passive_fill_event_window_diagnostics(
         if regime_col is not None
         else pd.Series("all", index=range(len(frame)))
     )
+    if grouping_columns:
+        group_keys = pd.Series(
+            list(frame[grouping_columns].astype(str).itertuples(index=False, name=None)),
+            index=range(len(frame)),
+        )
+    else:
+        group_keys = pd.Series("__all__", index=range(len(frame)))
 
     event_positions = event_fill.index[(side.isin(["long", "short"])) & (event_fill >= threshold)]
     rows: list[dict[str, float | int | str]] = []
     for position in event_positions:
         event_side = side.iloc[position]
         realized = long_returns if event_side == "long" else short_returns
-        pre_start = max(0, int(position) - window)
-        post_end = min(len(frame), int(position) + window + 1)
-        pre = realized.iloc[pre_start:position]
-        post = realized.iloc[int(position) + 1 : post_end]
+        event_group = group_keys.iloc[int(position)]
+        pre_candidates = range(max(0, int(position) - window), int(position))
+        post_candidates = range(int(position) + 1, min(len(frame), int(position) + window + 1))
+        pre_positions = [row for row in pre_candidates if group_keys.iloc[row] == event_group]
+        post_positions = [row for row in post_candidates if group_keys.iloc[row] == event_group]
+        pre = realized.iloc[pre_positions]
+        post = realized.iloc[post_positions]
         pre_sum = float(pre.sum()) if len(pre) else 0.0
         post_sum = float(post.sum()) if len(post) else 0.0
         event_regime = str(regimes.iloc[position])
-        pre_regime = _modal_window_regime(regimes.iloc[pre_start:position], fallback=event_regime)
-        post_regime = _modal_window_regime(
-            regimes.iloc[int(position) + 1 : post_end], fallback=event_regime
-        )
+        pre_regime = _modal_window_regime(regimes.iloc[pre_positions], fallback=event_regime)
+        post_regime = _modal_window_regime(regimes.iloc[post_positions], fallback=event_regime)
         rows.append(
             {
                 "event_index": original_index.iloc[position],
@@ -2356,6 +2387,7 @@ def passive_fill_event_lead_lag_profile(
     long_return_col: str = "long_net_return_ticks",
     short_return_col: str = "short_net_return_ticks",
     regime_col: str | None = None,
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
 ) -> pd.DataFrame:
     """Profile side-consistent realized edge at each offset around fill events.
 
@@ -2363,7 +2395,8 @@ def passive_fill_event_lead_lag_profile(
     at the fill snapshot, or only after queue priority is achieved. This profile
     keeps relative offsets explicit and groups by the event regime so execution
     reviews can identify lead/lag adverse-selection structure rather than only a
-    pre-vs-post total.
+    pre-vs-post total. ``group_cols`` bounds offsets within symbols, venues, dates,
+    or sessions for panel-safe event-window analysis.
     """
     if not isinstance(window, int) or isinstance(window, bool):
         raise ValueError("window must be an integer")
@@ -2381,6 +2414,9 @@ def passive_fill_event_lead_lag_profile(
     }
     if regime_col is not None:
         required.add(regime_col)
+    grouping_columns = _normalize_group_columns(
+        frame, group_cols, "passive fill event lead lag profile group"
+    )
     _require_columns(frame, required, "passive fill event lead lag profile")
 
     columns = [
@@ -2412,6 +2448,13 @@ def passive_fill_event_lead_lag_profile(
         if regime_col is not None
         else pd.Series("all", index=range(len(frame)))
     )
+    if grouping_columns:
+        group_keys = pd.Series(
+            list(frame[grouping_columns].astype(str).itertuples(index=False, name=None)),
+            index=range(len(frame)),
+        )
+    else:
+        group_keys = pd.Series("__all__", index=range(len(frame)))
     event_fill = pd.Series(
         np.select(
             [side == "long", side == "short"],
@@ -2428,9 +2471,10 @@ def passive_fill_event_lead_lag_profile(
         event_side = side.iloc[position_int]
         realized = long_returns if event_side == "long" else short_returns
         event_regime = str(regimes.iloc[position_int])
+        event_group = group_keys.iloc[position_int]
         for relative_offset in range(-window, window + 1):
             row_position = position_int + relative_offset
-            if 0 <= row_position < len(frame):
+            if 0 <= row_position < len(frame) and group_keys.iloc[row_position] == event_group:
                 observations.append(
                     {
                         "event_regime": event_regime,

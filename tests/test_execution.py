@@ -1150,6 +1150,64 @@ def test_passive_fill_event_window_diagnostics_tracks_side_specific_drift() -> N
     assert events["post_minus_pre_realized_edge"].tolist() == pytest.approx([-0.30, 0.40, -1.00])
 
 
+def test_passive_fill_event_window_diagnostics_respects_group_boundaries() -> None:
+    frame = pd.DataFrame(
+        {
+            "symbol": ["A", "A", "B", "B"],
+            "best_execution_side": ["long", "long", "long", "long"],
+            "regime": ["calm", "calm", "stress", "stress"],
+            "bid_fill_probability": [0.10, 0.95, 0.95, 0.10],
+            "ask_fill_probability": [0.10, 0.10, 0.10, 0.10],
+            "bid_adverse_fill_probability": [0.05, 0.30, 0.40, 0.05],
+            "ask_adverse_fill_probability": [0.05, 0.05, 0.05, 0.05],
+            "execution_adjusted_edge_ticks": [0.10, 0.80, 0.90, 0.20],
+            "long_net_return_ticks": [0.50, 0.60, -1.00, -1.20],
+            "short_net_return_ticks": [0.0, 0.0, 0.0, 0.0],
+        }
+    )
+
+    events = passive_fill_event_window_diagnostics(
+        frame,
+        threshold=0.90,
+        window=1,
+        regime_col="regime",
+        group_cols="symbol",
+    )
+
+    assert events["event_index"].tolist() == [1, 2]
+    assert events["window_rows"].tolist() == [2, 2]
+    assert events["pre_realized_edge_sum"].tolist() == pytest.approx([0.50, 0.0])
+    assert events["post_realized_edge_sum"].tolist() == pytest.approx([0.0, -1.20])
+    assert events["regime_transition"].tolist() == ["calm->calm", "stress->stress"]
+
+
+def test_passive_fill_event_lead_lag_profile_respects_group_boundaries() -> None:
+    frame = pd.DataFrame(
+        {
+            "symbol": ["A", "A", "B", "B"],
+            "best_execution_side": ["long", "long", "long", "long"],
+            "regime": ["calm", "calm", "stress", "stress"],
+            "bid_fill_probability": [0.10, 0.95, 0.95, 0.10],
+            "ask_fill_probability": [0.10, 0.10, 0.10, 0.10],
+            "long_net_return_ticks": [0.50, 0.60, -1.00, -1.20],
+            "short_net_return_ticks": [0.0, 0.0, 0.0, 0.0],
+        }
+    )
+
+    profile = passive_fill_event_lead_lag_profile(
+        frame,
+        threshold=0.90,
+        window=1,
+        regime_col="regime",
+        group_cols="symbol",
+    )
+
+    assert profile["event_regime"].tolist() == ["calm", "calm", "stress", "stress"]
+    assert profile["relative_offset"].tolist() == [-1, 0, 0, 1]
+    assert profile["observations"].tolist() == [1, 1, 1, 1]
+    assert profile["mean_realized_edge_ticks"].tolist() == pytest.approx([0.50, 0.60, -1.00, -1.20])
+
+
 def test_passive_fill_event_lead_lag_profile_tracks_offset_toxicity_by_regime() -> None:
     frame = pd.DataFrame(
         {
