@@ -2858,3 +2858,94 @@ def execution_adjusted_edge_summary(frame: pd.DataFrame) -> dict[str, float | in
         "publishable_side_conflict_share": conflict_share,
         "dominant_execution_side": dominant_side,
     }
+
+
+def _empty_execution_adjusted_lcri_quantile_diagnostics() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "bucket",
+            "rows",
+            "mean_abs_lcri",
+            "mean_abs_execution_adjusted_lcri_score",
+            "signal_survival_ratio",
+            "tradable_share",
+            "mean_execution_adjusted_edge_ticks",
+            "edge_drag_vs_raw_abs_lcri",
+        ]
+    )
+
+
+def execution_adjusted_lcri_quantile_diagnostics(
+    frame: pd.DataFrame,
+    *,
+    bins: int = 5,
+    signal_col: str = "lcri",
+    execution_signal_col: str = "execution_adjusted_lcri_score",
+) -> pd.DataFrame:
+    """Measure how much raw LCRI strength survives passive execution constraints.
+
+    The table sorts rows by absolute raw LCRI, buckets them into equal-count quantiles,
+    and reports the execution-adjusted signal retained after fill/adverse-fill gating.
+    It makes the key publishability question auditable: are the largest residual
+    imbalances still tradable after queue position, or is apparent alpha mostly eaten
+    by passive-fill friction and abstention?
+    """
+    if not isinstance(bins, int) or isinstance(bins, bool) or bins < 1:
+        raise ValueError("bins must be a positive integer")
+    if frame.empty:
+        return _empty_execution_adjusted_lcri_quantile_diagnostics()
+
+    required = {
+        signal_col,
+        execution_signal_col,
+        "execution_adjusted_edge_ticks",
+        "best_execution_side",
+    }
+    _require_columns(frame, required, "execution-adjusted LCRI quantile diagnostics")
+    values = _finite_values(
+        frame,
+        [signal_col, execution_signal_col, "execution_adjusted_edge_ticks"],
+        "execution-adjusted LCRI quantile diagnostics",
+    )
+
+    diagnostics_frame = pd.DataFrame(index=frame.index)
+    diagnostics_frame["abs_lcri"] = values[signal_col].abs()
+    diagnostics_frame["abs_execution_adjusted_lcri_score"] = values[execution_signal_col].abs()
+    diagnostics_frame["execution_adjusted_edge_ticks"] = values["execution_adjusted_edge_ticks"]
+    diagnostics_frame["tradable"] = frame["best_execution_side"].astype(str) != "abstain"
+
+    actual_bins = min(bins, len(diagnostics_frame))
+    ranks = diagnostics_frame["abs_lcri"].rank(method="first")
+    diagnostics_frame["bucket_id"] = pd.qcut(ranks, q=actual_bins, labels=False, duplicates="drop")
+    actual_bins = int(diagnostics_frame["bucket_id"].max()) + 1
+
+    if actual_bins == 1:
+        labels = ["all_abs_lcri"]
+    elif actual_bins == 3:
+        labels = ["low_abs_lcri", "mid_abs_lcri", "high_abs_lcri"]
+    else:
+        labels = [f"abs_lcri_q{index + 1:02d}" for index in range(actual_bins)]
+
+    rows: list[dict[str, float | int | str]] = []
+    for bucket_id, group in diagnostics_frame.groupby("bucket_id", sort=True):
+        mean_abs_lcri = float(group["abs_lcri"].mean())
+        mean_abs_execution_signal = float(group["abs_execution_adjusted_lcri_score"].mean())
+        rows.append(
+            {
+                "bucket": labels[int(bucket_id)],
+                "rows": int(len(group)),
+                "mean_abs_lcri": mean_abs_lcri,
+                "mean_abs_execution_adjusted_lcri_score": mean_abs_execution_signal,
+                "signal_survival_ratio": (
+                    mean_abs_execution_signal / mean_abs_lcri if mean_abs_lcri > 0.0 else 0.0
+                ),
+                "tradable_share": float(group["tradable"].mean()),
+                "mean_execution_adjusted_edge_ticks": float(
+                    group["execution_adjusted_edge_ticks"].mean()
+                ),
+                "edge_drag_vs_raw_abs_lcri": float(
+                    mean_abs_lcri - group["execution_adjusted_edge_ticks"].mean()
+                ),
+            }
+        )
+    return pd.DataFrame(rows)[list(_empty_execution_adjusted_lcri_quantile_diagnostics().columns)]

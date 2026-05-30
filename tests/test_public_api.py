@@ -32,6 +32,16 @@ def test_public_api_exports_design_feature_names() -> None:
     assert "design_feature_names" in lcri_lab.__all__
 
 
+def test_public_api_exports_baseline_liquidity_stress_curve() -> None:
+    assert callable(lcri_lab.baseline_liquidity_stress_curve)
+    assert "baseline_liquidity_stress_curve" in lcri_lab.__all__
+
+
+def test_public_api_exports_execution_adjusted_lcri_quantile_diagnostics() -> None:
+    assert callable(lcri_lab.execution_adjusted_lcri_quantile_diagnostics)
+    assert "execution_adjusted_lcri_quantile_diagnostics" in lcri_lab.__all__
+
+
 def test_public_api_exports_signal_lift_summary() -> None:
     assert callable(lcri_lab.summarize_signal_lift)
     assert "summarize_signal_lift" in lcri_lab.__all__

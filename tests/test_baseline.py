@@ -4,6 +4,7 @@ import pytest
 from lcri_lab.baseline import (
     LiquidityBaseline,
     baseline_component_attribution,
+    baseline_liquidity_stress_curve,
     compute_lcri,
     design_feature_names,
 )
@@ -87,6 +88,43 @@ def test_baseline_component_attribution_exposes_nonlinear_liquidity_dominance() 
         "replenishment_inverse",
     }
     assert attribution["contribution_share"].sum() == pytest.approx(1.0)
+
+
+def test_baseline_liquidity_stress_curve_is_centered_and_monotone_for_convex_spread() -> None:
+    books = simulate_order_books(SimulationConfig(rows=700, seed=16))
+    features = compute_features(books)
+    features["raw_imbalance"] = 0.08 * features["spread_ticks"].to_numpy(dtype=float) ** 2
+    baseline = LiquidityBaseline(ridge=1e-8).fit(features)
+
+    curve = baseline_liquidity_stress_curve(
+        features,
+        baseline,
+        feature="spread_stress_squared",
+        grid_size=7,
+    )
+
+    assert curve.columns.tolist() == [
+        "feature",
+        "quantile",
+        "feature_value",
+        "expected_imbalance",
+        "delta_vs_median",
+    ]
+    assert curve["feature"].unique().tolist() == ["spread_stress_squared"]
+    assert curve["quantile"].tolist() == pytest.approx([0.0, 1 / 6, 2 / 6, 0.5, 4 / 6, 5 / 6, 1.0])
+    assert curve.loc[3, "delta_vs_median"] == pytest.approx(0.0, abs=1e-12)
+    assert curve["expected_imbalance"].is_monotonic_increasing
+    assert curve.loc[0, "delta_vs_median"] < 0.0
+    assert curve.loc[6, "delta_vs_median"] > 0.0
+
+
+def test_baseline_liquidity_stress_curve_rejects_unknown_feature() -> None:
+    books = simulate_order_books(SimulationConfig(rows=50, seed=17))
+    features = compute_features(books)
+    baseline = LiquidityBaseline().fit(features)
+
+    with pytest.raises(ValueError, match="unknown design feature"):
+        baseline_liquidity_stress_curve(features, baseline, feature="not_a_feature")
 
 
 def test_baseline_rejects_invalid_ridge() -> None:

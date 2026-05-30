@@ -20,6 +20,7 @@ from lcri_lab.alpha import (
 from lcri_lab.baseline import (
     LiquidityBaseline,
     baseline_component_attribution,
+    baseline_liquidity_stress_curve,
     compute_lcri,
     design_feature_names,
 )
@@ -107,6 +108,7 @@ from lcri_lab.execution import (
     add_queue_position_realized_fill_proxy,
     event_level_passive_fill_horizon_sweep,
     execution_adjusted_edge_summary,
+    execution_adjusted_lcri_quantile_diagnostics,
     execution_publishability_review_packet,
     passive_fill_calibration_curve,
     passive_fill_calibration_summary,
@@ -164,6 +166,7 @@ __all__ = [
     "add_queue_position_realized_fill_proxy",
     "event_level_passive_fill_horizon_sweep",
     "execution_adjusted_edge_summary",
+    "execution_adjusted_lcri_quantile_diagnostics",
     "execution_publishability_review_packet",
     "passive_fill_calibration_curve",
     "passive_fill_calibration_summary",
@@ -220,6 +223,7 @@ __all__ = [
     "publishability_margin_summary",
     "SimulationConfig",
     "baseline_component_attribution",
+    "baseline_liquidity_stress_curve",
     "compute_lcri",
     "calibration_curve",
     "calibration_error_summary",

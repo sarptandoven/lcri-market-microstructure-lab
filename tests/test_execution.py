@@ -9,6 +9,7 @@ from lcri_lab.execution import (
     add_queue_position_features,
     add_queue_position_realized_fill_proxy,
     execution_adjusted_edge_summary,
+    execution_adjusted_lcri_quantile_diagnostics,
     passive_fill_calibration_curve,
     passive_fill_calibration_summary,
     passive_fill_event_regime_summary,
@@ -349,6 +350,39 @@ def test_execution_adjusted_edge_summary_quantifies_tradability_drag() -> None:
     assert summary["publishable_side_conflict_rows"] == 2
     assert summary["publishable_side_conflict_share"] == pytest.approx(0.50)
     assert summary["dominant_execution_side"] == "long"
+
+
+def test_execution_adjusted_lcri_quantile_diagnostics_measures_signal_survival() -> None:
+    frame = pd.DataFrame(
+        {
+            "lcri": [-3.0, -2.0, -1.0, 1.0, 2.0, 3.0],
+            "execution_adjusted_lcri_score": [-3.0, 0.0, -1.0, 0.0, 2.0, 3.0],
+            "execution_adjusted_edge_ticks": [1.2, -0.2, 0.3, -0.1, 0.5, 1.4],
+            "best_execution_side": ["short", "abstain", "short", "abstain", "long", "long"],
+        }
+    )
+
+    diagnostics = execution_adjusted_lcri_quantile_diagnostics(frame, bins=3)
+
+    assert diagnostics.columns.tolist() == [
+        "bucket",
+        "rows",
+        "mean_abs_lcri",
+        "mean_abs_execution_adjusted_lcri_score",
+        "signal_survival_ratio",
+        "tradable_share",
+        "mean_execution_adjusted_edge_ticks",
+        "edge_drag_vs_raw_abs_lcri",
+    ]
+    assert diagnostics["bucket"].tolist() == ["low_abs_lcri", "mid_abs_lcri", "high_abs_lcri"]
+    assert diagnostics["rows"].tolist() == [2, 2, 2]
+    assert diagnostics["mean_abs_lcri"].tolist() == pytest.approx([1.0, 2.0, 3.0])
+    assert diagnostics["mean_abs_execution_adjusted_lcri_score"].tolist() == pytest.approx(
+        [0.5, 1.0, 3.0]
+    )
+    assert diagnostics["signal_survival_ratio"].tolist() == pytest.approx([0.5, 0.5, 1.0])
+    assert diagnostics["tradable_share"].tolist() == pytest.approx([0.5, 0.5, 1.0])
+    assert diagnostics["edge_drag_vs_raw_abs_lcri"].tolist() == pytest.approx([0.9, 1.85, 1.7])
 
 
 def test_event_level_passive_fill_horizon_sweep_relabels_from_trade_and_cancel_flow() -> None:

@@ -149,6 +149,69 @@ def baseline_component_attribution(frame: pd.DataFrame, baseline: LiquidityBasel
     )
 
 
+def baseline_liquidity_stress_curve(
+    frame: pd.DataFrame,
+    baseline: LiquidityBaseline,
+    *,
+    feature: str,
+    grid_size: int = 11,
+) -> pd.DataFrame:
+    """Trace the fitted baseline response to one liquidity-stress design feature.
+
+    This partial-dependence style diagnostic keeps every other design column at its
+    sample median, then walks the selected feature across empirical quantiles. It
+    makes nonlinear neutralization auditable: reviewers can see whether the LCRI
+    baseline learned a plausible spread/volatility/void/replenishment response
+    instead of hiding it inside one opaque prediction vector.
+    """
+    columns = ["feature", "quantile", "feature_value", "expected_imbalance", "delta_vs_median"]
+    if baseline.coefficients is None or baseline.mean_ is None or baseline.scale_ is None:
+        raise RuntimeError("baseline must be fit before stress curve")
+    if not isinstance(grid_size, int) or isinstance(grid_size, bool) or grid_size < 2:
+        raise ValueError("grid_size must be an integer of at least 2")
+
+    feature_names = design_feature_names()
+    if feature not in feature_names:
+        raise ValueError(f"unknown design feature: {feature}")
+    expected_shape = (len(feature_names) + 1,)
+    if baseline.coefficients.shape != expected_shape:
+        raise ValueError("baseline coefficients do not match design feature names")
+    if baseline.mean_.shape != (len(feature_names),) or baseline.scale_.shape != (len(feature_names),):
+        raise ValueError("baseline normalization arrays do not match design feature names")
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    x = _design_matrix(frame)
+    if not np.isfinite(x).all():
+        raise ValueError("design matrix values must be finite")
+    feature_index = feature_names.index(feature)
+    quantiles = np.linspace(0.0, 1.0, grid_size)
+    feature_values = np.quantile(x[:, feature_index], quantiles)
+    median_design = np.median(x, axis=0)
+    median_feature_value = float(np.quantile(x[:, feature_index], 0.5))
+
+    def predict_at(value: float) -> float:
+        design = median_design.copy()
+        design[feature_index] = value
+        standardized = (design - baseline.mean_) / baseline.scale_
+        row = np.concatenate([[1.0], standardized])
+        return float(np.sum(row * baseline.coefficients))
+
+    median_prediction = predict_at(median_feature_value)
+    rows = [
+        {
+            "feature": feature,
+            "quantile": float(quantile),
+            "feature_value": float(value),
+            "expected_imbalance": predict_at(float(value)),
+        }
+        for quantile, value in zip(quantiles, feature_values, strict=True)
+    ]
+    for row in rows:
+        row["delta_vs_median"] = float(row["expected_imbalance"] - median_prediction)
+    return pd.DataFrame(rows, columns=columns)
+
+
 def _component_for_feature(feature: str) -> str:
     if feature in NONLINEAR_LIQUIDITY_FEATURES:
         return "nonlinear_liquidity"
