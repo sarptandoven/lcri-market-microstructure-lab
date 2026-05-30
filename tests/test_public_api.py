@@ -233,6 +233,7 @@ def test_public_api_exports_execution_adjusted_queue_fill_tools() -> None:
     assert callable(lcri_lab.passive_fill_calibration_summary)
     assert callable(lcri_lab.passive_fill_event_window_diagnostics)
     assert callable(lcri_lab.passive_fill_event_regime_summary)
+    assert callable(lcri_lab.queue_position_fill_calibration_surface)
     assert callable(lcri_lab.queue_position_fill_surface)
     assert "FillProbabilityConfig" in lcri_lab.__all__
     assert "add_queue_position_features" in lcri_lab.__all__
@@ -244,4 +245,5 @@ def test_public_api_exports_execution_adjusted_queue_fill_tools() -> None:
     assert "passive_fill_calibration_summary" in lcri_lab.__all__
     assert "passive_fill_event_window_diagnostics" in lcri_lab.__all__
     assert "passive_fill_event_regime_summary" in lcri_lab.__all__
+    assert "queue_position_fill_calibration_surface" in lcri_lab.__all__
     assert "queue_position_fill_surface" in lcri_lab.__all__

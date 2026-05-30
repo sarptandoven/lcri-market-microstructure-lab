@@ -25,6 +25,7 @@ from lcri_lab.execution import (
     queue_position_capacity_stability,
     queue_position_execution_quality_gate,
     queue_position_edge_decay,
+    queue_position_fill_calibration_surface,
     queue_position_fill_surface,
     queue_position_fraction_sweep,
 )
@@ -889,6 +890,69 @@ def test_passive_fill_calibration_summary_exposes_weighted_fill_error() -> None:
         "worst_regime": "thin",
         "worst_absolute_calibration_error": pytest.approx(0.30),
     }
+
+
+def test_queue_position_fill_calibration_surface_bins_by_side_queue_depth() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "long", "short", "short", "abstain"],
+            "bid_queue_share": [0.10, 0.70, 0.20, 0.80, 0.30],
+            "ask_queue_share": [0.90, 0.40, 0.25, 0.75, 0.10],
+            "bid_fill_probability": [0.80, 0.30, 0.40, 0.20, 0.90],
+            "ask_fill_probability": [0.10, 0.20, 0.85, 0.35, 0.10],
+            "bid_realized_fill": [1.0, 0.0, 1.0, 0.0, 1.0],
+            "ask_realized_fill": [0.0, 1.0, 1.0, 0.0, 0.0],
+            "execution_adjusted_edge_ticks": [0.50, 0.10, 0.80, -0.20, 0.00],
+            "regime": ["stable", "thin", "stable", "thin", "stable"],
+        }
+    )
+
+    surface = queue_position_fill_calibration_surface(frame, queue_bins=2, probability_bins=2)
+
+    assert surface["best_execution_side"].tolist() == ["long", "long", "short", "short"]
+    assert surface["queue_share_bin"].tolist() == [1, 2, 1, 2]
+    assert surface["fill_probability_bin"].tolist() == [2, 1, 2, 1]
+    assert surface["rows"].tolist() == [1, 1, 1, 1]
+    assert surface["mean_queue_share"].tolist() == pytest.approx([0.10, 0.70, 0.25, 0.75])
+    assert surface["mean_predicted_fill_probability"].tolist() == pytest.approx([0.80, 0.30, 0.85, 0.35])
+    assert surface["realized_fill_rate"].tolist() == pytest.approx([1.0, 0.0, 1.0, 0.0])
+    assert surface["calibration_error"].tolist() == pytest.approx([0.20, -0.30, 0.15, -0.35])
+    assert surface["mean_execution_adjusted_edge_ticks"].tolist() == pytest.approx([0.50, 0.10, 0.80, -0.20])
+
+
+def test_queue_position_fill_calibration_surface_splits_optional_regimes() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "long", "long", "short"],
+            "bid_queue_share": [0.10, 0.20, 0.80, 0.10],
+            "ask_queue_share": [0.10, 0.20, 0.80, 0.40],
+            "bid_fill_probability": [0.80, 0.70, 0.30, 0.20],
+            "ask_fill_probability": [0.20, 0.20, 0.10, 0.60],
+            "bid_realized_fill": [1.0, 1.0, 0.0, 0.0],
+            "ask_realized_fill": [0.0, 0.0, 0.0, 1.0],
+            "regime": ["stable", "stable", "thin", "thin"],
+        }
+    )
+
+    surface = queue_position_fill_calibration_surface(
+        frame,
+        queue_bins=1,
+        probability_bins=1,
+        regime_col="regime",
+    )
+
+    assert surface["regime"].tolist() == ["stable", "thin", "thin"]
+    assert surface["best_execution_side"].tolist() == ["long", "long", "short"]
+    assert surface["rows"].tolist() == [2, 1, 1]
+    assert surface.loc[0, "realized_fill_rate"] == pytest.approx(1.0)
+    assert surface.loc[0, "mean_predicted_fill_probability"] == pytest.approx(0.75)
+
+
+def test_queue_position_fill_calibration_surface_rejects_bad_inputs() -> None:
+    with pytest.raises(ValueError, match="queue_bins"):
+        queue_position_fill_calibration_surface(pd.DataFrame(), queue_bins=0)
+    with pytest.raises(ValueError, match="missing queue position fill calibration surface columns"):
+        queue_position_fill_calibration_surface(pd.DataFrame({"best_execution_side": ["long"]}))
 
 
 def test_passive_fill_event_window_diagnostics_tracks_side_specific_drift() -> None:
