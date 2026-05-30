@@ -118,16 +118,22 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "passive_fill_event_lead_lag_scorecard.csv").exists()
     assert (tmp_path / "passive_fill_event_regime_summary.csv").exists()
     assert (tmp_path / "passive_fill_event_transition_summary.csv").exists()
+    assert (tmp_path / "passive_fill_event_lifecycle_summary.csv").exists()
+    assert (tmp_path / "passive_fill_event_lifecycle_policy_curve.csv").exists()
     assert (tmp_path / "passive_fill_event_transition_policy_curve.csv").exists()
     assert (tmp_path / "passive_fill_event_toxicity_scorecard.json").exists()
+    assert (tmp_path / "passive_fill_event_lifecycle_toxicity_scorecard.json").exists()
     assert (tmp_path / "passive_fill_event_transition_toxicity_scorecard.json").exists()
     assert (tmp_path / "heldout_passive_fill_event_windows.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_lead_lag_profile.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_lead_lag_scorecard.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_regime_summary.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_transition_summary.csv").exists()
+    assert (tmp_path / "heldout_passive_fill_event_lifecycle_summary.csv").exists()
+    assert (tmp_path / "heldout_passive_fill_event_lifecycle_policy_curve.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_transition_policy_curve.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_toxicity_scorecard.json").exists()
+    assert (tmp_path / "heldout_passive_fill_event_lifecycle_toxicity_scorecard.json").exists()
     assert (tmp_path / "heldout_passive_fill_event_transition_toxicity_scorecard.json").exists()
     assert (tmp_path / "passive_fill_calibration_curve.csv").exists()
     assert (tmp_path / "heldout_passive_fill_calibration_curve.csv").exists()
@@ -207,6 +213,12 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "transition_toxicity_label" in transition_toxicity
     assert "worst_transition" in transition_toxicity
     assert "weighted_mean_post_minus_pre_realized_edge" in transition_toxicity
+    lifecycle_toxicity = json.loads(
+        (tmp_path / "passive_fill_event_lifecycle_toxicity_scorecard.json").read_text()
+    )
+    assert "lifecycle_toxicity_gate_label" in lifecycle_toxicity
+    assert "worst_lifecycle_path" in lifecycle_toxicity
+    assert "weighted_mean_event_adverse_fill_probability" in lifecycle_toxicity
     lead_lag_scorecard_columns = set(
         pd.read_csv(tmp_path / "passive_fill_event_lead_lag_scorecard.csv", nrows=1).columns
     )
@@ -229,6 +241,18 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "mean_event_adverse_fill_probability",
         "worst_post_minus_pre_realized_edge",
     }.issubset(event_transition_columns)
+    event_lifecycle_columns = set(
+        pd.read_csv(tmp_path / "passive_fill_event_lifecycle_summary.csv", nrows=1).columns
+    )
+    assert {
+        "lifecycle_path",
+        "pre_window_regime",
+        "event_regime",
+        "post_window_regime",
+        "events",
+        "adverse_post_edge_share",
+        "mean_post_minus_pre_realized_edge",
+    }.issubset(event_lifecycle_columns)
     event_transition_policy_columns = set(
         pd.read_csv(tmp_path / "passive_fill_event_transition_policy_curve.csv", nrows=1).columns
     )
@@ -433,7 +457,14 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["heldout_execution_publishability_release_gate.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_windows.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["passive_fill_event_lifecycle_summary.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_toxicity_scorecard.json"]["size_bytes"] > 0
+    assert (
+        manifest["artifact_metadata"]["passive_fill_event_lifecycle_toxicity_scorecard.json"][
+            "size_bytes"
+        ]
+        > 0
+    )
     assert manifest["artifact_metadata"]["passive_fill_event_transition_policy_curve.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_realization_horizon_sweep.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_threshold_policy_curve.csv"]["size_bytes"] > 0
@@ -495,6 +526,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## Execution publishability release gate" in summary
     assert "## Passive-fill event-window regime diagnostics" in summary
     assert "## Passive-fill event-window toxicity scorecard" in summary
+    assert "## Passive-fill event lifecycle toxicity scorecard" in summary
     assert "## Passive-fill realization horizon sweep" in summary
     assert "## Queue-position fill calibration surface" in summary
     assert "## Queue-position fraction sweep" in summary

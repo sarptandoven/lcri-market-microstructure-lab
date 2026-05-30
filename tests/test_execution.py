@@ -16,6 +16,7 @@ from lcri_lab.execution import (
     passive_fill_event_lead_lag_profile,
     passive_fill_event_lead_lag_scorecard,
     passive_fill_event_lifecycle_policy_curve,
+    passive_fill_event_lifecycle_scorecard,
     passive_fill_event_lifecycle_summary,
     passive_fill_event_toxicity_scorecard,
     passive_fill_event_transition_policy_curve,
@@ -1504,6 +1505,76 @@ def test_passive_fill_event_transition_scorecard_rejects_bad_summary() -> None:
         passive_fill_event_transition_scorecard(pd.DataFrame(), max_adverse_post_edge_share=1.5)
     with pytest.raises(ValueError, match="missing passive fill event transition toxicity columns"):
         passive_fill_event_transition_scorecard(pd.DataFrame({"regime_transition": ["thin->stress"]}))
+
+
+def test_passive_fill_event_lifecycle_scorecard_blocks_toxic_full_paths() -> None:
+    summary = pd.DataFrame(
+        {
+            "lifecycle_path": ["calm|thin|thin", "thin|stress|stress", "stress|stress|calm"],
+            "events": [4, 3, 2],
+            "adverse_post_edge_share": [0.50, 1.00, 0.00],
+            "mean_event_fill_probability": [0.82, 0.93, 0.78],
+            "mean_event_adverse_fill_probability": [0.22, 0.55, 0.12],
+            "mean_post_minus_pre_realized_edge": [-0.15, -0.80, 0.20],
+            "worst_post_minus_pre_realized_edge": [-0.60, -1.50, 0.05],
+        }
+    )
+
+    scorecard = passive_fill_event_lifecycle_scorecard(
+        summary,
+        max_adverse_post_edge_share=0.75,
+        min_mean_post_minus_pre_edge=-0.30,
+    )
+
+    assert scorecard == {
+        "rows": 3,
+        "lifecycle_paths": 3,
+        "total_events": 9,
+        "eligible_lifecycle_paths": 3,
+        "blocked_lifecycle_paths": 1,
+        "worst_lifecycle_path": "thin|stress|stress",
+        "worst_adverse_post_edge_share": pytest.approx(1.00),
+        "worst_mean_post_minus_pre_realized_edge": pytest.approx(-0.80),
+        "worst_post_minus_pre_realized_edge": pytest.approx(-1.50),
+        "weighted_mean_event_fill_probability": pytest.approx(0.8477777778),
+        "weighted_mean_event_adverse_fill_probability": pytest.approx(0.3077777778),
+        "weighted_mean_post_minus_pre_realized_edge": pytest.approx(-0.2888888889),
+        "lifecycle_toxicity_gate_label": "lifecycle_event_window_blocker",
+    }
+
+
+def test_passive_fill_event_lifecycle_scorecard_labels_pass_and_thin_samples() -> None:
+    summary = pd.DataFrame(
+        {
+            "lifecycle_path": ["stable|stable|stable"],
+            "events": [2],
+            "adverse_post_edge_share": [0.0],
+            "mean_event_fill_probability": [0.70],
+            "mean_event_adverse_fill_probability": [0.10],
+            "mean_post_minus_pre_realized_edge": [0.20],
+            "worst_post_minus_pre_realized_edge": [0.10],
+        }
+    )
+
+    assert (
+        passive_fill_event_lifecycle_scorecard(summary)["lifecycle_toxicity_gate_label"]
+        == "lifecycle_event_window_pass"
+    )
+    assert (
+        passive_fill_event_lifecycle_scorecard(summary, min_events=3)[
+            "lifecycle_toxicity_gate_label"
+        ]
+        == "insufficient_lifecycle_event_windows"
+    )
+
+
+def test_passive_fill_event_lifecycle_scorecard_rejects_bad_summary() -> None:
+    with pytest.raises(ValueError, match="max_adverse_post_edge_share"):
+        passive_fill_event_lifecycle_scorecard(pd.DataFrame(), max_adverse_post_edge_share=1.5)
+    with pytest.raises(ValueError, match="missing passive fill event lifecycle toxicity columns"):
+        passive_fill_event_lifecycle_scorecard(
+            pd.DataFrame({"lifecycle_path": ["thin|stress|stress"]})
+        )
 
 
 def test_passive_fill_event_regime_summary_ranks_adverse_execution_windows() -> None:

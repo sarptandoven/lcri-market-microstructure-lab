@@ -97,6 +97,8 @@ from lcri_lab.execution import (
     passive_fill_event_lead_lag_profile,
     passive_fill_event_lead_lag_scorecard,
     passive_fill_event_lifecycle_policy_curve,
+    passive_fill_event_lifecycle_scorecard,
+    passive_fill_event_lifecycle_summary,
     passive_fill_event_regime_summary,
     passive_fill_event_toxicity_scorecard,
     passive_fill_event_transition_policy_curve,
@@ -551,9 +553,13 @@ def run_demo(
     )
     passive_fill_event_regimes = passive_fill_event_regime_summary(passive_fill_events)
     passive_fill_event_transitions = passive_fill_event_transition_summary(passive_fill_events)
+    passive_fill_event_lifecycle = passive_fill_event_lifecycle_summary(passive_fill_events)
     passive_fill_event_lifecycle_policy = passive_fill_event_lifecycle_policy_curve(passive_fill_events)
     passive_fill_event_transition_policy = passive_fill_event_transition_policy_curve(passive_fill_events)
     passive_fill_event_toxicity = passive_fill_event_toxicity_scorecard(passive_fill_event_regimes)
+    passive_fill_event_lifecycle_toxicity = passive_fill_event_lifecycle_scorecard(
+        passive_fill_event_lifecycle
+    )
     passive_fill_event_transition_toxicity = passive_fill_event_transition_scorecard(
         passive_fill_event_transitions
     )
@@ -578,6 +584,9 @@ def run_demo(
     heldout_passive_fill_event_transitions = passive_fill_event_transition_summary(
         heldout_passive_fill_events
     )
+    heldout_passive_fill_event_lifecycle = passive_fill_event_lifecycle_summary(
+        heldout_passive_fill_events
+    )
     heldout_passive_fill_event_lifecycle_policy = passive_fill_event_lifecycle_policy_curve(
         heldout_passive_fill_events
     )
@@ -586,6 +595,9 @@ def run_demo(
     )
     heldout_passive_fill_event_toxicity = passive_fill_event_toxicity_scorecard(
         heldout_passive_fill_event_regimes
+    )
+    heldout_passive_fill_event_lifecycle_toxicity = passive_fill_event_lifecycle_scorecard(
+        heldout_passive_fill_event_lifecycle
     )
     heldout_passive_fill_event_transition_toxicity = passive_fill_event_transition_scorecard(
         heldout_passive_fill_event_transitions
@@ -817,18 +829,22 @@ def run_demo(
         "passive_fill_event_lead_lag_scorecard.csv",
         "passive_fill_event_regime_summary.csv",
         "passive_fill_event_transition_summary.csv",
+        "passive_fill_event_lifecycle_summary.csv",
         "passive_fill_event_lifecycle_policy_curve.csv",
         "passive_fill_event_transition_policy_curve.csv",
         "passive_fill_event_toxicity_scorecard.json",
+        "passive_fill_event_lifecycle_toxicity_scorecard.json",
         "passive_fill_event_transition_toxicity_scorecard.json",
         "heldout_passive_fill_event_windows.csv",
         "heldout_passive_fill_event_lead_lag_profile.csv",
         "heldout_passive_fill_event_lead_lag_scorecard.csv",
         "heldout_passive_fill_event_regime_summary.csv",
         "heldout_passive_fill_event_transition_summary.csv",
+        "heldout_passive_fill_event_lifecycle_summary.csv",
         "heldout_passive_fill_event_lifecycle_policy_curve.csv",
         "heldout_passive_fill_event_transition_policy_curve.csv",
         "heldout_passive_fill_event_toxicity_scorecard.json",
+        "heldout_passive_fill_event_lifecycle_toxicity_scorecard.json",
         "heldout_passive_fill_event_transition_toxicity_scorecard.json",
         "passive_fill_calibration_curve.csv",
         "heldout_passive_fill_calibration_curve.csv",
@@ -1074,6 +1090,9 @@ def run_demo(
     passive_fill_event_transitions.to_csv(
         output / "passive_fill_event_transition_summary.csv", index=False
     )
+    passive_fill_event_lifecycle.to_csv(
+        output / "passive_fill_event_lifecycle_summary.csv", index=False
+    )
     passive_fill_event_lifecycle_policy.to_csv(
         output / "passive_fill_event_lifecycle_policy_curve.csv", index=False
     )
@@ -1081,6 +1100,10 @@ def run_demo(
         output / "passive_fill_event_transition_policy_curve.csv", index=False
     )
     write_json(output / "passive_fill_event_toxicity_scorecard.json", passive_fill_event_toxicity)
+    write_json(
+        output / "passive_fill_event_lifecycle_toxicity_scorecard.json",
+        passive_fill_event_lifecycle_toxicity,
+    )
     write_json(
         output / "passive_fill_event_transition_toxicity_scorecard.json",
         passive_fill_event_transition_toxicity,
@@ -1100,6 +1123,9 @@ def run_demo(
     heldout_passive_fill_event_transitions.to_csv(
         output / "heldout_passive_fill_event_transition_summary.csv", index=False
     )
+    heldout_passive_fill_event_lifecycle.to_csv(
+        output / "heldout_passive_fill_event_lifecycle_summary.csv", index=False
+    )
     heldout_passive_fill_event_lifecycle_policy.to_csv(
         output / "heldout_passive_fill_event_lifecycle_policy_curve.csv", index=False
     )
@@ -1109,6 +1135,10 @@ def run_demo(
     write_json(
         output / "heldout_passive_fill_event_toxicity_scorecard.json",
         heldout_passive_fill_event_toxicity,
+    )
+    write_json(
+        output / "heldout_passive_fill_event_lifecycle_toxicity_scorecard.json",
+        heldout_passive_fill_event_lifecycle_toxicity,
     )
     write_json(
         output / "heldout_passive_fill_event_transition_toxicity_scorecard.json",
@@ -1304,6 +1334,8 @@ def run_demo(
         heldout_passive_fill_event_regimes=heldout_passive_fill_event_regimes,
         passive_fill_event_toxicity=passive_fill_event_toxicity,
         heldout_passive_fill_event_toxicity=heldout_passive_fill_event_toxicity,
+        passive_fill_event_lifecycle_toxicity=passive_fill_event_lifecycle_toxicity,
+        heldout_passive_fill_event_lifecycle_toxicity=heldout_passive_fill_event_lifecycle_toxicity,
         passive_fill_event_transition_toxicity=passive_fill_event_transition_toxicity,
         heldout_passive_fill_event_transition_toxicity=heldout_passive_fill_event_transition_toxicity,
         passive_fill_calibration_summary=passive_fill_calibration_stats,
@@ -1527,6 +1559,8 @@ def _append_execution_adjusted_summary(
     heldout_passive_fill_event_regimes: pd.DataFrame,
     passive_fill_event_toxicity: dict[str, float | int | str],
     heldout_passive_fill_event_toxicity: dict[str, float | int | str],
+    passive_fill_event_lifecycle_toxicity: dict[str, float | int | str],
+    heldout_passive_fill_event_lifecycle_toxicity: dict[str, float | int | str],
     passive_fill_event_transition_toxicity: dict[str, float | int | str],
     heldout_passive_fill_event_transition_toxicity: dict[str, float | int | str],
     passive_fill_calibration_summary: dict[str, float | int | str],
@@ -1553,6 +1587,12 @@ def _append_execution_adjusted_summary(
     )
     transition_toxicity_lines = _passive_fill_event_transition_toxicity_lines(
         passive_fill_event_transition_toxicity
+    )
+    lifecycle_toxicity_lines = _passive_fill_event_lifecycle_toxicity_lines(
+        passive_fill_event_lifecycle_toxicity
+    )
+    heldout_lifecycle_toxicity_lines = _passive_fill_event_lifecycle_toxicity_lines(
+        heldout_passive_fill_event_lifecycle_toxicity
     )
     heldout_transition_toxicity_lines = _passive_fill_event_transition_toxicity_lines(
         heldout_passive_fill_event_transition_toxicity
@@ -1611,6 +1651,14 @@ def _append_execution_adjusted_summary(
         "## Heldout passive-fill event-window toxicity scorecard",
         "",
         *heldout_toxicity_lines,
+        "",
+        "## Passive-fill event lifecycle toxicity scorecard",
+        "",
+        *lifecycle_toxicity_lines,
+        "",
+        "## Heldout passive-fill event lifecycle toxicity scorecard",
+        "",
+        *heldout_lifecycle_toxicity_lines,
         "",
         "## Passive-fill transition toxicity scorecard",
         "",
@@ -1710,6 +1758,26 @@ def _passive_fill_event_toxicity_lines(summary: dict[str, float | int | str]) ->
         "eligible_regimes",
         "blocked_regimes",
         "worst_regime",
+        "worst_adverse_post_edge_share",
+        "worst_mean_post_minus_pre_realized_edge",
+        "weighted_mean_event_fill_probability",
+        "weighted_mean_event_adverse_fill_probability",
+        "weighted_mean_post_minus_pre_realized_edge",
+    ]
+    return [f"- {key}: {summary.get(key, 'n/a')}" for key in keys]
+
+
+def _passive_fill_event_lifecycle_toxicity_lines(
+    summary: dict[str, float | int | str],
+) -> list[str]:
+    if not summary or int(summary.get("total_events", 0)) == 0:
+        return ["- no passive-fill lifecycle toxicity windows"]
+    keys = [
+        "lifecycle_toxicity_gate_label",
+        "total_events",
+        "eligible_lifecycle_paths",
+        "blocked_lifecycle_paths",
+        "worst_lifecycle_path",
         "worst_adverse_post_edge_share",
         "worst_mean_post_minus_pre_realized_edge",
         "weighted_mean_event_fill_probability",

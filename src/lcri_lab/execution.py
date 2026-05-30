@@ -3195,6 +3195,124 @@ def passive_fill_event_transition_policy_curve(
     return pd.DataFrame(rows, columns=columns)
 
 
+def passive_fill_event_lifecycle_scorecard(
+    lifecycle_summary: pd.DataFrame,
+    *,
+    max_adverse_post_edge_share: float = 0.60,
+    min_mean_post_minus_pre_edge: float = -0.25,
+    min_events: int = 1,
+) -> dict[str, float | int | str]:
+    """Gate passive-fill toxicity by full pre/event/post regime lifecycle paths.
+
+    Transition-level scorecards can still hide toxicity that appears only when the
+    fill event itself occurs in a fragile liquidity state. This scorecard consumes
+    ``passive_fill_event_lifecycle_summary`` and blocks full lifecycle paths where
+    high-probability passive fills are followed by adverse realized-edge drift.
+    """
+    if not math.isfinite(max_adverse_post_edge_share) or not 0.0 <= max_adverse_post_edge_share <= 1.0:
+        raise ValueError("max_adverse_post_edge_share must be finite and between 0 and 1")
+    if not math.isfinite(min_mean_post_minus_pre_edge):
+        raise ValueError("min_mean_post_minus_pre_edge must be finite")
+    if not isinstance(min_events, int) or isinstance(min_events, bool) or min_events < 1:
+        raise ValueError("min_events must be a positive integer")
+    if lifecycle_summary.empty:
+        return _empty_passive_fill_event_lifecycle_scorecard()
+
+    required = {
+        "lifecycle_path",
+        "events",
+        "adverse_post_edge_share",
+        "mean_event_fill_probability",
+        "mean_event_adverse_fill_probability",
+        "mean_post_minus_pre_realized_edge",
+        "worst_post_minus_pre_realized_edge",
+    }
+    _require_columns(
+        lifecycle_summary,
+        required,
+        "passive fill event lifecycle toxicity",
+    )
+    values = _finite_values(
+        lifecycle_summary,
+        [
+            "events",
+            "adverse_post_edge_share",
+            "mean_event_fill_probability",
+            "mean_event_adverse_fill_probability",
+            "mean_post_minus_pre_realized_edge",
+            "worst_post_minus_pre_realized_edge",
+        ],
+        "passive fill event lifecycle toxicity",
+    )
+    if (values["events"] < 0.0).any():
+        raise ValueError("passive fill event lifecycle toxicity events must be non-negative")
+
+    total_events = int(values["events"].sum())
+    if total_events == 0:
+        return _empty_passive_fill_event_lifecycle_scorecard()
+
+    data = values.copy()
+    data["lifecycle_path"] = lifecycle_summary["lifecycle_path"].astype(str)
+    weights = data["events"] / total_events
+    eligible = data[data["events"] >= min_events]
+    if eligible.empty:
+        scorecard = _empty_passive_fill_event_lifecycle_scorecard()
+        scorecard.update(
+            {
+                "rows": int(len(lifecycle_summary)),
+                "lifecycle_paths": int(data["lifecycle_path"].nunique()),
+                "total_events": total_events,
+                "weighted_mean_event_fill_probability": float(
+                    (data["mean_event_fill_probability"] * weights).sum()
+                ),
+                "weighted_mean_event_adverse_fill_probability": float(
+                    (data["mean_event_adverse_fill_probability"] * weights).sum()
+                ),
+                "weighted_mean_post_minus_pre_realized_edge": float(
+                    (data["mean_post_minus_pre_realized_edge"] * weights).sum()
+                ),
+                "lifecycle_toxicity_gate_label": "insufficient_lifecycle_event_windows",
+            }
+        )
+        return scorecard
+
+    blocked = eligible[
+        (eligible["adverse_post_edge_share"] > max_adverse_post_edge_share)
+        | (eligible["mean_post_minus_pre_realized_edge"] < min_mean_post_minus_pre_edge)
+    ]
+    worst_idx = eligible.sort_values(
+        ["adverse_post_edge_share", "mean_post_minus_pre_realized_edge"],
+        ascending=[False, True],
+    ).index[0]
+    label = "lifecycle_event_window_blocker" if not blocked.empty else "lifecycle_event_window_pass"
+
+    return {
+        "rows": int(len(lifecycle_summary)),
+        "lifecycle_paths": int(data["lifecycle_path"].nunique()),
+        "total_events": total_events,
+        "eligible_lifecycle_paths": int(len(eligible)),
+        "blocked_lifecycle_paths": int(len(blocked)),
+        "worst_lifecycle_path": str(data.loc[worst_idx, "lifecycle_path"]),
+        "worst_adverse_post_edge_share": float(data.loc[worst_idx, "adverse_post_edge_share"]),
+        "worst_mean_post_minus_pre_realized_edge": float(
+            data.loc[worst_idx, "mean_post_minus_pre_realized_edge"]
+        ),
+        "worst_post_minus_pre_realized_edge": float(
+            data.loc[worst_idx, "worst_post_minus_pre_realized_edge"]
+        ),
+        "weighted_mean_event_fill_probability": float(
+            (data["mean_event_fill_probability"] * weights).sum()
+        ),
+        "weighted_mean_event_adverse_fill_probability": float(
+            (data["mean_event_adverse_fill_probability"] * weights).sum()
+        ),
+        "weighted_mean_post_minus_pre_realized_edge": float(
+            (data["mean_post_minus_pre_realized_edge"] * weights).sum()
+        ),
+        "lifecycle_toxicity_gate_label": label,
+    }
+
+
 def passive_fill_event_transition_scorecard(
     transition_summary: pd.DataFrame,
     *,
@@ -3681,6 +3799,24 @@ def _empty_passive_fill_event_toxicity_scorecard() -> dict[str, float | int | st
         "weighted_mean_event_adverse_fill_probability": 0.0,
         "weighted_mean_post_minus_pre_realized_edge": 0.0,
         "event_toxicity_label": "empty_event_windows",
+    }
+
+
+def _empty_passive_fill_event_lifecycle_scorecard() -> dict[str, float | int | str]:
+    return {
+        "rows": 0,
+        "lifecycle_paths": 0,
+        "total_events": 0,
+        "eligible_lifecycle_paths": 0,
+        "blocked_lifecycle_paths": 0,
+        "worst_lifecycle_path": "none",
+        "worst_adverse_post_edge_share": 0.0,
+        "worst_mean_post_minus_pre_realized_edge": 0.0,
+        "worst_post_minus_pre_realized_edge": 0.0,
+        "weighted_mean_event_fill_probability": 0.0,
+        "weighted_mean_event_adverse_fill_probability": 0.0,
+        "weighted_mean_post_minus_pre_realized_edge": 0.0,
+        "lifecycle_toxicity_gate_label": "empty_lifecycle_event_windows",
     }
 
 
