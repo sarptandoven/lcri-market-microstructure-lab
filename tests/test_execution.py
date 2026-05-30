@@ -11,6 +11,7 @@ from lcri_lab.execution import (
     passive_fill_calibration_curve,
     passive_fill_calibration_summary,
     passive_fill_event_regime_summary,
+    passive_fill_event_lifecycle_summary,
     passive_fill_event_toxicity_scorecard,
     passive_fill_event_transition_scorecard,
     passive_fill_event_transition_summary,
@@ -794,6 +795,47 @@ def test_passive_fill_event_transition_summary_ranks_transition_toxicity() -> No
 def test_passive_fill_event_transition_summary_rejects_bad_events() -> None:
     with pytest.raises(ValueError, match="missing passive fill event transition summary columns"):
         passive_fill_event_transition_summary(pd.DataFrame({"event_regime": ["thin"]}))
+
+
+def test_passive_fill_event_lifecycle_summary_ranks_full_regime_paths() -> None:
+    events = pd.DataFrame(
+        {
+            "pre_window_regime": ["calm", "calm", "thin", "stress"],
+            "event_regime": ["thin", "thin", "stress", "stress"],
+            "post_window_regime": ["stress", "stress", "stress", "calm"],
+            "regime_transition": ["calm->stress", "calm->stress", "thin->stress", "stress->calm"],
+            "event_fill_probability": [0.90, 0.80, 0.95, 0.85],
+            "event_adverse_fill_probability": [0.30, 0.20, 0.60, 0.10],
+            "event_edge_ticks": [0.70, 0.50, 1.20, 0.40],
+            "pre_realized_edge_sum": [0.40, 0.10, 0.20, -0.10],
+            "post_realized_edge_sum": [-0.40, -0.20, -0.90, 0.30],
+            "post_minus_pre_realized_edge": [-0.80, -0.30, -1.10, 0.40],
+            "window_rows": [3, 3, 3, 3],
+        }
+    )
+
+    summary = passive_fill_event_lifecycle_summary(events)
+
+    assert summary["lifecycle_path"].tolist() == [
+        "thin|stress|stress",
+        "calm|thin|stress",
+        "stress|stress|calm",
+    ]
+    assert summary["events"].tolist() == [1, 2, 1]
+    assert summary["adverse_post_edge_share"].tolist() == pytest.approx([1.0, 1.0, 0.0])
+    assert summary["mean_pre_realized_edge_sum"].tolist() == pytest.approx([0.20, 0.25, -0.10])
+    assert summary["mean_post_realized_edge_sum"].tolist() == pytest.approx([-0.90, -0.30, 0.30])
+    assert summary["mean_post_minus_pre_realized_edge"].tolist() == pytest.approx([-1.10, -0.55, 0.40])
+    assert summary["lifecycle_toxicity_label"].tolist() == [
+        "toxic_transition_lifecycle",
+        "toxic_transition_lifecycle",
+        "benign_transition_lifecycle",
+    ]
+
+
+def test_passive_fill_event_lifecycle_summary_rejects_bad_events() -> None:
+    with pytest.raises(ValueError, match="missing passive fill event lifecycle summary columns"):
+        passive_fill_event_lifecycle_summary(pd.DataFrame({"event_regime": ["thin"]}))
 
 
 def test_passive_fill_event_transition_scorecard_blocks_toxic_regime_paths() -> None:

@@ -1686,6 +1686,113 @@ def passive_fill_event_transition_summary(events: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def passive_fill_event_lifecycle_summary(events: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate passive-fill event toxicity by full pre/event/post regime path.
+
+    Transition summaries collapse the event regime out of the state path. This
+    lifecycle view keeps the modal pre-window regime, event-row regime, and modal
+    post-window regime together so reviewers can spot toxic fills that are benign
+    for the same pre→post transition in one event state but fragile in another.
+    """
+    columns = list(_empty_passive_fill_event_lifecycle_summary().columns)
+    if events.empty:
+        return _empty_passive_fill_event_lifecycle_summary()
+    required = {
+        "pre_window_regime",
+        "event_regime",
+        "post_window_regime",
+        "regime_transition",
+        "event_fill_probability",
+        "event_adverse_fill_probability",
+        "event_edge_ticks",
+        "pre_realized_edge_sum",
+        "post_realized_edge_sum",
+        "post_minus_pre_realized_edge",
+        "window_rows",
+    }
+    _require_columns(events, required, "passive fill event lifecycle summary")
+    values = _finite_values(
+        events,
+        [
+            "event_fill_probability",
+            "event_adverse_fill_probability",
+            "event_edge_ticks",
+            "pre_realized_edge_sum",
+            "post_realized_edge_sum",
+            "post_minus_pre_realized_edge",
+            "window_rows",
+        ],
+        "passive fill event lifecycle summary",
+    )
+    if (values["window_rows"] < 1.0).any():
+        raise ValueError("passive fill event lifecycle summary window_rows must be positive")
+
+    data = values.copy()
+    data["pre_window_regime"] = events["pre_window_regime"].astype(str)
+    data["event_regime"] = events["event_regime"].astype(str)
+    data["post_window_regime"] = events["post_window_regime"].astype(str)
+    data["regime_transition"] = events["regime_transition"].astype(str)
+    data["lifecycle_path"] = (
+        data["pre_window_regime"]
+        + "|"
+        + data["event_regime"]
+        + "|"
+        + data["post_window_regime"]
+    )
+
+    rows: list[dict[str, float | int | str]] = []
+    for lifecycle_path, group in data.groupby("lifecycle_path", sort=True):
+        drift = group["post_minus_pre_realized_edge"]
+        adverse = int((drift < 0.0).sum())
+        adverse_share = float(adverse / len(group))
+        mean_drift = float(drift.mean())
+        rows.append(
+            {
+                "lifecycle_path": str(lifecycle_path),
+                "pre_window_regime": str(group["pre_window_regime"].iloc[0]),
+                "event_regime": str(group["event_regime"].iloc[0]),
+                "post_window_regime": str(group["post_window_regime"].iloc[0]),
+                "regime_transitions": int(group["regime_transition"].nunique()),
+                "events": int(len(group)),
+                "adverse_post_edge_events": adverse,
+                "adverse_post_edge_share": adverse_share,
+                "mean_event_fill_probability": float(group["event_fill_probability"].mean()),
+                "mean_event_adverse_fill_probability": float(
+                    group["event_adverse_fill_probability"].mean()
+                ),
+                "mean_event_edge_ticks": float(group["event_edge_ticks"].mean()),
+                "mean_pre_realized_edge_sum": float(group["pre_realized_edge_sum"].mean()),
+                "mean_post_realized_edge_sum": float(group["post_realized_edge_sum"].mean()),
+                "mean_post_minus_pre_realized_edge": mean_drift,
+                "worst_post_minus_pre_realized_edge": float(drift.min()),
+                "mean_window_rows": float(group["window_rows"].mean()),
+                "lifecycle_toxicity_label": _passive_fill_lifecycle_toxicity_label(
+                    adverse_share=adverse_share,
+                    mean_post_minus_pre_edge=mean_drift,
+                ),
+            }
+        )
+    return pd.DataFrame(rows)[columns].sort_values(
+        [
+            "adverse_post_edge_share",
+            "worst_post_minus_pre_realized_edge",
+            "mean_event_adverse_fill_probability",
+        ],
+        ascending=[False, True, False],
+        ignore_index=True,
+    )
+
+
+def _passive_fill_lifecycle_toxicity_label(
+    *, adverse_share: float, mean_post_minus_pre_edge: float
+) -> str:
+    if adverse_share >= 0.5 and mean_post_minus_pre_edge < 0.0:
+        return "toxic_transition_lifecycle"
+    if adverse_share > 0.0 or mean_post_minus_pre_edge < 0.0:
+        return "mixed_transition_lifecycle"
+    return "benign_transition_lifecycle"
+
+
 def _modal_window_regime(values: pd.Series, *, fallback: str) -> str:
     if values.empty:
         return fallback
@@ -2178,6 +2285,30 @@ def _empty_passive_fill_event_transition_summary() -> pd.DataFrame:
             "mean_event_edge_ticks",
             "mean_post_minus_pre_realized_edge",
             "worst_post_minus_pre_realized_edge",
+        ]
+    )
+
+
+def _empty_passive_fill_event_lifecycle_summary() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "lifecycle_path",
+            "pre_window_regime",
+            "event_regime",
+            "post_window_regime",
+            "regime_transitions",
+            "events",
+            "adverse_post_edge_events",
+            "adverse_post_edge_share",
+            "mean_event_fill_probability",
+            "mean_event_adverse_fill_probability",
+            "mean_event_edge_ticks",
+            "mean_pre_realized_edge_sum",
+            "mean_post_realized_edge_sum",
+            "mean_post_minus_pre_realized_edge",
+            "worst_post_minus_pre_realized_edge",
+            "mean_window_rows",
+            "lifecycle_toxicity_label",
         ]
     )
 
