@@ -887,6 +887,198 @@ def queue_position_edge_decay(surface: pd.DataFrame, *, min_rows: int = 1) -> pd
     )
 
 
+def _empty_queue_position_execution_quality_gate() -> dict[str, float | int | str]:
+    return {
+        "surface_rows": 0,
+        "decay_rows": 0,
+        "surface_regimes": 0,
+        "decay_regimes": 0,
+        "eligible_regimes": 0,
+        "blocked_regimes": 0,
+        "weighted_absolute_calibration_error": 0.0,
+        "weighted_brier_score": 0.0,
+        "weighted_edge_decay_ticks": 0.0,
+        "worst_calibration_regime": "none",
+        "worst_decay_regime": "none",
+        "max_regime_absolute_calibration_error": 0.0,
+        "max_calibration_error_widening": 0.0,
+        "non_monotonic_decay_regimes": 0,
+        "quality_gate_label": "empty_queue_execution_surface",
+    }
+
+
+def queue_position_execution_quality_gate(
+    surface: pd.DataFrame,
+    decay: pd.DataFrame,
+    *,
+    max_expected_calibration_error: float = 0.15,
+    max_expected_brier_score: float = 0.15,
+    max_calibration_widening: float = 0.10,
+) -> dict[str, float | int | str]:
+    """Gate queue-position fill surfaces before treating passive edge as publishable.
+
+    The surface-level calibration check asks whether predicted passive fills are
+    empirically reliable across queue-depth buckets. The decay check asks whether
+    edge degrades monotonically as quote placement moves deeper into the visible
+    queue. Combining both prevents a superficially attractive LCRI signal from
+    passing review when its execution evidence is driven by miscalibrated or
+    non-monotone queue-depth regimes.
+    """
+    for name, value in {
+        "max_expected_calibration_error": max_expected_calibration_error,
+        "max_expected_brier_score": max_expected_brier_score,
+        "max_calibration_widening": max_calibration_widening,
+    }.items():
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"{name} must be a finite non-negative value")
+    if surface.empty and decay.empty:
+        return _empty_queue_position_execution_quality_gate()
+
+    surface_required = {"regime", "rows", "absolute_calibration_error", "brier_score"}
+    decay_required = {
+        "regime",
+        "rows",
+        "edge_decay_ticks",
+        "calibration_error_widening",
+        "monotonic_edge_decay",
+    }
+    _require_columns(surface, surface_required, "queue execution quality surface")
+    _require_columns(decay, decay_required, "queue execution quality decay")
+    surface_values = _finite_values(
+        surface,
+        ["rows", "absolute_calibration_error", "brier_score"],
+        "queue execution quality surface",
+    )
+    decay_values = _finite_values(
+        decay,
+        ["rows", "edge_decay_ticks", "calibration_error_widening"],
+        "queue execution quality decay",
+    )
+    if (surface_values["rows"] < 0.0).any() or (decay_values["rows"] < 0.0).any():
+        raise ValueError("queue execution quality rows must be non-negative")
+    if (surface_values[["absolute_calibration_error", "brier_score"]] < 0.0).any().any():
+        raise ValueError("queue execution quality calibration metrics must be non-negative")
+
+    surface_data = surface_values.copy()
+    surface_data["regime"] = surface["regime"].astype(str)
+    regime_surface = surface_data.groupby("regime", sort=True).apply(
+        _weighted_queue_quality_surface_row,
+        include_groups=False,
+    )
+    if isinstance(regime_surface, pd.Series):
+        regime_surface = regime_surface.unstack()
+    regime_surface = regime_surface.reset_index()
+
+    decay_data = decay_values.copy()
+    decay_data["regime"] = decay["regime"].astype(str)
+    decay_data["monotonic_edge_decay"] = decay["monotonic_edge_decay"].astype(bool)
+
+    surface_rows = int(surface_values["rows"].sum())
+    decay_rows = int(decay_values["rows"].sum())
+    surface_weights = surface_values["rows"] / surface_rows if surface_rows > 0 else surface_values["rows"]
+    decay_weights = decay_values["rows"] / decay_rows if decay_rows > 0 else decay_values["rows"]
+
+    if regime_surface.empty:
+        worst_calibration_regime = "none"
+        max_regime_error = 0.0
+        high_error_regimes: set[str] = set()
+    else:
+        worst_idx = regime_surface["absolute_calibration_error"].idxmax()
+        worst_calibration_regime = str(regime_surface.loc[worst_idx, "regime"])
+        max_regime_error = float(regime_surface["absolute_calibration_error"].max())
+        high_error_regimes = set(
+            regime_surface.loc[
+                (regime_surface["absolute_calibration_error"] > max_expected_calibration_error)
+                | (regime_surface["brier_score"] > max_expected_brier_score),
+                "regime",
+            ].astype(str)
+        )
+
+    if decay_data.empty:
+        worst_decay_regime = "none"
+        max_widening = 0.0
+        non_monotonic = 0
+        decay_block_regimes: set[str] = set()
+    else:
+        worst_decay_idx = decay_data["calibration_error_widening"].idxmax()
+        worst_decay_regime = str(decay_data.loc[worst_decay_idx, "regime"])
+        max_widening = float(decay_data["calibration_error_widening"].max())
+        non_monotonic = int((~decay_data["monotonic_edge_decay"]).sum())
+        decay_block_regimes = set(
+            decay_data.loc[
+                (decay_data["calibration_error_widening"] > max_calibration_widening)
+                | (~decay_data["monotonic_edge_decay"]),
+                "regime",
+            ].astype(str)
+        )
+
+    blocked_regimes = high_error_regimes | decay_block_regimes
+    eligible_regimes = set(surface_data["regime"]) | set(decay_data["regime"])
+    label = _queue_execution_quality_label(
+        blocked_regimes=len(blocked_regimes),
+        eligible_regimes=len(eligible_regimes),
+        weighted_calibration_error=float(
+            (surface_values["absolute_calibration_error"] * surface_weights).sum()
+        ),
+        weighted_brier_score=float((surface_values["brier_score"] * surface_weights).sum()),
+        max_expected_calibration_error=max_expected_calibration_error,
+        max_expected_brier_score=max_expected_brier_score,
+    )
+
+    return {
+        "surface_rows": surface_rows,
+        "decay_rows": decay_rows,
+        "surface_regimes": int(surface_data["regime"].nunique()),
+        "decay_regimes": int(decay_data["regime"].nunique()),
+        "eligible_regimes": len(eligible_regimes),
+        "blocked_regimes": len(blocked_regimes),
+        "weighted_absolute_calibration_error": float(
+            (surface_values["absolute_calibration_error"] * surface_weights).sum()
+        ),
+        "weighted_brier_score": float((surface_values["brier_score"] * surface_weights).sum()),
+        "weighted_edge_decay_ticks": float((decay_values["edge_decay_ticks"] * decay_weights).sum()),
+        "worst_calibration_regime": worst_calibration_regime,
+        "worst_decay_regime": worst_decay_regime,
+        "max_regime_absolute_calibration_error": max_regime_error,
+        "max_calibration_error_widening": max_widening,
+        "non_monotonic_decay_regimes": non_monotonic,
+        "quality_gate_label": label,
+    }
+
+
+def _weighted_queue_quality_surface_row(group: pd.DataFrame) -> pd.Series:
+    total_rows = float(group["rows"].sum())
+    weights = group["rows"] / total_rows if total_rows > 0.0 else group["rows"]
+    return pd.Series(
+        {
+            "rows": int(total_rows),
+            "absolute_calibration_error": float((group["absolute_calibration_error"] * weights).sum()),
+            "brier_score": float((group["brier_score"] * weights).sum()),
+        }
+    )
+
+
+def _queue_execution_quality_label(
+    *,
+    blocked_regimes: int,
+    eligible_regimes: int,
+    weighted_calibration_error: float,
+    weighted_brier_score: float,
+    max_expected_calibration_error: float,
+    max_expected_brier_score: float,
+) -> str:
+    if eligible_regimes == 0:
+        return "empty_queue_execution_surface"
+    if blocked_regimes > 0:
+        return "queue_execution_blocked"
+    if (
+        weighted_calibration_error > max_expected_calibration_error * 0.75
+        or weighted_brier_score > max_expected_brier_score * 0.75
+    ):
+        return "queue_execution_review"
+    return "queue_execution_publishable"
+
+
 def passive_fill_calibration_curve(
     frame: pd.DataFrame,
     *,

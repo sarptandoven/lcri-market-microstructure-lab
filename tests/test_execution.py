@@ -18,6 +18,7 @@ from lcri_lab.execution import (
     passive_fill_edge_curve,
     queue_position_capacity_frontier,
     queue_position_capacity_stability,
+    queue_position_execution_quality_gate,
     queue_position_edge_decay,
     queue_position_fill_surface,
     queue_position_fraction_sweep,
@@ -439,6 +440,83 @@ def test_queue_position_edge_decay_rejects_bad_surface() -> None:
         queue_position_edge_decay(pd.DataFrame(), min_rows=0)
     with pytest.raises(ValueError, match="missing queue position edge decay columns"):
         queue_position_edge_decay(pd.DataFrame({"regime": ["open"]}))
+
+
+def test_queue_position_execution_quality_gate_blocks_fragile_queue_surfaces() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["open", "open", "stress", "stress"],
+            "queue_bin": [1, 2, 1, 2],
+            "rows": [20, 20, 10, 10],
+            "absolute_calibration_error": [0.05, 0.08, 0.20, 0.40],
+            "brier_score": [0.04, 0.07, 0.20, 0.50],
+        }
+    )
+    decay = pd.DataFrame(
+        {
+            "regime": ["open", "stress"],
+            "rows": [40, 20],
+            "edge_decay_ticks": [0.30, -0.20],
+            "fill_rate_decay": [0.20, -0.10],
+            "calibration_error_widening": [0.03, 0.20],
+            "monotonic_edge_decay": [True, False],
+            "queue_decay_label": ["front_queue_preferred", "calibration_watch"],
+        }
+    )
+
+    gate = queue_position_execution_quality_gate(
+        surface,
+        decay,
+        max_expected_calibration_error=0.20,
+        max_expected_brier_score=0.20,
+        max_calibration_widening=0.10,
+    )
+
+    assert gate == {
+        "surface_rows": 60,
+        "decay_rows": 60,
+        "surface_regimes": 2,
+        "decay_regimes": 2,
+        "eligible_regimes": 2,
+        "blocked_regimes": 1,
+        "weighted_absolute_calibration_error": pytest.approx(0.1433333333),
+        "weighted_brier_score": pytest.approx(0.1533333333),
+        "weighted_edge_decay_ticks": pytest.approx(0.1333333333),
+        "worst_calibration_regime": "stress",
+        "worst_decay_regime": "stress",
+        "max_regime_absolute_calibration_error": pytest.approx(0.30),
+        "max_calibration_error_widening": pytest.approx(0.20),
+        "non_monotonic_decay_regimes": 1,
+        "quality_gate_label": "queue_execution_blocked",
+    }
+
+
+def test_queue_position_execution_quality_gate_labels_publishable_surface() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["open", "open"],
+            "queue_bin": [1, 2],
+            "rows": [50, 50],
+            "absolute_calibration_error": [0.04, 0.06],
+            "brier_score": [0.03, 0.05],
+        }
+    )
+    decay = pd.DataFrame(
+        {
+            "regime": ["open"],
+            "rows": [100],
+            "edge_decay_ticks": [0.20],
+            "fill_rate_decay": [0.10],
+            "calibration_error_widening": [0.02],
+            "monotonic_edge_decay": [True],
+            "queue_decay_label": ["front_queue_preferred"],
+        }
+    )
+
+    gate = queue_position_execution_quality_gate(surface, decay)
+
+    assert gate["blocked_regimes"] == 0
+    assert gate["quality_gate_label"] == "queue_execution_publishable"
 
 
 def test_passive_fill_calibration_curve_scores_realized_side_fills_by_regime() -> None:

@@ -115,6 +115,7 @@ from lcri_lab.execution import (
     passive_fill_event_window_diagnostics,
     queue_position_capacity_frontier,
     queue_position_edge_decay,
+    queue_position_execution_quality_gate,
     queue_position_fill_surface,
     queue_position_fraction_sweep,
 )
@@ -166,6 +167,7 @@ __all__ = [
     "passive_fill_event_window_diagnostics",
     "queue_position_capacity_frontier",
     "queue_position_edge_decay",
+    "queue_position_execution_quality_gate",
     "queue_position_fill_surface",
     "queue_position_fraction_sweep",
     "add_transaction_cost_labels",
