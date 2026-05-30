@@ -351,6 +351,61 @@ def test_execution_adjusted_edge_summary_quantifies_tradability_drag() -> None:
     assert summary["dominant_execution_side"] == "long"
 
 
+def test_event_level_passive_fill_horizon_sweep_relabels_from_trade_and_cancel_flow() -> None:
+    snapshots = pd.DataFrame(
+        {
+            "symbol": ["A", "A", "A"],
+            "timestamp": [0.0, 1.0, 2.0],
+            "bid_px_1": [100.0, 100.0, 100.0],
+            "ask_px_1": [101.0, 101.0, 101.0],
+            "bid_queue_ahead": [30.0, 30.0, 30.0],
+            "ask_queue_ahead": [30.0, 30.0, 30.0],
+            "best_execution_side": ["long", "short", "long"],
+            "regime": ["open", "open", "close"],
+            "bid_fill_probability": [0.60, 0.20, 0.80],
+            "ask_fill_probability": [0.30, 0.70, 0.40],
+        }
+    )
+    events = pd.DataFrame(
+        {
+            "symbol": ["A", "A", "A", "A"],
+            "timestamp": [0.40, 0.70, 1.80, 2.40],
+            "event_type": ["trade", "cancel", "trade", "trade"],
+            "side": ["sell", "bid", "buy", "sell"],
+            "price": [100.0, 100.0, 101.0, 100.0],
+            "size": [15.0, 15.0, 30.0, 30.0],
+        }
+    )
+
+    from lcri_lab.execution import event_level_passive_fill_horizon_sweep
+
+    sweep = event_level_passive_fill_horizon_sweep(
+        snapshots,
+        events,
+        horizons=[0.5, 1.0],
+        bins=1,
+        group_cols="symbol",
+        regime_col="regime",
+    )
+
+    assert sweep["horizon"].tolist() == pytest.approx([0.5, 1.0])
+    assert sweep["rows"].tolist() == [3, 3]
+    assert sweep["weighted_mean_predicted_fill_probability"].tolist() == pytest.approx([0.70, 0.70])
+    assert sweep["weighted_realized_fill_rate"].tolist() == pytest.approx([1.0 / 3.0, 1.0])
+    assert sweep["realized_fill_rate_gap_vs_shortest"].tolist() == pytest.approx([0.0, 2.0 / 3.0])
+    assert sweep["event_depletion_source"].tolist() == ["events", "events"]
+    assert sweep["horizon_stability_label"].tolist() == ["anchor_horizon", "later_fill_realization"]
+
+
+def test_event_level_passive_fill_horizon_sweep_rejects_invalid_horizons() -> None:
+    from lcri_lab.execution import event_level_passive_fill_horizon_sweep
+
+    with pytest.raises(ValueError, match="horizons must be a non-empty sequence"):
+        event_level_passive_fill_horizon_sweep(pd.DataFrame(), pd.DataFrame(), horizons=[])
+    with pytest.raises(ValueError, match="horizon values must be finite positive values"):
+        event_level_passive_fill_horizon_sweep(pd.DataFrame(), pd.DataFrame(), horizons=[0.0])
+
+
 def test_passive_fill_realization_horizon_sweep_relabels_and_calibrates_each_horizon() -> None:
     frame = pd.DataFrame(
         {

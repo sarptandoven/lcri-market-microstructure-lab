@@ -1520,6 +1520,108 @@ def passive_fill_calibration_summary(curve: pd.DataFrame) -> dict[str, float | i
     }
 
 
+def event_level_passive_fill_horizon_sweep(
+    snapshots: pd.DataFrame,
+    events: pd.DataFrame,
+    *,
+    horizons: list[float] | tuple[float, ...] = (0.5, 1.0, 2.0, 5.0),
+    bins: int = 5,
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    side_col: str = "best_execution_side",
+    regime_col: str | None = None,
+    timestamp_col: str = "timestamp",
+    event_type_col: str = "event_type",
+    event_side_col: str = "side",
+    event_price_col: str = "price",
+    event_size_col: str = "size",
+) -> pd.DataFrame:
+    """Calibrate passive fill probabilities against event-level queue depletion horizons.
+
+    Snapshot horizon sweeps are useful when only L2 states are available, but a
+    publishable execution claim should prefer add/cancel/trade message evidence
+    when available. This sweep relabels each passive quote with event-level queue
+    depletion over multiple time horizons, then reports calibration drift versus
+    the shortest event window.
+    """
+    if isinstance(horizons, (str, bytes)):
+        raise ValueError("horizons must be a non-empty sequence of finite positive values")
+    horizons = list(horizons)
+    if not horizons:
+        raise ValueError("horizons must be a non-empty sequence")
+    for horizon in horizons:
+        if not math.isfinite(float(horizon)) or float(horizon) <= 0.0:
+            raise ValueError("horizon values must be finite positive values")
+    if len(set(float(horizon) for horizon in horizons)) != len(horizons):
+        raise ValueError("horizon values must be unique")
+    if not isinstance(bins, int) or isinstance(bins, bool):
+        raise ValueError("bins must be an integer")
+    if bins < 1:
+        raise ValueError("bins must be at least 1")
+
+    rows: list[dict[str, float | int | str]] = []
+    anchor_realized_rate: float | None = None
+    anchor_brier: float | None = None
+    for index, horizon in enumerate(sorted(float(value) for value in horizons)):
+        realized = add_event_level_realized_fill_proxy(
+            snapshots,
+            events,
+            horizon=horizon,
+            group_cols=group_cols,
+            timestamp_col=timestamp_col,
+            event_type_col=event_type_col,
+            event_side_col=event_side_col,
+            event_price_col=event_price_col,
+            event_size_col=event_size_col,
+            bid_realized_col="_event_sweep_bid_realized_fill",
+            ask_realized_col="_event_sweep_ask_realized_fill",
+        )
+        curve = passive_fill_calibration_curve(
+            realized,
+            bins=bins,
+            side_col=side_col,
+            regime_col=regime_col,
+            bid_realized_col="_event_sweep_bid_realized_fill",
+            ask_realized_col="_event_sweep_ask_realized_fill",
+        )
+        summary = passive_fill_calibration_summary(curve)
+        realized_rate = float(summary["weighted_realized_fill_rate"])
+        brier = float(summary["weighted_brier_score"])
+        if index == 0:
+            anchor_realized_rate = realized_rate
+            anchor_brier = brier
+        assert anchor_realized_rate is not None
+        assert anchor_brier is not None
+        realized_gap = realized_rate - anchor_realized_rate
+        brier_gap = brier - anchor_brier
+        rows.append(
+            {
+                "horizon": float(horizon),
+                "event_depletion_source": "events",
+                "rows": int(summary["rows"]),
+                "bins": int(summary["bins"]),
+                "regimes": int(summary["regimes"]),
+                "weighted_mean_predicted_fill_probability": float(
+                    summary["weighted_mean_predicted_fill_probability"]
+                ),
+                "weighted_realized_fill_rate": realized_rate,
+                "weighted_calibration_error": float(summary["weighted_calibration_error"]),
+                "expected_calibration_error": float(summary["expected_calibration_error"]),
+                "weighted_brier_score": brier,
+                "worst_absolute_calibration_error": float(
+                    summary["worst_absolute_calibration_error"]
+                ),
+                "realized_fill_rate_gap_vs_shortest": float(realized_gap),
+                "brier_score_gap_vs_shortest": float(brier_gap),
+                "horizon_stability_label": _passive_fill_horizon_stability_label(
+                    index=index,
+                    realized_gap=realized_gap,
+                    brier_gap=brier_gap,
+                ),
+            }
+        )
+    return pd.DataFrame(rows)[list(_empty_event_level_passive_fill_horizon_sweep().columns)]
+
+
 def passive_fill_realization_horizon_sweep(
     frame: pd.DataFrame,
     *,
@@ -2380,6 +2482,12 @@ def _empty_passive_fill_realization_horizon_sweep() -> pd.DataFrame:
             "horizon_stability_label",
         ]
     )
+
+
+def _empty_event_level_passive_fill_horizon_sweep() -> pd.DataFrame:
+    columns = list(_empty_passive_fill_realization_horizon_sweep().columns)
+    columns.insert(1, "event_depletion_source")
+    return pd.DataFrame(columns=columns)
 
 
 def _passive_fill_horizon_stability_label(

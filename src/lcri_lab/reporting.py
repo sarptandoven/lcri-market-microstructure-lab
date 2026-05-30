@@ -617,6 +617,84 @@ def verify_passive_fill_realization_horizon_sweep(
     return errors
 
 
+def verify_event_level_passive_fill_horizon_sweep(
+    output_dir: Path, artifact: str = "event_level_passive_fill_horizon_sweep.csv"
+) -> list[str]:
+    """Return errors for event-message passive-fill calibration horizon sweeps."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing event-level passive-fill horizon sweep: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "horizon",
+        "event_depletion_source",
+        "rows",
+        "bins",
+        "regimes",
+        "weighted_mean_predicted_fill_probability",
+        "weighted_realized_fill_rate",
+        "weighted_calibration_error",
+        "expected_calibration_error",
+        "weighted_brier_score",
+        "worst_absolute_calibration_error",
+        "realized_fill_rate_gap_vs_shortest",
+        "brier_score_gap_vs_shortest",
+        "horizon_stability_label",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete event-level passive-fill horizon sweep {artifact}: {missing}"]
+
+    numeric_columns = list(required - {"event_depletion_source", "horizon_stability_label"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite event-level passive-fill horizon sweep values in {artifact}")
+    if not numeric["horizon"].gt(0.0).all():
+        errors.append(f"non-positive event-level passive-fill horizons in {artifact}")
+    if not numeric[["rows", "bins", "regimes"]].ge(1.0).all().all():
+        errors.append(f"non-positive event-level passive-fill horizon sweep counts in {artifact}")
+    if not numeric["horizon"].is_monotonic_increasing:
+        errors.append(f"unsorted event-level passive-fill horizons in {artifact}")
+    if numeric["horizon"].duplicated().any():
+        errors.append(f"duplicate event-level passive-fill horizons in {artifact}")
+    probability_columns = [
+        "weighted_mean_predicted_fill_probability",
+        "weighted_realized_fill_rate",
+        "expected_calibration_error",
+        "weighted_brier_score",
+        "worst_absolute_calibration_error",
+    ]
+    if not numeric[probability_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        errors.append(f"bounded event-level passive-fill horizon probabilities violated in {artifact}")
+    signed_columns = [
+        "weighted_calibration_error",
+        "realized_fill_rate_gap_vs_shortest",
+        "brier_score_gap_vs_shortest",
+    ]
+    if not numeric[signed_columns].apply(lambda col: col.between(-1.0, 1.0).all()).all():
+        errors.append(f"bounded event-level passive-fill horizon signed gaps violated in {artifact}")
+    if abs(float(numeric.iloc[0]["realized_fill_rate_gap_vs_shortest"])) > 1e-12:
+        errors.append(f"first event-level passive-fill horizon is not anchored in {artifact}")
+    if abs(float(numeric.iloc[0]["brier_score_gap_vs_shortest"])) > 1e-12:
+        errors.append(f"first event-level passive-fill brier horizon is not anchored in {artifact}")
+    allowed_labels = {
+        "anchor_horizon",
+        "later_fill_realization",
+        "horizon_fragile",
+        "horizon_stable",
+    }
+    unknown_labels = sorted(set(frame["horizon_stability_label"].astype(str)) - allowed_labels)
+    if unknown_labels:
+        errors.append(f"unknown event-level passive-fill horizon stability labels in {artifact}: {unknown_labels}")
+    if str(frame.iloc[0]["horizon_stability_label"]) != "anchor_horizon":
+        errors.append(f"first event-level passive-fill horizon is not labeled anchor_horizon in {artifact}")
+    sources = set(frame["event_depletion_source"].astype(str))
+    if sources != {"events"}:
+        errors.append("non-event passive-fill horizon depletion sources")
+    return errors
+
+
 def verify_alpha_event_review_artifacts(output_dir: Path) -> list[str]:
     """Return errors when alpha event review artifacts are incomplete or stale."""
     paths = {
