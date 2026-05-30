@@ -7,6 +7,7 @@ from lcri_lab.baseline import (
     baseline_basis_comparison,
     baseline_component_attribution,
     baseline_liquidity_stress_curve,
+    baseline_nonlinear_publishability_summary,
     baseline_rolling_basis_comparison,
     baseline_rolling_basis_summary,
     compute_lcri,
@@ -259,6 +260,82 @@ def test_baseline_rolling_basis_summary_scores_persistent_nonlinear_lift() -> No
     assert nonlinear["positive_lift_rate"] == pytest.approx(1.0)
     assert nonlinear["stable_lift"] is True
     assert nonlinear["publishability_note"] == "persistent_out_of_sample_lift"
+
+
+def test_baseline_nonlinear_publishability_summary_requires_lift_and_attribution() -> None:
+    books = simulate_order_books(SimulationConfig(rows=960, seed=24))
+    features = compute_features(books)
+    features["raw_imbalance"] = (
+        0.14 * features["spread_ticks"].to_numpy(dtype=float) ** 2
+        - 0.22 * features["volatility"].to_numpy(dtype=float) ** 2
+        + 0.44
+        * features["liquidity_void_ratio"].to_numpy(dtype=float)
+        * features["volatility"].to_numpy(dtype=float)
+        - 0.20 / (1.0 + features["replenishment_rate"].to_numpy(dtype=float))
+    )
+    baseline = LiquidityBaseline(ridge=1e-8).fit(features)
+    attribution = baseline_component_attribution(features, baseline)
+    rolling = baseline_rolling_basis_comparison(
+        features,
+        train_window=320,
+        test_window=160,
+        step=160,
+        ridge=1e-8,
+    )
+    rolling_summary = baseline_rolling_basis_summary(rolling, lift_floor=0.50, max_overfit_ratio=2.0)
+
+    summary = baseline_nonlinear_publishability_summary(
+        attribution,
+        rolling_summary,
+        min_contribution_share=0.75,
+        min_median_lift=0.50,
+    )
+
+    assert summary == {
+        "nonlinear_contribution_share": pytest.approx(
+            attribution.groupby("component")["contribution_share"].sum().loc["nonlinear_liquidity"]
+        ),
+        "nonlinear_winner_rate": pytest.approx(1.0),
+        "nonlinear_positive_lift_rate": pytest.approx(1.0),
+        "nonlinear_median_test_rmse_lift_vs_core": pytest.approx(
+            rolling_summary.set_index("basis").loc[
+                "nonlinear_liquidity", "median_test_rmse_lift_vs_core"
+            ]
+        ),
+        "nonlinear_min_test_rmse_lift_vs_core": pytest.approx(
+            rolling_summary.set_index("basis").loc[
+                "nonlinear_liquidity", "min_test_rmse_lift_vs_core"
+            ]
+        ),
+        "nonlinear_stable_lift": True,
+        "publishable": True,
+        "review_note": "nonlinear_baseline_supported",
+    }
+
+
+def test_baseline_nonlinear_publishability_summary_flags_unsupported_baseline() -> None:
+    attribution = pd.DataFrame(
+        {
+            "component": ["core", "nonlinear_liquidity"],
+            "feature": ["spread_ticks", "spread_stress_squared"],
+            "contribution_share": [0.80, 0.20],
+        }
+    )
+    rolling_summary = pd.DataFrame(
+        {
+            "basis": ["core", "nonlinear_liquidity"],
+            "winner_rate": [0.60, 0.40],
+            "positive_lift_rate": [0.0, 0.50],
+            "median_test_rmse_lift_vs_core": [0.0, 0.08],
+            "min_test_rmse_lift_vs_core": [0.0, -0.10],
+            "stable_lift": [False, False],
+        }
+    )
+
+    summary = baseline_nonlinear_publishability_summary(attribution, rolling_summary)
+
+    assert summary["publishable"] is False
+    assert summary["review_note"] == "nonlinear_baseline_under_supported"
 
 
 def test_baseline_rolling_basis_summary_rejects_missing_columns() -> None:

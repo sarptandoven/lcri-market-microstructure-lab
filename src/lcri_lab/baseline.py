@@ -398,6 +398,87 @@ def baseline_rolling_basis_summary(
     return output
 
 
+def baseline_nonlinear_publishability_summary(
+    attribution: pd.DataFrame,
+    rolling_summary: pd.DataFrame,
+    *,
+    min_contribution_share: float = 0.50,
+    min_median_lift: float = 0.0,
+) -> dict[str, bool | float | str]:
+    """Summarize whether nonlinear liquidity neutralization is publishable.
+
+    Nonlinear baseline claims should clear two hurdles: the fitted baseline should
+    actually allocate meaningful prediction mass to nonlinear liquidity features,
+    and rolling holdout diagnostics should show stable out-of-sample lift. This
+    compact gate combines component attribution with rolling basis stability so
+    release artifacts can distinguish real nonlinear neutralization from an
+    overfit or decorative basis expansion.
+    """
+    if not math.isfinite(min_contribution_share) or not 0.0 <= min_contribution_share <= 1.0:
+        raise ValueError("min_contribution_share must be finite and in [0, 1]")
+    if not math.isfinite(min_median_lift):
+        raise ValueError("min_median_lift must be finite")
+
+    attribution_required = {"component", "contribution_share"}
+    missing_attribution = sorted(attribution_required - set(attribution.columns))
+    if missing_attribution:
+        raise ValueError(f"missing nonlinear publishability attribution columns: {missing_attribution}")
+    rolling_required = {
+        "basis",
+        "winner_rate",
+        "positive_lift_rate",
+        "median_test_rmse_lift_vs_core",
+        "min_test_rmse_lift_vs_core",
+        "stable_lift",
+    }
+    missing_rolling = sorted(rolling_required - set(rolling_summary.columns))
+    if missing_rolling:
+        raise ValueError(f"missing nonlinear publishability rolling columns: {missing_rolling}")
+    if attribution.empty:
+        raise ValueError("attribution must contain at least one component row")
+
+    contribution = attribution["contribution_share"].to_numpy(dtype=float)
+    if not np.isfinite(contribution).all():
+        raise ValueError("attribution contribution shares must be finite")
+    nonlinear_contribution_share = float(
+        attribution.loc[
+            attribution["component"].astype(str) == "nonlinear_liquidity",
+            "contribution_share",
+        ].astype(float).sum()
+    )
+    nonlinear_rows = rolling_summary[rolling_summary["basis"].astype(str) == "nonlinear_liquidity"]
+    if nonlinear_rows.empty:
+        raise ValueError("rolling_summary must include nonlinear_liquidity basis")
+    nonlinear = nonlinear_rows.iloc[0]
+
+    numeric = {
+        "nonlinear_winner_rate": float(nonlinear["winner_rate"]),
+        "nonlinear_positive_lift_rate": float(nonlinear["positive_lift_rate"]),
+        "nonlinear_median_test_rmse_lift_vs_core": float(
+            nonlinear["median_test_rmse_lift_vs_core"]
+        ),
+        "nonlinear_min_test_rmse_lift_vs_core": float(nonlinear["min_test_rmse_lift_vs_core"]),
+    }
+    if not all(math.isfinite(value) for value in numeric.values()):
+        raise ValueError("nonlinear publishability rolling metrics must be finite")
+    nonlinear_stable_lift = bool(nonlinear["stable_lift"])
+    publishable = bool(
+        nonlinear_contribution_share >= min_contribution_share
+        and numeric["nonlinear_median_test_rmse_lift_vs_core"] >= min_median_lift
+        and nonlinear_stable_lift
+    )
+    review_note = (
+        "nonlinear_baseline_supported" if publishable else "nonlinear_baseline_under_supported"
+    )
+    return {
+        "nonlinear_contribution_share": nonlinear_contribution_share,
+        **numeric,
+        "nonlinear_stable_lift": nonlinear_stable_lift,
+        "publishable": publishable,
+        "review_note": review_note,
+    }
+
+
 def baseline_component_attribution(frame: pd.DataFrame, baseline: LiquidityBaseline) -> pd.DataFrame:
     """Attribute a fitted baseline's prediction to core, interaction, and nonlinear terms.
 
