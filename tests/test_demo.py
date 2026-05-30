@@ -114,11 +114,13 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "passive_fill_event_windows.csv").exists()
     assert (tmp_path / "passive_fill_event_regime_summary.csv").exists()
     assert (tmp_path / "passive_fill_event_transition_summary.csv").exists()
+    assert (tmp_path / "passive_fill_event_transition_policy_curve.csv").exists()
     assert (tmp_path / "passive_fill_event_toxicity_scorecard.json").exists()
     assert (tmp_path / "passive_fill_event_transition_toxicity_scorecard.json").exists()
     assert (tmp_path / "heldout_passive_fill_event_windows.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_regime_summary.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_transition_summary.csv").exists()
+    assert (tmp_path / "heldout_passive_fill_event_transition_policy_curve.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_toxicity_scorecard.json").exists()
     assert (tmp_path / "heldout_passive_fill_event_transition_toxicity_scorecard.json").exists()
     assert (tmp_path / "passive_fill_calibration_curve.csv").exists()
@@ -204,6 +206,18 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "mean_event_adverse_fill_probability",
         "worst_post_minus_pre_realized_edge",
     }.issubset(event_transition_columns)
+    event_transition_policy_columns = set(
+        pd.read_csv(tmp_path / "passive_fill_event_transition_policy_curve.csv", nrows=1).columns
+    )
+    assert {
+        "regime_transition",
+        "threshold",
+        "candidate_events",
+        "event_share",
+        "mean_post_minus_pre_realized_edge",
+        "adverse_post_edge_share",
+        "policy_label",
+    }.issubset(event_transition_policy_columns)
     execution_packet_columns = set(
         pd.read_csv(tmp_path / "execution_publishability_review_packet.csv", nrows=1).columns
     )
@@ -362,6 +376,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["passive_fill_event_windows.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_toxicity_scorecard.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["passive_fill_event_transition_policy_curve.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_realization_horizon_sweep.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_threshold_policy_curve.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_passive_fill_event_windows.csv"]["size_bytes"] > 0

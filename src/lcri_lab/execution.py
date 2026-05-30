@@ -2562,6 +2562,138 @@ def passive_fill_event_toxicity_scorecard(
     }
 
 
+def passive_fill_event_transition_policy_curve(
+    events: pd.DataFrame,
+    *,
+    thresholds: tuple[float, ...] = (0.60, 0.70, 0.80, 0.90),
+    transition_col: str = "regime_transition",
+    max_adverse_post_edge_share: float = 0.60,
+    min_mean_post_minus_pre_edge: float = -0.25,
+) -> pd.DataFrame:
+    """Sweep transition-conditioned passive-fill cutoffs for event-window policies.
+
+    High predicted passive-fill probability is not enough when fills cluster around
+    toxic regime transitions. This artifact turns event-window diagnostics into an
+    execution policy surface: for each regime transition and fill cutoff, quantify
+    how many events remain tradable, whether post-window realized edge deteriorates,
+    and whether the transition should pass, review, or block a passive policy.
+    """
+    columns = [
+        transition_col,
+        "threshold",
+        "total_events",
+        "candidate_events",
+        "event_share",
+        "mean_event_fill_probability",
+        "mean_event_adverse_fill_probability",
+        "mean_event_edge_ticks",
+        "mean_post_minus_pre_realized_edge",
+        "adverse_post_edge_share",
+        "policy_label",
+    ]
+    if not thresholds:
+        raise ValueError("thresholds must be a non-empty sequence")
+    clean_thresholds = [float(threshold) for threshold in thresholds]
+    if any(not math.isfinite(threshold) or not 0.0 <= threshold <= 1.0 for threshold in clean_thresholds):
+        raise ValueError("threshold values must be in [0.0, 1.0]")
+    for name, value in {
+        "max_adverse_post_edge_share": max_adverse_post_edge_share,
+        "min_mean_post_minus_pre_edge": min_mean_post_minus_pre_edge,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= max_adverse_post_edge_share <= 1.0:
+        raise ValueError("max_adverse_post_edge_share must be in [0.0, 1.0]")
+
+    required = {
+        transition_col,
+        "event_fill_probability",
+        "event_adverse_fill_probability",
+        "event_edge_ticks",
+        "post_minus_pre_realized_edge",
+    }
+    if events.empty:
+        return pd.DataFrame(columns=columns)
+    _require_columns(events, required, "passive fill event transition policy")
+    values = _finite_values(
+        events,
+        [
+            "event_fill_probability",
+            "event_adverse_fill_probability",
+            "event_edge_ticks",
+            "post_minus_pre_realized_edge",
+        ],
+        "passive fill event transition policy",
+    )
+    if (
+        (values[["event_fill_probability", "event_adverse_fill_probability"]] < 0.0)
+        | (values[["event_fill_probability", "event_adverse_fill_probability"]] > 1.0)
+    ).any().any():
+        raise ValueError("event fill probabilities must be in [0.0, 1.0]")
+
+    state = pd.DataFrame(
+        {
+            transition_col: events[transition_col].astype(str),
+            "event_fill_probability": values["event_fill_probability"],
+            "event_adverse_fill_probability": values["event_adverse_fill_probability"],
+            "event_edge_ticks": values["event_edge_ticks"],
+            "post_minus_pre_realized_edge": values["post_minus_pre_realized_edge"],
+        }
+    )
+
+    rows: list[dict[str, float | int | str]] = []
+    for transition, group in state.groupby(transition_col, sort=True):
+        total_events = len(group)
+        for threshold in sorted(clean_thresholds):
+            candidate = group[group["event_fill_probability"] >= threshold]
+            candidate_events = len(candidate)
+            if candidate_events == 0:
+                rows.append(
+                    {
+                        transition_col: str(transition),
+                        "threshold": float(threshold),
+                        "total_events": int(total_events),
+                        "candidate_events": 0,
+                        "event_share": 0.0,
+                        "mean_event_fill_probability": 0.0,
+                        "mean_event_adverse_fill_probability": 0.0,
+                        "mean_event_edge_ticks": 0.0,
+                        "mean_post_minus_pre_realized_edge": 0.0,
+                        "adverse_post_edge_share": 0.0,
+                        "policy_label": "no_transition_policy_events",
+                    }
+                )
+                continue
+            adverse_share = float((candidate["post_minus_pre_realized_edge"] < 0.0).mean())
+            mean_post_delta = float(candidate["post_minus_pre_realized_edge"].mean())
+            if mean_post_delta < min_mean_post_minus_pre_edge:
+                label = "transition_policy_blocked"
+            elif adverse_share > max_adverse_post_edge_share:
+                label = "transition_policy_review"
+            elif threshold >= 0.80:
+                label = "selective_transition_policy"
+            else:
+                label = "broad_transition_policy"
+            rows.append(
+                {
+                    transition_col: str(transition),
+                    "threshold": float(threshold),
+                    "total_events": int(total_events),
+                    "candidate_events": int(candidate_events),
+                    "event_share": float(candidate_events / total_events),
+                    "mean_event_fill_probability": float(candidate["event_fill_probability"].mean()),
+                    "mean_event_adverse_fill_probability": float(
+                        candidate["event_adverse_fill_probability"].mean()
+                    ),
+                    "mean_event_edge_ticks": float(candidate["event_edge_ticks"].mean()),
+                    "mean_post_minus_pre_realized_edge": mean_post_delta,
+                    "adverse_post_edge_share": adverse_share,
+                    "policy_label": label,
+                }
+            )
+    return pd.DataFrame(rows, columns=columns)
+
+
 def passive_fill_event_transition_scorecard(
     transition_summary: pd.DataFrame,
     *,

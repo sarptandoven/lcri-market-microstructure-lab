@@ -480,6 +480,27 @@ def test_verify_report_checks_passive_fill_threshold_policy_curve(tmp_path: Path
         verify_report(tmp_path)
 
 
+def test_verify_report_checks_passive_fill_event_transition_policy_curve(tmp_path: Path) -> None:
+    (tmp_path / "passive_fill_event_transition_policy_curve.csv").write_text(
+        "regime_transition,threshold,total_events,candidate_events,event_share,"
+        "mean_event_fill_probability,mean_event_adverse_fill_probability,"
+        "mean_event_edge_ticks,mean_post_minus_pre_realized_edge,"
+        "adverse_post_edge_share,policy_label\n"
+        "calm->thin,1.2,2,-1,1.4,0.6,0.7,0.1,-0.2,1.2,unknown\n"
+    )
+    (tmp_path / "artifact_manifest.json").write_text(
+        json.dumps(
+            {
+                "artifacts": ["passive_fill_event_transition_policy_curve.csv"],
+                "artifact_metadata": {},
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="passive fill event transition policy"):
+        verify_report(tmp_path)
+
+
 def test_verify_report_error_includes_summary(tmp_path: Path) -> None:
     (tmp_path / "artifact_manifest.json").write_text(json.dumps({"artifacts": []}))
 

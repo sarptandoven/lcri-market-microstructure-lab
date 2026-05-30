@@ -747,6 +747,76 @@ def verify_passive_fill_threshold_policy_curve(
     return errors
 
 
+def verify_passive_fill_event_transition_policy_curve(
+    output_dir: Path, artifact: str = "passive_fill_event_transition_policy_curve.csv"
+) -> list[str]:
+    """Return errors for transition-conditioned passive-fill event policy curves."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing passive fill event transition policy curve: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "regime_transition",
+        "threshold",
+        "total_events",
+        "candidate_events",
+        "event_share",
+        "mean_event_fill_probability",
+        "mean_event_adverse_fill_probability",
+        "mean_event_edge_ticks",
+        "mean_post_minus_pre_realized_edge",
+        "adverse_post_edge_share",
+        "policy_label",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete passive fill event transition policy curve {artifact}: {missing}"]
+
+    numeric_columns = list(required - {"regime_transition", "policy_label"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite passive fill event transition policy values in {artifact}")
+    count_columns = ["total_events", "candidate_events"]
+    if not numeric[count_columns].ge(0.0).all().all():
+        errors.append(f"negative passive fill event transition policy counts in {artifact}")
+    probability_columns = [
+        "threshold",
+        "event_share",
+        "mean_event_fill_probability",
+        "mean_event_adverse_fill_probability",
+        "adverse_post_edge_share",
+    ]
+    if not numeric[probability_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        errors.append(
+            f"bounded passive fill event transition policy probabilities violated in {artifact}"
+        )
+    if (numeric["candidate_events"] > numeric["total_events"]).any():
+        errors.append(f"passive fill event transition policy candidates exceed totals in {artifact}")
+    threshold_order = frame.groupby("regime_transition", sort=False)["threshold"].apply(
+        lambda col: col.astype(float).is_monotonic_increasing
+    )
+    if not threshold_order.all():
+        errors.append(f"unsorted passive fill event transition policy thresholds in {artifact}")
+    duplicate_thresholds = frame.duplicated(["regime_transition", "threshold"]).any()
+    if duplicate_thresholds:
+        errors.append(f"duplicate passive fill event transition policy thresholds in {artifact}")
+    allowed_labels = {
+        "no_transition_policy_events",
+        "broad_transition_policy",
+        "selective_transition_policy",
+        "transition_policy_review",
+        "transition_policy_blocked",
+    }
+    unknown_labels = sorted(set(frame["policy_label"].astype(str)) - allowed_labels)
+    if unknown_labels:
+        errors.append(
+            f"unknown passive fill event transition policy labels in {artifact}: {unknown_labels}"
+        )
+    return errors
+
+
+
 def verify_event_level_passive_fill_horizon_sweep(
     output_dir: Path, artifact: str = "event_level_passive_fill_horizon_sweep.csv"
 ) -> list[str]:

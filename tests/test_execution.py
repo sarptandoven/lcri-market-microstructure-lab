@@ -16,6 +16,7 @@ from lcri_lab.execution import (
     passive_fill_event_lead_lag_profile,
     passive_fill_event_lifecycle_summary,
     passive_fill_event_toxicity_scorecard,
+    passive_fill_event_transition_policy_curve,
     passive_fill_event_transition_scorecard,
     passive_fill_event_transition_summary,
     passive_fill_event_window_diagnostics,
@@ -1133,6 +1134,50 @@ def test_passive_fill_event_lifecycle_summary_ranks_full_regime_paths() -> None:
 def test_passive_fill_event_lifecycle_summary_rejects_bad_events() -> None:
     with pytest.raises(ValueError, match="missing passive fill event lifecycle summary columns"):
         passive_fill_event_lifecycle_summary(pd.DataFrame({"event_regime": ["thin"]}))
+
+
+def test_passive_fill_event_transition_policy_curve_sweeps_fill_cutoffs_by_transition() -> None:
+    events = pd.DataFrame(
+        {
+            "regime_transition": ["calm->thin", "calm->thin", "thin->stress", "thin->stress"],
+            "event_fill_probability": [0.70, 0.92, 0.82, 0.95],
+            "event_adverse_fill_probability": [0.20, 0.30, 0.60, 0.55],
+            "event_edge_ticks": [0.40, 0.80, 1.10, 1.20],
+            "post_minus_pre_realized_edge": [0.20, -0.10, -0.80, -0.40],
+        }
+    )
+
+    curve = passive_fill_event_transition_policy_curve(
+        events,
+        thresholds=(0.80, 0.90),
+        max_adverse_post_edge_share=0.75,
+        min_mean_post_minus_pre_edge=-0.30,
+    )
+
+    assert curve["regime_transition"].tolist() == [
+        "calm->thin",
+        "calm->thin",
+        "thin->stress",
+        "thin->stress",
+    ]
+    assert curve["threshold"].tolist() == pytest.approx([0.80, 0.90, 0.80, 0.90])
+    assert curve["candidate_events"].tolist() == [1, 1, 2, 1]
+    assert curve["event_share"].tolist() == pytest.approx([0.50, 0.50, 1.00, 0.50])
+    assert curve["adverse_post_edge_share"].tolist() == pytest.approx([1.00, 1.00, 1.00, 1.00])
+    assert curve["mean_post_minus_pre_realized_edge"].tolist() == pytest.approx([-0.10, -0.10, -0.60, -0.40])
+    assert curve["policy_label"].tolist() == [
+        "transition_policy_review",
+        "transition_policy_review",
+        "transition_policy_blocked",
+        "transition_policy_blocked",
+    ]
+
+
+def test_passive_fill_event_transition_policy_curve_rejects_bad_inputs() -> None:
+    with pytest.raises(ValueError, match="threshold values must be in"):
+        passive_fill_event_transition_policy_curve(pd.DataFrame(), thresholds=(1.25,))
+    with pytest.raises(ValueError, match="missing passive fill event transition policy columns"):
+        passive_fill_event_transition_policy_curve(pd.DataFrame({"regime_transition": ["thin->stress"]}))
 
 
 def test_passive_fill_event_transition_scorecard_blocks_toxic_regime_paths() -> None:
