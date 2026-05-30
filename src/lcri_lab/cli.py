@@ -72,6 +72,7 @@ from lcri_lab.evaluation import (
     transition_signal_lift,
 )
 from lcri_lab.absorption import add_shadow_absorption
+from lcri_lab.baseline import baseline_regime_basis_comparison
 from lcri_lab.alpha import (
     add_alpha_event_window_regimes,
     add_microstructure_alpha_stack,
@@ -713,6 +714,12 @@ def run_demo(
     )
     execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(scored)
     heldout_execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(heldout_scored)
+    baseline_regime_basis = baseline_regime_basis_comparison(
+        scored,
+        train_window=max(200, rows // 2),
+        test_window=max(100, rows // 4),
+        step=max(100, rows // 4),
+    )
 
     artifact_paths = [
         "lcri-model.json",
@@ -720,6 +727,7 @@ def run_demo(
         "metrics.csv",
         "heldout_metrics.csv",
         "generalization_gap.csv",
+        "baseline_regime_basis_comparison.csv",
         "regime_metrics.csv",
         "heldout_regime_metrics.csv",
         "regime_generalization_gap.csv",
@@ -905,6 +913,7 @@ def run_demo(
     metrics.to_csv(output / "metrics.csv", index=False)
     heldout_metrics.to_csv(output / "heldout_metrics.csv", index=False)
     generalization_gap.to_csv(output / "generalization_gap.csv", index=False)
+    baseline_regime_basis.to_csv(output / "baseline_regime_basis_comparison.csv", index=False)
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
     heldout_by_regime.to_csv(output / "heldout_regime_metrics.csv", index=False)
     regime_gap.to_csv(output / "regime_generalization_gap.csv", index=False)

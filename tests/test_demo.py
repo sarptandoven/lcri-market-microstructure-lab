@@ -16,6 +16,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "metrics.csv").exists()
     assert (tmp_path / "heldout_metrics.csv").exists()
     assert (tmp_path / "generalization_gap.csv").exists()
+    assert (tmp_path / "baseline_regime_basis_comparison.csv").exists()
     assert (tmp_path / "regime_metrics.csv").exists()
     assert (tmp_path / "heldout_regime_metrics.csv").exists()
     assert (tmp_path / "regime_generalization_gap.csv").exists()
@@ -194,6 +195,17 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert execution_summary["rows"] == 750
     assert "tradable_share" in execution_summary
     assert "publishable_side_conflict_share" in execution_summary
+    baseline_regime_basis = pd.read_csv(tmp_path / "baseline_regime_basis_comparison.csv")
+    assert set(baseline_regime_basis["basis"]) == {"core", "interaction", "nonlinear_liquidity"}
+    assert {
+        "regime",
+        "basis",
+        "mean_test_rmse_lift_vs_core",
+        "positive_lift_rate",
+        "winner_rate",
+        "publishability_note",
+    }.issubset(baseline_regime_basis.columns)
+    assert baseline_regime_basis["regime"].nunique() >= 2
     release_gate = json.loads((tmp_path / "execution_publishability_release_gate.json").read_text())
     assert release_gate["decision"] in {"pass", "review", "block"}
     assert "weighted_conflict_share" in release_gate

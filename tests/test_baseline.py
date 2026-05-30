@@ -8,6 +8,7 @@ from lcri_lab.baseline import (
     baseline_component_attribution,
     baseline_liquidity_stress_curve,
     baseline_nonlinear_publishability_summary,
+    baseline_regime_basis_comparison,
     baseline_rolling_basis_comparison,
     baseline_rolling_basis_summary,
     compute_lcri,
@@ -219,6 +220,62 @@ def test_baseline_rolling_basis_comparison_rejects_windows_without_holdout() -> 
 
     with pytest.raises(ValueError, match="at least one rolling fold"):
         baseline_rolling_basis_comparison(features, train_window=20, test_window=20)
+
+
+def test_baseline_regime_basis_comparison_surfaces_state_specific_nonlinear_lift() -> None:
+    books = simulate_order_books(SimulationConfig(rows=980, seed=25))
+    features = compute_features(books)
+    stress = (
+        0.13 * features["spread_ticks"].to_numpy(dtype=float) ** 2
+        - 0.26 * features["volatility"].to_numpy(dtype=float) ** 2
+        + 0.38
+        * features["liquidity_void_ratio"].to_numpy(dtype=float)
+        * features["volatility"].to_numpy(dtype=float)
+        - 0.19 / (1.0 + features["replenishment_rate"].to_numpy(dtype=float))
+    )
+    regime_multiplier = features["regime"].map(
+        {"normal": 1.00, "stressed": 1.25, "thin": 0.85}
+    ).fillna(1.10)
+    features["raw_imbalance"] = stress * regime_multiplier.to_numpy(dtype=float)
+
+    comparison = baseline_regime_basis_comparison(
+        features,
+        train_window=320,
+        test_window=160,
+        step=160,
+        ridge=1e-8,
+    )
+    by_key = comparison.set_index(["regime", "basis"])
+
+    assert comparison.columns.tolist() == [
+        "regime",
+        "basis",
+        "folds",
+        "test_rows",
+        "mean_test_rmse",
+        "mean_test_rmse_lift_vs_core",
+        "positive_lift_rate",
+        "winner_rate",
+        "worst_fold_lift",
+        "publishability_note",
+    ]
+    assert set(comparison["basis"]) == {"core", "interaction", "nonlinear_liquidity"}
+    assert by_key.xs("core", level="basis")["mean_test_rmse_lift_vs_core"].tolist() == pytest.approx(
+        [0.0] * comparison["regime"].nunique()
+    )
+    nonlinear = comparison[comparison["basis"] == "nonlinear_liquidity"]
+    assert nonlinear["mean_test_rmse_lift_vs_core"].min() > 0.55
+    assert nonlinear["positive_lift_rate"].min() == pytest.approx(1.0)
+    assert nonlinear["winner_rate"].min() == pytest.approx(1.0)
+    assert set(nonlinear["publishability_note"]) == {"regime_persistent_nonlinear_lift"}
+
+
+def test_baseline_regime_basis_comparison_rejects_missing_regime_column() -> None:
+    books = simulate_order_books(SimulationConfig(rows=100, seed=26))
+    features = compute_features(books).drop(columns=["regime"])
+
+    with pytest.raises(ValueError, match="missing regime basis comparison columns"):
+        baseline_regime_basis_comparison(features, train_window=40, test_window=20)
 
 
 def test_baseline_rolling_basis_summary_scores_persistent_nonlinear_lift() -> None:

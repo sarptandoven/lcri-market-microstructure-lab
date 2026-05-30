@@ -315,6 +315,155 @@ def baseline_rolling_basis_comparison(
     return pd.DataFrame(rows, columns=columns)
 
 
+def baseline_regime_basis_comparison(
+    frame: pd.DataFrame,
+    *,
+    regime_col: str = "regime",
+    train_window: int = 500,
+    test_window: int = 250,
+    step: int | None = None,
+    ridge: float = 1e-3,
+    lift_floor: float = 0.0,
+) -> pd.DataFrame:
+    """Score nonlinear baseline lift inside each out-of-sample liquidity regime.
+
+    Aggregate rolling RMSE can hide whether nonlinear neutralization only works in
+    the easy/high-liquidity state. This diagnostic repeats the rolling chronological
+    baseline comparison but reduces test residuals by regime, exposing where the
+    nonlinear basis consistently wins and where LCRI residualization remains fragile.
+    """
+    columns = [
+        "regime",
+        "basis",
+        "folds",
+        "test_rows",
+        "mean_test_rmse",
+        "mean_test_rmse_lift_vs_core",
+        "positive_lift_rate",
+        "winner_rate",
+        "worst_fold_lift",
+        "publishability_note",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    if not isinstance(regime_col, str) or not regime_col:
+        raise ValueError("regime_col must be a non-empty string")
+    for name, value in {"train_window": train_window, "test_window": test_window}.items():
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            raise ValueError(f"{name} must be a positive integer")
+    if step is None:
+        step = test_window
+    if not isinstance(step, int) or isinstance(step, bool) or step < 1:
+        raise ValueError("step must be a positive integer")
+    if not math.isfinite(ridge) or ridge < 0.0:
+        raise ValueError("ridge must be a finite non-negative value")
+    if not math.isfinite(lift_floor):
+        raise ValueError("lift_floor must be finite")
+    missing_required = sorted({"raw_imbalance", regime_col} - set(frame.columns))
+    if missing_required:
+        raise ValueError(f"missing regime basis comparison columns: {missing_required}")
+
+    y = frame["raw_imbalance"].to_numpy(dtype=float)
+    if not np.isfinite(y).all():
+        raise ValueError("raw_imbalance values must be finite")
+    x = _design_matrix(frame)
+    feature_names = design_feature_names()
+    basis_indexes = {
+        "core": list(range(len(feature_columns()))),
+        "interaction": list(range(len(feature_columns()) + len(INTERACTION_FEATURES))),
+        "nonlinear_liquidity": list(range(len(feature_names))),
+    }
+
+    fold_rows: list[dict[str, float | int | str]] = []
+    fold = 0
+    for train_start in range(0, len(frame) - train_window - test_window + 1, step):
+        train_end = train_start + train_window
+        test_start = train_end
+        test_end = test_start + test_window
+        y_train = y[train_start:train_end]
+        y_test = y[test_start:test_end]
+        regimes = frame[regime_col].iloc[test_start:test_end].astype(str).to_numpy()
+        residuals_by_basis: dict[str, np.ndarray] = {}
+        for basis, indexes in basis_indexes.items():
+            x_basis = x[:, indexes]
+            x_train = x_basis[train_start:train_end]
+            x_test = x_basis[test_start:test_end]
+            mean = x_train.mean(axis=0)
+            scale = x_train.std(axis=0)
+            scale[scale == 0.0] = 1.0
+            train_design = np.column_stack([np.ones(len(x_train)), (x_train - mean) / scale])
+            test_design = np.column_stack([np.ones(len(x_test)), (x_test - mean) / scale])
+            penalty = np.sqrt(ridge) * np.eye(train_design.shape[1])
+            penalty[0, 0] = 0.0
+            coefficients = np.linalg.lstsq(
+                np.vstack([train_design, penalty]),
+                np.concatenate([y_train, np.zeros(train_design.shape[1])]),
+                rcond=None,
+            )[0]
+            residuals_by_basis[basis] = y_test - test_design @ coefficients
+
+        for regime in sorted(set(regimes)):
+            mask = regimes == regime
+            if not mask.any():
+                continue
+            rmse_by_basis = {
+                basis: float(np.sqrt(np.mean(residuals[mask] ** 2)))
+                for basis, residuals in residuals_by_basis.items()
+            }
+            core_rmse = rmse_by_basis["core"]
+            best_rmse = min(rmse_by_basis.values())
+            for basis, rmse in rmse_by_basis.items():
+                lift = 0.0 if core_rmse <= 0.0 else (core_rmse - rmse) / core_rmse
+                fold_rows.append(
+                    {
+                        "fold": int(fold),
+                        "regime": regime,
+                        "basis": basis,
+                        "test_rows": int(mask.sum()),
+                        "test_rmse": rmse,
+                        "test_rmse_lift_vs_core": float(lift),
+                        "is_fold_winner": bool(rmse == best_rmse),
+                    }
+                )
+        fold += 1
+
+    if not fold_rows:
+        raise ValueError("at least one rolling fold is required; reduce train_window/test_window")
+    detail = pd.DataFrame(fold_rows)
+    rows: list[dict[str, float | int | str]] = []
+    for (regime, basis), group in detail.groupby(["regime", "basis"], sort=True):
+        lifts = group["test_rmse_lift_vs_core"].to_numpy(dtype=float)
+        rmse = group["test_rmse"].to_numpy(dtype=float)
+        winner = group["is_fold_winner"].astype(bool).to_numpy()
+        if not np.isfinite(lifts).all() or not np.isfinite(rmse).all():
+            raise ValueError("regime basis comparison metrics must be finite")
+        positive_lift_rate = float((lifts > lift_floor).mean())
+        winner_rate = float(winner.mean())
+        if basis == "nonlinear_liquidity" and positive_lift_rate == 1.0 and winner_rate == 1.0:
+            note = "regime_persistent_nonlinear_lift"
+        elif basis == "core":
+            note = "core_reference"
+        elif positive_lift_rate == 1.0:
+            note = "regime_positive_lift"
+        else:
+            note = "regime_unstable_lift"
+        rows.append(
+            {
+                "regime": str(regime),
+                "basis": str(basis),
+                "folds": int(group["fold"].nunique()),
+                "test_rows": int(group["test_rows"].sum()),
+                "mean_test_rmse": float(rmse.mean()),
+                "mean_test_rmse_lift_vs_core": float(lifts.mean()),
+                "positive_lift_rate": positive_lift_rate,
+                "winner_rate": winner_rate,
+                "worst_fold_lift": float(lifts.min()),
+                "publishability_note": note,
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
 def baseline_rolling_basis_summary(
     rolling: pd.DataFrame,
     *,
