@@ -1389,6 +1389,128 @@ def passive_fill_event_toxicity_scorecard(
     }
 
 
+def passive_fill_event_transition_scorecard(
+    transition_summary: pd.DataFrame,
+    *,
+    max_adverse_post_edge_share: float = 0.60,
+    min_mean_post_minus_pre_edge: float = -0.25,
+    min_events: int = 1,
+) -> dict[str, float | int | str]:
+    """Gate passive-fill event-window toxicity at regime-transition boundaries.
+
+    Regime summaries can hide boundary-specific failures. This scorecard consumes
+    ``passive_fill_event_transition_summary`` and promotes pre→post regime paths
+    to first-class publishability gates, blocking transitions where high-probability
+    fills are followed by excessive adverse drift.
+    """
+    if not math.isfinite(max_adverse_post_edge_share) or not 0.0 <= max_adverse_post_edge_share <= 1.0:
+        raise ValueError("max_adverse_post_edge_share must be finite and between 0 and 1")
+    if not math.isfinite(min_mean_post_minus_pre_edge):
+        raise ValueError("min_mean_post_minus_pre_edge must be finite")
+    if not isinstance(min_events, int) or isinstance(min_events, bool) or min_events < 1:
+        raise ValueError("min_events must be a positive integer")
+    if transition_summary.empty:
+        return _empty_passive_fill_event_transition_scorecard()
+
+    required = {
+        "regime_transition",
+        "events",
+        "adverse_post_edge_share",
+        "mean_event_fill_probability",
+        "mean_event_adverse_fill_probability",
+        "mean_post_minus_pre_realized_edge",
+        "worst_post_minus_pre_realized_edge",
+    }
+    _require_columns(
+        transition_summary,
+        required,
+        "passive fill event transition toxicity",
+    )
+    values = _finite_values(
+        transition_summary,
+        [
+            "events",
+            "adverse_post_edge_share",
+            "mean_event_fill_probability",
+            "mean_event_adverse_fill_probability",
+            "mean_post_minus_pre_realized_edge",
+            "worst_post_minus_pre_realized_edge",
+        ],
+        "passive fill event transition toxicity",
+    )
+    if (values["events"] < 0.0).any():
+        raise ValueError("passive fill event transition toxicity events must be non-negative")
+
+    total_events = int(values["events"].sum())
+    if total_events == 0:
+        return _empty_passive_fill_event_transition_scorecard()
+
+    data = values.copy()
+    data["regime_transition"] = transition_summary["regime_transition"].astype(str)
+    weights = data["events"] / total_events
+    eligible = data[data["events"] >= min_events]
+    if eligible.empty:
+        scorecard = _empty_passive_fill_event_transition_scorecard()
+        scorecard.update(
+            {
+                "rows": int(len(transition_summary)),
+                "transitions": int(data["regime_transition"].nunique()),
+                "total_events": total_events,
+                "weighted_mean_event_fill_probability": float(
+                    (data["mean_event_fill_probability"] * weights).sum()
+                ),
+                "weighted_mean_event_adverse_fill_probability": float(
+                    (data["mean_event_adverse_fill_probability"] * weights).sum()
+                ),
+                "weighted_mean_post_minus_pre_realized_edge": float(
+                    (data["mean_post_minus_pre_realized_edge"] * weights).sum()
+                ),
+                "transition_toxicity_label": "insufficient_transition_event_windows",
+            }
+        )
+        return scorecard
+
+    blocked = eligible[
+        (eligible["adverse_post_edge_share"] > max_adverse_post_edge_share)
+        | (eligible["mean_post_minus_pre_realized_edge"] < min_mean_post_minus_pre_edge)
+    ]
+    worst_idx = eligible.sort_values(
+        ["adverse_post_edge_share", "mean_post_minus_pre_realized_edge"],
+        ascending=[False, True],
+    ).index[0]
+    label = (
+        "transition_event_window_blocker"
+        if not blocked.empty
+        else "transition_event_window_pass"
+    )
+
+    return {
+        "rows": int(len(transition_summary)),
+        "transitions": int(data["regime_transition"].nunique()),
+        "total_events": total_events,
+        "eligible_transitions": int(len(eligible)),
+        "blocked_transitions": int(len(blocked)),
+        "worst_transition": str(data.loc[worst_idx, "regime_transition"]),
+        "worst_adverse_post_edge_share": float(data.loc[worst_idx, "adverse_post_edge_share"]),
+        "worst_mean_post_minus_pre_realized_edge": float(
+            data.loc[worst_idx, "mean_post_minus_pre_realized_edge"]
+        ),
+        "worst_post_minus_pre_realized_edge": float(
+            data.loc[worst_idx, "worst_post_minus_pre_realized_edge"]
+        ),
+        "weighted_mean_event_fill_probability": float(
+            (data["mean_event_fill_probability"] * weights).sum()
+        ),
+        "weighted_mean_event_adverse_fill_probability": float(
+            (data["mean_event_adverse_fill_probability"] * weights).sum()
+        ),
+        "weighted_mean_post_minus_pre_realized_edge": float(
+            (data["mean_post_minus_pre_realized_edge"] * weights).sum()
+        ),
+        "transition_toxicity_label": label,
+    }
+
+
 def _empty_queue_position_fraction_sweep() -> pd.DataFrame:
     return pd.DataFrame(
         columns=[
@@ -1625,6 +1747,24 @@ def _empty_passive_fill_event_toxicity_scorecard() -> dict[str, float | int | st
         "weighted_mean_event_adverse_fill_probability": 0.0,
         "weighted_mean_post_minus_pre_realized_edge": 0.0,
         "event_toxicity_label": "empty_event_windows",
+    }
+
+
+def _empty_passive_fill_event_transition_scorecard() -> dict[str, float | int | str]:
+    return {
+        "rows": 0,
+        "transitions": 0,
+        "total_events": 0,
+        "eligible_transitions": 0,
+        "blocked_transitions": 0,
+        "worst_transition": "none",
+        "worst_adverse_post_edge_share": 0.0,
+        "worst_mean_post_minus_pre_realized_edge": 0.0,
+        "worst_post_minus_pre_realized_edge": 0.0,
+        "weighted_mean_event_fill_probability": 0.0,
+        "weighted_mean_event_adverse_fill_probability": 0.0,
+        "weighted_mean_post_minus_pre_realized_edge": 0.0,
+        "transition_toxicity_label": "empty_transition_event_windows",
     }
 
 

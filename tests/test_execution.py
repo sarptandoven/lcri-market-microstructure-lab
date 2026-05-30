@@ -11,6 +11,7 @@ from lcri_lab.execution import (
     passive_fill_calibration_summary,
     passive_fill_event_regime_summary,
     passive_fill_event_toxicity_scorecard,
+    passive_fill_event_transition_scorecard,
     passive_fill_event_transition_summary,
     passive_fill_event_window_diagnostics,
     execution_publishability_review_packet,
@@ -588,6 +589,78 @@ def test_passive_fill_event_transition_summary_ranks_transition_toxicity() -> No
 def test_passive_fill_event_transition_summary_rejects_bad_events() -> None:
     with pytest.raises(ValueError, match="missing passive fill event transition summary columns"):
         passive_fill_event_transition_summary(pd.DataFrame({"event_regime": ["thin"]}))
+
+
+def test_passive_fill_event_transition_scorecard_blocks_toxic_regime_paths() -> None:
+    summary = pd.DataFrame(
+        {
+            "regime_transition": ["calm->thin", "thin->stress", "stress->stress"],
+            "event_regimes": [1, 1, 1],
+            "events": [4, 3, 2],
+            "adverse_post_edge_events": [2, 3, 0],
+            "adverse_post_edge_share": [0.50, 1.00, 0.00],
+            "mean_event_fill_probability": [0.82, 0.93, 0.78],
+            "mean_event_adverse_fill_probability": [0.22, 0.55, 0.12],
+            "mean_event_edge_ticks": [0.40, 0.90, 0.30],
+            "mean_post_minus_pre_realized_edge": [-0.15, -0.80, 0.20],
+            "worst_post_minus_pre_realized_edge": [-0.60, -1.50, 0.05],
+        }
+    )
+
+    scorecard = passive_fill_event_transition_scorecard(
+        summary,
+        max_adverse_post_edge_share=0.75,
+        min_mean_post_minus_pre_edge=-0.30,
+    )
+
+    assert scorecard == {
+        "rows": 3,
+        "transitions": 3,
+        "total_events": 9,
+        "eligible_transitions": 3,
+        "blocked_transitions": 1,
+        "worst_transition": "thin->stress",
+        "worst_adverse_post_edge_share": pytest.approx(1.00),
+        "worst_mean_post_minus_pre_realized_edge": pytest.approx(-0.80),
+        "worst_post_minus_pre_realized_edge": pytest.approx(-1.50),
+        "weighted_mean_event_fill_probability": pytest.approx(0.8477777778),
+        "weighted_mean_event_adverse_fill_probability": pytest.approx(0.3077777778),
+        "weighted_mean_post_minus_pre_realized_edge": pytest.approx(-0.2888888889),
+        "transition_toxicity_label": "transition_event_window_blocker",
+    }
+
+
+def test_passive_fill_event_transition_scorecard_labels_pass_and_thin_samples() -> None:
+    summary = pd.DataFrame(
+        {
+            "regime_transition": ["stable->stable"],
+            "event_regimes": [1],
+            "events": [2],
+            "adverse_post_edge_events": [0],
+            "adverse_post_edge_share": [0.0],
+            "mean_event_fill_probability": [0.70],
+            "mean_event_adverse_fill_probability": [0.10],
+            "mean_event_edge_ticks": [0.30],
+            "mean_post_minus_pre_realized_edge": [0.20],
+            "worst_post_minus_pre_realized_edge": [0.10],
+        }
+    )
+
+    assert (
+        passive_fill_event_transition_scorecard(summary)["transition_toxicity_label"]
+        == "transition_event_window_pass"
+    )
+    assert (
+        passive_fill_event_transition_scorecard(summary, min_events=3)["transition_toxicity_label"]
+        == "insufficient_transition_event_windows"
+    )
+
+
+def test_passive_fill_event_transition_scorecard_rejects_bad_summary() -> None:
+    with pytest.raises(ValueError, match="max_adverse_post_edge_share"):
+        passive_fill_event_transition_scorecard(pd.DataFrame(), max_adverse_post_edge_share=1.5)
+    with pytest.raises(ValueError, match="missing passive fill event transition toxicity columns"):
+        passive_fill_event_transition_scorecard(pd.DataFrame({"regime_transition": ["thin->stress"]}))
 
 
 def test_passive_fill_event_regime_summary_ranks_adverse_execution_windows() -> None:

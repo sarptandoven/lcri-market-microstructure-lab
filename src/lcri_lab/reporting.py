@@ -4123,6 +4123,8 @@ def _artifact_verification_role(artifact: str) -> str:
         return "manifest_audit"
     if "reversal_transition_gate" in artifact:
         return "transition_verification"
+    if "passive_fill_event_transition" in artifact:
+        return "transition_verification"
     if artifact in {
         "transition_metrics.csv",
         "heldout_transition_metrics.csv",

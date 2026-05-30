@@ -113,10 +113,12 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "passive_fill_event_regime_summary.csv").exists()
     assert (tmp_path / "passive_fill_event_transition_summary.csv").exists()
     assert (tmp_path / "passive_fill_event_toxicity_scorecard.json").exists()
+    assert (tmp_path / "passive_fill_event_transition_toxicity_scorecard.json").exists()
     assert (tmp_path / "heldout_passive_fill_event_windows.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_regime_summary.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_transition_summary.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_toxicity_scorecard.json").exists()
+    assert (tmp_path / "heldout_passive_fill_event_transition_toxicity_scorecard.json").exists()
     assert (tmp_path / "passive_fill_calibration_curve.csv").exists()
     assert (tmp_path / "heldout_passive_fill_calibration_curve.csv").exists()
     assert (tmp_path / "passive_fill_calibration_summary.json").exists()
@@ -169,6 +171,12 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     event_toxicity = json.loads((tmp_path / "passive_fill_event_toxicity_scorecard.json").read_text())
     assert "event_toxicity_label" in event_toxicity
     assert "weighted_mean_post_minus_pre_realized_edge" in event_toxicity
+    transition_toxicity = json.loads(
+        (tmp_path / "passive_fill_event_transition_toxicity_scorecard.json").read_text()
+    )
+    assert "transition_toxicity_label" in transition_toxicity
+    assert "worst_transition" in transition_toxicity
+    assert "weighted_mean_post_minus_pre_realized_edge" in transition_toxicity
     event_transition_columns = set(
         pd.read_csv(tmp_path / "passive_fill_event_transition_summary.csv", nrows=1).columns
     )

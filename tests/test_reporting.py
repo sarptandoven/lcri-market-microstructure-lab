@@ -597,6 +597,8 @@ def test_artifact_coverage_matrix_classifies_manifest_artifacts() -> None:
             "lcri_fracture_reversal_gate.json",
             "lcri_reversal_transition_gate.csv",
             "heldout_transition_robustness.json",
+            "passive_fill_event_transition_toxicity_scorecard.json",
+            "heldout_passive_fill_event_transition_toxicity_scorecard.json",
             "figures/generalization_gap.png",
             "artifact_manifest.json",
             "lcri_owner_handoff_packet.md",
@@ -618,6 +620,12 @@ def test_artifact_coverage_matrix_classifies_manifest_artifacts() -> None:
     assert by_artifact.loc["heldout_transition_robustness.json", "verification_role"] == (
         "transition_verification"
     )
+    assert by_artifact.loc[
+        "passive_fill_event_transition_toxicity_scorecard.json", "verification_role"
+    ] == "transition_verification"
+    assert by_artifact.loc[
+        "heldout_passive_fill_event_transition_toxicity_scorecard.json", "verification_role"
+    ] == "transition_verification"
     assert bool(by_artifact.loc["figures/generalization_gap.png", "is_figure"])
     assert by_artifact.loc["figures/generalization_gap.png", "verification_role"] == "visual_evidence"
     assert by_artifact.loc["artifact_manifest.json", "family"] == "audit"
