@@ -42,6 +42,16 @@ def test_public_api_exports_baseline_basis_comparison() -> None:
     assert "baseline_basis_comparison" in lcri_lab.__all__
 
 
+def test_public_api_exports_baseline_rolling_basis_comparison() -> None:
+    assert callable(lcri_lab.baseline_rolling_basis_comparison)
+    assert "baseline_rolling_basis_comparison" in lcri_lab.__all__
+
+
+def test_public_api_exports_baseline_rolling_basis_summary() -> None:
+    assert callable(lcri_lab.baseline_rolling_basis_summary)
+    assert "baseline_rolling_basis_summary" in lcri_lab.__all__
+
+
 def test_public_api_exports_execution_adjusted_lcri_quantile_diagnostics() -> None:
     assert callable(lcri_lab.execution_adjusted_lcri_quantile_diagnostics)
     assert "execution_adjusted_lcri_quantile_diagnostics" in lcri_lab.__all__

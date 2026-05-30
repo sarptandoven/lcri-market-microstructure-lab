@@ -22,6 +22,8 @@ from lcri_lab.baseline import (
     baseline_basis_comparison,
     baseline_component_attribution,
     baseline_liquidity_stress_curve,
+    baseline_rolling_basis_comparison,
+    baseline_rolling_basis_summary,
     compute_lcri,
     design_feature_names,
 )
@@ -234,6 +236,8 @@ __all__ = [
     "baseline_basis_comparison",
     "baseline_component_attribution",
     "baseline_liquidity_stress_curve",
+    "baseline_rolling_basis_comparison",
+    "baseline_rolling_basis_summary",
     "compute_lcri",
     "calibration_curve",
     "calibration_error_summary",

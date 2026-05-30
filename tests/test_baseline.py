@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pytest
 
 from lcri_lab.baseline import (
@@ -6,6 +7,8 @@ from lcri_lab.baseline import (
     baseline_basis_comparison,
     baseline_component_attribution,
     baseline_liquidity_stress_curve,
+    baseline_rolling_basis_comparison,
+    baseline_rolling_basis_summary,
     compute_lcri,
     design_feature_names,
 )
@@ -160,6 +163,107 @@ def test_baseline_basis_comparison_quantifies_out_of_sample_nonlinear_lift() -> 
     assert by_basis.loc["nonlinear_liquidity", "test_rmse"] < by_basis.loc["core", "test_rmse"] * 0.30
     assert by_basis.loc["nonlinear_liquidity", "test_rmse_lift_vs_core"] > 0.70
     assert by_basis.loc["nonlinear_liquidity", "overfit_ratio"] < 2.0
+
+
+def test_baseline_rolling_basis_comparison_tracks_stable_nonlinear_lift() -> None:
+    books = simulate_order_books(SimulationConfig(rows=960, seed=19))
+    features = compute_features(books)
+    nonlinear_signal = (
+        0.12 * features["spread_ticks"].to_numpy(dtype=float) ** 2
+        - 0.28 * features["volatility"].to_numpy(dtype=float) ** 2
+        + 0.36 * features["liquidity_void_ratio"].to_numpy(dtype=float)
+        * features["volatility"].to_numpy(dtype=float)
+        - 0.18 / (1.0 + features["replenishment_rate"].to_numpy(dtype=float))
+    )
+    features["raw_imbalance"] = nonlinear_signal
+
+    rolling = baseline_rolling_basis_comparison(
+        features,
+        train_window=320,
+        test_window=160,
+        step=160,
+        ridge=1e-8,
+    )
+    nonlinear = rolling[rolling["basis"] == "nonlinear_liquidity"]
+    core = rolling[rolling["basis"] == "core"]
+
+    assert rolling.columns.tolist() == [
+        "fold",
+        "basis",
+        "features",
+        "train_start",
+        "train_end",
+        "test_start",
+        "test_end",
+        "train_rows",
+        "test_rows",
+        "train_rmse",
+        "test_rmse",
+        "test_rmse_lift_vs_core",
+        "test_residual_mean",
+        "test_residual_std",
+        "overfit_ratio",
+        "is_fold_winner",
+    ]
+    assert rolling["fold"].nunique() >= 3
+    assert core["test_rmse_lift_vs_core"].tolist() == pytest.approx([0.0] * len(core))
+    assert nonlinear["test_rmse_lift_vs_core"].min() > 0.70
+    assert nonlinear["is_fold_winner"].all()
+    assert nonlinear["overfit_ratio"].max() < 2.0
+
+
+def test_baseline_rolling_basis_comparison_rejects_windows_without_holdout() -> None:
+    books = simulate_order_books(SimulationConfig(rows=30, seed=20))
+    features = compute_features(books)
+
+    with pytest.raises(ValueError, match="at least one rolling fold"):
+        baseline_rolling_basis_comparison(features, train_window=20, test_window=20)
+
+
+def test_baseline_rolling_basis_summary_scores_persistent_nonlinear_lift() -> None:
+    books = simulate_order_books(SimulationConfig(rows=960, seed=21))
+    features = compute_features(books)
+    features["raw_imbalance"] = (
+        0.15 * features["spread_ticks"].to_numpy(dtype=float) ** 2
+        - 0.24 * features["volatility"].to_numpy(dtype=float) ** 2
+        + 0.42
+        * features["liquidity_void_ratio"].to_numpy(dtype=float)
+        * features["volatility"].to_numpy(dtype=float)
+        - 0.16 / (1.0 + features["replenishment_rate"].to_numpy(dtype=float))
+    )
+
+    rolling = baseline_rolling_basis_comparison(
+        features,
+        train_window=320,
+        test_window=160,
+        step=160,
+        ridge=1e-8,
+    )
+    summary = baseline_rolling_basis_summary(rolling, lift_floor=0.50, max_overfit_ratio=2.0)
+    nonlinear = summary.set_index("basis").loc["nonlinear_liquidity"]
+
+    assert summary.columns.tolist() == [
+        "basis",
+        "folds",
+        "winner_rate",
+        "positive_lift_rate",
+        "median_test_rmse_lift_vs_core",
+        "min_test_rmse_lift_vs_core",
+        "max_overfit_ratio",
+        "median_test_residual_abs_mean",
+        "stable_lift",
+        "publishability_note",
+    ]
+    assert nonlinear["folds"] == rolling["fold"].nunique()
+    assert nonlinear["winner_rate"] == pytest.approx(1.0)
+    assert nonlinear["positive_lift_rate"] == pytest.approx(1.0)
+    assert nonlinear["stable_lift"] is True
+    assert nonlinear["publishability_note"] == "persistent_out_of_sample_lift"
+
+
+def test_baseline_rolling_basis_summary_rejects_missing_columns() -> None:
+    with pytest.raises(ValueError, match="missing rolling basis summary columns"):
+        baseline_rolling_basis_summary(pd.DataFrame({"basis": ["core"]}))
 
 
 def test_baseline_rejects_invalid_ridge() -> None:

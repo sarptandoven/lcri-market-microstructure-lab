@@ -189,6 +189,215 @@ def baseline_basis_comparison(
     return pd.DataFrame(rows, columns=columns)
 
 
+def baseline_rolling_basis_comparison(
+    frame: pd.DataFrame,
+    *,
+    train_window: int = 500,
+    test_window: int = 250,
+    step: int | None = None,
+    ridge: float = 1e-3,
+) -> pd.DataFrame:
+    """Compare baseline bases across rolling chronological train/test blocks.
+
+    A single holdout can flatter nonlinear liquidity terms if one regime dominates
+    the split. This diagnostic repeatedly trains core, interaction, and nonlinear
+    bases on a rolling window and scores the immediately following holdout, making
+    nonlinear LCRI neutralization auditable as a stable out-of-sample improvement.
+    """
+    columns = [
+        "fold",
+        "basis",
+        "features",
+        "train_start",
+        "train_end",
+        "test_start",
+        "test_end",
+        "train_rows",
+        "test_rows",
+        "train_rmse",
+        "test_rmse",
+        "test_rmse_lift_vs_core",
+        "test_residual_mean",
+        "test_residual_std",
+        "overfit_ratio",
+        "is_fold_winner",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    for name, value in {"train_window": train_window, "test_window": test_window}.items():
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            raise ValueError(f"{name} must be a positive integer")
+    if step is None:
+        step = test_window
+    if not isinstance(step, int) or isinstance(step, bool) or step < 1:
+        raise ValueError("step must be a positive integer")
+    if not math.isfinite(ridge) or ridge < 0.0:
+        raise ValueError("ridge must be a finite non-negative value")
+    if "raw_imbalance" not in frame.columns:
+        raise ValueError("missing rolling baseline basis comparison columns: ['raw_imbalance']")
+
+    y = frame["raw_imbalance"].to_numpy(dtype=float)
+    if not np.isfinite(y).all():
+        raise ValueError("raw_imbalance values must be finite")
+    x = _design_matrix(frame)
+    feature_names = design_feature_names()
+    basis_indexes = {
+        "core": list(range(len(feature_columns()))),
+        "interaction": list(range(len(feature_columns()) + len(INTERACTION_FEATURES))),
+        "nonlinear_liquidity": list(range(len(feature_names))),
+    }
+
+    rows: list[dict[str, bool | float | int | str]] = []
+    fold = 0
+    for train_start in range(0, len(frame) - train_window - test_window + 1, step):
+        train_end = train_start + train_window
+        test_start = train_end
+        test_end = test_start + test_window
+        y_train = y[train_start:train_end]
+        y_test = y[test_start:test_end]
+        fold_rows: list[dict[str, bool | float | int | str]] = []
+        core_test_rmse: float | None = None
+        for basis, indexes in basis_indexes.items():
+            x_basis = x[:, indexes]
+            x_train = x_basis[train_start:train_end]
+            x_test = x_basis[test_start:test_end]
+            mean = x_train.mean(axis=0)
+            scale = x_train.std(axis=0)
+            scale[scale == 0.0] = 1.0
+            train_design = np.column_stack([np.ones(len(x_train)), (x_train - mean) / scale])
+            test_design = np.column_stack([np.ones(len(x_test)), (x_test - mean) / scale])
+            penalty = np.sqrt(ridge) * np.eye(train_design.shape[1])
+            penalty[0, 0] = 0.0
+            coefficients = np.linalg.lstsq(
+                np.vstack([train_design, penalty]),
+                np.concatenate([y_train, np.zeros(train_design.shape[1])]),
+                rcond=None,
+            )[0]
+            train_residual = y_train - train_design @ coefficients
+            test_residual = y_test - test_design @ coefficients
+            train_rmse = float(np.sqrt(np.mean(train_residual**2)))
+            test_rmse = float(np.sqrt(np.mean(test_residual**2)))
+            if core_test_rmse is None:
+                core_test_rmse = test_rmse
+            lift = 0.0 if core_test_rmse <= 0.0 else (core_test_rmse - test_rmse) / core_test_rmse
+            if train_rmse > 0.0:
+                overfit_ratio = test_rmse / train_rmse
+            else:
+                overfit_ratio = 1.0 if test_rmse == 0.0 else float("inf")
+            fold_rows.append(
+                {
+                    "fold": int(fold),
+                    "basis": basis,
+                    "features": int(len(indexes)),
+                    "train_start": int(train_start),
+                    "train_end": int(train_end),
+                    "test_start": int(test_start),
+                    "test_end": int(test_end),
+                    "train_rows": int(train_window),
+                    "test_rows": int(test_window),
+                    "train_rmse": train_rmse,
+                    "test_rmse": test_rmse,
+                    "test_rmse_lift_vs_core": float(lift),
+                    "test_residual_mean": float(test_residual.mean()),
+                    "test_residual_std": float(test_residual.std()),
+                    "overfit_ratio": float(overfit_ratio),
+                    "is_fold_winner": False,
+                }
+            )
+        best_rmse = min(float(row["test_rmse"]) for row in fold_rows)
+        for row in fold_rows:
+            row["is_fold_winner"] = bool(float(row["test_rmse"]) == best_rmse)
+        rows.extend(fold_rows)
+        fold += 1
+
+    if not rows:
+        raise ValueError("at least one rolling fold is required; reduce train_window/test_window")
+    return pd.DataFrame(rows, columns=columns)
+
+
+def baseline_rolling_basis_summary(
+    rolling: pd.DataFrame,
+    *,
+    lift_floor: float = 0.0,
+    max_overfit_ratio: float = 2.0,
+) -> pd.DataFrame:
+    """Summarize whether rolling baseline lift is persistent enough to cite.
+
+    The row-level rolling comparison is useful for audit trails, but release and
+    paper artifacts need a compact stability view: how often each basis wins,
+    whether lift is positive in every fold, and whether that lift survives a
+    minimum effect-size floor without obvious train/test overfit inflation.
+    """
+    columns = [
+        "basis",
+        "folds",
+        "winner_rate",
+        "positive_lift_rate",
+        "median_test_rmse_lift_vs_core",
+        "min_test_rmse_lift_vs_core",
+        "max_overfit_ratio",
+        "median_test_residual_abs_mean",
+        "stable_lift",
+        "publishability_note",
+    ]
+    if rolling.empty:
+        return pd.DataFrame(columns=columns)
+    if not math.isfinite(lift_floor):
+        raise ValueError("lift_floor must be finite")
+    if not math.isfinite(max_overfit_ratio) or max_overfit_ratio <= 0.0:
+        raise ValueError("max_overfit_ratio must be a finite positive value")
+    required = {
+        "basis",
+        "fold",
+        "test_rmse_lift_vs_core",
+        "test_residual_mean",
+        "overfit_ratio",
+        "is_fold_winner",
+    }
+    missing = sorted(required - set(rolling.columns))
+    if missing:
+        raise ValueError(f"missing rolling basis summary columns: {missing}")
+
+    rows: list[dict[str, bool | float | int | str]] = []
+    for basis, group in rolling.groupby("basis", sort=False):
+        lifts = group["test_rmse_lift_vs_core"].to_numpy(dtype=float)
+        residual_mean = group["test_residual_mean"].to_numpy(dtype=float)
+        overfit = group["overfit_ratio"].to_numpy(dtype=float)
+        winner = group["is_fold_winner"].astype(bool).to_numpy()
+        if not np.isfinite(lifts).all() or not np.isfinite(residual_mean).all():
+            raise ValueError("rolling basis summary metrics must be finite")
+        if np.isnan(overfit).any():
+            raise ValueError("rolling basis overfit ratios must not be NaN")
+
+        min_lift = float(lifts.min())
+        median_lift = float(np.median(lifts))
+        observed_max_overfit = float(overfit.max())
+        stable_lift = bool(min_lift >= lift_floor and observed_max_overfit <= max_overfit_ratio)
+        if stable_lift:
+            note = "persistent_out_of_sample_lift"
+        elif min_lift < lift_floor:
+            note = "unstable_or_insufficient_lift"
+        else:
+            note = "overfit_risk"
+        rows.append(
+            {
+                "basis": str(basis),
+                "folds": int(group["fold"].nunique()),
+                "winner_rate": float(winner.mean()),
+                "positive_lift_rate": float((lifts > 0.0).mean()),
+                "median_test_rmse_lift_vs_core": median_lift,
+                "min_test_rmse_lift_vs_core": min_lift,
+                "max_overfit_ratio": observed_max_overfit,
+                "median_test_residual_abs_mean": float(np.median(np.abs(residual_mean))),
+                "stable_lift": stable_lift,
+                "publishability_note": note,
+            }
+        )
+    output = pd.DataFrame(rows, columns=columns)
+    output["stable_lift"] = output["stable_lift"].astype(object)
+    return output
+
+
 def baseline_component_attribution(frame: pd.DataFrame, baseline: LiquidityBaseline) -> pd.DataFrame:
     """Attribute a fitted baseline's prediction to core, interaction, and nonlinear terms.
 

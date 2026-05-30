@@ -34,6 +34,10 @@ The default baseline remains ridge-regularized and inspectable, but its design
 matrix includes nonlinear liquidity stress terms (`spread_ticks²`,
 `volatility²`, `liquidity_void_ratio × volatility`, and inverse replenishment)
 so convex book-stress effects are removed before residual pressure is scored.
+`baseline_rolling_basis_comparison` audits that neutralization across rolling
+chronological train/test blocks, while `baseline_rolling_basis_summary` turns
+fold-level lift, winner rate, and overfit ratios into a compact publishability
+check so nonlinear lift is not inferred from a single favorable holdout split.
 
 ## Inputs
 
