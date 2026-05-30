@@ -2284,6 +2284,106 @@ def passive_fill_event_lead_lag_profile(
     return profile[columns]
 
 
+def passive_fill_event_lead_lag_scorecard(profile: pd.DataFrame) -> pd.DataFrame:
+    """Condense lead/lag fill-event profiles into regime-level toxicity warnings.
+
+    High fill probabilities are only publishable when the realized edge survives
+    after queue priority is achieved. This scorecard flags regimes where the
+    pre-fill mean edge is positive but post-fill edge turns negative, a classic
+    passive-execution adverse-selection inversion.
+    """
+    columns = [
+        "event_regime",
+        "offset_observations",
+        "min_offset_observations",
+        "pre_cumulative_mean_edge_ticks",
+        "event_mean_edge_ticks",
+        "post_cumulative_mean_edge_ticks",
+        "post_adverse_realized_edge_share",
+        "lead_lag_decay_ticks",
+        "toxicity_inversion",
+        "warning_label",
+    ]
+    required = {
+        "event_regime",
+        "relative_offset",
+        "observations",
+        "mean_realized_edge_ticks",
+        "adverse_realized_edge_share",
+        "cumulative_mean_realized_edge_ticks",
+    }
+    _require_columns(profile, required, "passive fill event lead lag scorecard")
+    if profile.empty:
+        return pd.DataFrame(columns=columns)
+
+    values = _finite_values(
+        profile,
+        [
+            "relative_offset",
+            "observations",
+            "mean_realized_edge_ticks",
+            "adverse_realized_edge_share",
+            "cumulative_mean_realized_edge_ticks",
+        ],
+        "passive fill event lead lag scorecard",
+    )
+    if (values["observations"] < 0.0).any():
+        raise ValueError("passive fill event lead lag scorecard observations must be non-negative")
+    if (
+        (values["adverse_realized_edge_share"] < 0.0)
+        | (values["adverse_realized_edge_share"] > 1.0)
+    ).any():
+        raise ValueError(
+            "passive fill event lead lag scorecard adverse shares must be between 0 and 1"
+        )
+
+    data = values.copy()
+    data["event_regime"] = profile["event_regime"].astype(str)
+    rows: list[dict[str, bool | float | int | str]] = []
+    for regime, group in data.groupby("event_regime", sort=True):
+        pre = group[group["relative_offset"] < 0.0]
+        event = group[group["relative_offset"] == 0.0]
+        post = group[group["relative_offset"] > 0.0]
+        offset_observations = int(group["observations"].sum())
+        min_offset_observations = int(group["observations"].min()) if len(group) else 0
+        pre_edge = float(pre["mean_realized_edge_ticks"].sum()) if len(pre) else 0.0
+        event_edge = float(event["mean_realized_edge_ticks"].mean()) if len(event) else 0.0
+        post_edge = float(post["mean_realized_edge_ticks"].sum()) if len(post) else 0.0
+        post_adverse_share = (
+            float(np.average(post["adverse_realized_edge_share"], weights=post["observations"]))
+            if len(post) and float(post["observations"].sum()) > 0.0
+            else 0.0
+        )
+        toxicity_inversion = bool(pre_edge > 0.0 and post_edge < 0.0)
+        if toxicity_inversion:
+            warning_label = "toxic_reversal"
+        elif post_edge < 0.0:
+            warning_label = "post_fill_adverse"
+        elif not len(pre) or not len(post):
+            warning_label = "insufficient_pre_post"
+        else:
+            warning_label = "edge_persistent"
+        rows.append(
+            {
+                "event_regime": str(regime),
+                "offset_observations": offset_observations,
+                "min_offset_observations": min_offset_observations,
+                "pre_cumulative_mean_edge_ticks": pre_edge,
+                "event_mean_edge_ticks": event_edge,
+                "post_cumulative_mean_edge_ticks": post_edge,
+                "post_adverse_realized_edge_share": post_adverse_share,
+                "lead_lag_decay_ticks": float(post_edge - pre_edge),
+                "toxicity_inversion": toxicity_inversion,
+                "warning_label": warning_label,
+            }
+        )
+    scorecard = pd.DataFrame(rows)[columns]
+    return scorecard.sort_values(
+        ["toxicity_inversion", "post_cumulative_mean_edge_ticks", "lead_lag_decay_ticks"],
+        ascending=[False, True, True],
+        ignore_index=True,
+    )
+
 
 def passive_fill_event_regime_summary(events: pd.DataFrame) -> pd.DataFrame:
     """Aggregate passive-fill event windows by execution regime."""

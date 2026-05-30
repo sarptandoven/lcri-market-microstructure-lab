@@ -114,12 +114,16 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "execution_publishability_release_gate.json").exists()
     assert (tmp_path / "heldout_execution_publishability_release_gate.json").exists()
     assert (tmp_path / "passive_fill_event_windows.csv").exists()
+    assert (tmp_path / "passive_fill_event_lead_lag_profile.csv").exists()
+    assert (tmp_path / "passive_fill_event_lead_lag_scorecard.csv").exists()
     assert (tmp_path / "passive_fill_event_regime_summary.csv").exists()
     assert (tmp_path / "passive_fill_event_transition_summary.csv").exists()
     assert (tmp_path / "passive_fill_event_transition_policy_curve.csv").exists()
     assert (tmp_path / "passive_fill_event_toxicity_scorecard.json").exists()
     assert (tmp_path / "passive_fill_event_transition_toxicity_scorecard.json").exists()
     assert (tmp_path / "heldout_passive_fill_event_windows.csv").exists()
+    assert (tmp_path / "heldout_passive_fill_event_lead_lag_profile.csv").exists()
+    assert (tmp_path / "heldout_passive_fill_event_lead_lag_scorecard.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_regime_summary.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_transition_summary.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_transition_policy_curve.csv").exists()
@@ -197,6 +201,17 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "transition_toxicity_label" in transition_toxicity
     assert "worst_transition" in transition_toxicity
     assert "weighted_mean_post_minus_pre_realized_edge" in transition_toxicity
+    lead_lag_scorecard_columns = set(
+        pd.read_csv(tmp_path / "passive_fill_event_lead_lag_scorecard.csv", nrows=1).columns
+    )
+    assert {
+        "event_regime",
+        "pre_cumulative_mean_edge_ticks",
+        "post_cumulative_mean_edge_ticks",
+        "lead_lag_decay_ticks",
+        "toxicity_inversion",
+        "warning_label",
+    }.issubset(lead_lag_scorecard_columns)
     event_transition_columns = set(
         pd.read_csv(tmp_path / "passive_fill_event_transition_summary.csv", nrows=1).columns
     )

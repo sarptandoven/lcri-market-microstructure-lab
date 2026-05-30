@@ -14,6 +14,7 @@ from lcri_lab.execution import (
     passive_fill_calibration_summary,
     passive_fill_event_regime_summary,
     passive_fill_event_lead_lag_profile,
+    passive_fill_event_lead_lag_scorecard,
     passive_fill_event_lifecycle_summary,
     passive_fill_event_toxicity_scorecard,
     passive_fill_event_transition_policy_curve,
@@ -1118,6 +1119,49 @@ def test_passive_fill_event_lead_lag_profile_tracks_offset_toxicity_by_regime() 
     assert profile["mean_realized_edge_ticks"].tolist() == pytest.approx([0.20, 0.40, -0.10, 0.20, 0.40, -0.10])
     assert profile["adverse_realized_edge_share"].tolist() == pytest.approx([0.50, 0.50, 0.50, 0.00, 0.00, 1.00])
     assert profile["cumulative_mean_realized_edge_ticks"].tolist() == pytest.approx([0.20, 0.60, 0.50, 0.20, 0.60, 0.50])
+
+
+def test_passive_fill_event_lead_lag_scorecard_flags_toxic_reversal_regimes() -> None:
+    profile = pd.DataFrame(
+        {
+            "event_regime": ["thin", "thin", "thin", "calm", "calm", "calm"],
+            "relative_offset": [-1, 0, 1, -1, 0, 1],
+            "observations": [8, 10, 9, 7, 7, 7],
+            "mean_realized_edge_ticks": [0.40, 0.10, -0.70, 0.20, 0.30, 0.10],
+            "adverse_realized_edge_share": [0.25, 0.40, 0.80, 0.10, 0.20, 0.30],
+            "cumulative_mean_realized_edge_ticks": [0.40, 0.50, -0.20, 0.20, 0.50, 0.60],
+        }
+    )
+
+    scorecard = passive_fill_event_lead_lag_scorecard(profile)
+
+    assert scorecard.columns.tolist() == [
+        "event_regime",
+        "offset_observations",
+        "min_offset_observations",
+        "pre_cumulative_mean_edge_ticks",
+        "event_mean_edge_ticks",
+        "post_cumulative_mean_edge_ticks",
+        "post_adverse_realized_edge_share",
+        "lead_lag_decay_ticks",
+        "toxicity_inversion",
+        "warning_label",
+    ]
+    assert scorecard["event_regime"].tolist() == ["thin", "calm"]
+    assert scorecard["offset_observations"].tolist() == [27, 21]
+    assert scorecard["min_offset_observations"].tolist() == [8, 7]
+    assert scorecard["pre_cumulative_mean_edge_ticks"].tolist() == pytest.approx([0.40, 0.20])
+    assert scorecard["event_mean_edge_ticks"].tolist() == pytest.approx([0.10, 0.30])
+    assert scorecard["post_cumulative_mean_edge_ticks"].tolist() == pytest.approx([-0.70, 0.10])
+    assert scorecard["post_adverse_realized_edge_share"].tolist() == pytest.approx([0.80, 0.30])
+    assert scorecard["lead_lag_decay_ticks"].tolist() == pytest.approx([-1.10, -0.10])
+    assert scorecard["toxicity_inversion"].tolist() == [True, False]
+    assert scorecard["warning_label"].tolist() == ["toxic_reversal", "edge_persistent"]
+
+
+def test_passive_fill_event_lead_lag_scorecard_rejects_bad_profile() -> None:
+    with pytest.raises(ValueError, match="missing passive fill event lead lag scorecard columns"):
+        passive_fill_event_lead_lag_scorecard(pd.DataFrame({"event_regime": ["thin"]}))
 
 
 def test_passive_fill_event_window_diagnostics_labels_regime_transitions() -> None:
