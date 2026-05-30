@@ -1362,6 +1362,96 @@ def passive_fill_calibration_summary(curve: pd.DataFrame) -> dict[str, float | i
     }
 
 
+def passive_fill_realization_horizon_sweep(
+    frame: pd.DataFrame,
+    *,
+    horizons: list[int] | tuple[int, ...] = (1, 2, 3, 5),
+    bins: int = 5,
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    side_col: str = "best_execution_side",
+    regime_col: str | None = None,
+) -> pd.DataFrame:
+    """Stress-test passive fill calibration across realized-depletion horizons.
+
+    Queue-position labels inferred from snapshots are horizon-sensitive: one-step
+    depletion is conservative, while longer horizons can include slower queue
+    clearance that a passive order could plausibly capture. This sweep recomputes
+    realized bid/ask fill labels for each horizon, recalibrates the side-selected
+    fill probabilities, and reports drift versus the shortest horizon so research
+    review can spot alpha that only looks tradable after delayed fills.
+    """
+    if isinstance(horizons, (str, bytes)):
+        raise ValueError("horizons must be a non-empty sequence of positive integers")
+    horizons = list(horizons)
+    if not horizons:
+        raise ValueError("horizons must be a non-empty sequence")
+    for horizon in horizons:
+        if not isinstance(horizon, int) or isinstance(horizon, bool) or horizon < 1:
+            raise ValueError("horizon values must be positive integers")
+    if len(set(horizons)) != len(horizons):
+        raise ValueError("horizon values must be unique")
+    if not isinstance(bins, int) or isinstance(bins, bool):
+        raise ValueError("bins must be an integer")
+    if bins < 1:
+        raise ValueError("bins must be at least 1")
+
+    rows: list[dict[str, float | int | str]] = []
+    anchor_realized_rate: float | None = None
+    anchor_brier: float | None = None
+    for index, horizon in enumerate(sorted(horizons)):
+        realized = add_queue_position_realized_fill_proxy(
+            frame,
+            horizon=horizon,
+            group_cols=group_cols,
+            bid_realized_col="_sweep_bid_realized_fill",
+            ask_realized_col="_sweep_ask_realized_fill",
+        )
+        curve = passive_fill_calibration_curve(
+            realized,
+            bins=bins,
+            side_col=side_col,
+            regime_col=regime_col,
+            bid_realized_col="_sweep_bid_realized_fill",
+            ask_realized_col="_sweep_ask_realized_fill",
+        )
+        summary = passive_fill_calibration_summary(curve)
+        realized_rate = float(summary["weighted_realized_fill_rate"])
+        brier = float(summary["weighted_brier_score"])
+        if index == 0:
+            anchor_realized_rate = realized_rate
+            anchor_brier = brier
+        assert anchor_realized_rate is not None
+        assert anchor_brier is not None
+        realized_gap = realized_rate - anchor_realized_rate
+        brier_gap = brier - anchor_brier
+        rows.append(
+            {
+                "horizon": int(horizon),
+                "rows": int(summary["rows"]),
+                "bins": int(summary["bins"]),
+                "regimes": int(summary["regimes"]),
+                "weighted_mean_predicted_fill_probability": float(
+                    summary["weighted_mean_predicted_fill_probability"]
+                ),
+                "weighted_realized_fill_rate": realized_rate,
+                "weighted_calibration_error": float(summary["weighted_calibration_error"]),
+                "expected_calibration_error": float(summary["expected_calibration_error"]),
+                "weighted_brier_score": brier,
+                "worst_absolute_calibration_error": float(
+                    summary["worst_absolute_calibration_error"]
+                ),
+                "realized_fill_rate_gap_vs_shortest": float(realized_gap),
+                "brier_score_gap_vs_shortest": float(brier_gap),
+                "horizon_stability_label": _passive_fill_horizon_stability_label(
+                    index=index,
+                    realized_gap=realized_gap,
+                    brier_gap=brier_gap,
+                ),
+            }
+        )
+    return pd.DataFrame(rows)[list(_empty_passive_fill_realization_horizon_sweep().columns)]
+
+
 def passive_fill_event_window_diagnostics(
     frame: pd.DataFrame,
     *,
@@ -2005,6 +2095,38 @@ def _empty_passive_fill_calibration_summary() -> dict[str, float | int | str]:
         "worst_regime": "none",
         "worst_absolute_calibration_error": 0.0,
     }
+
+
+def _empty_passive_fill_realization_horizon_sweep() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "horizon",
+            "rows",
+            "bins",
+            "regimes",
+            "weighted_mean_predicted_fill_probability",
+            "weighted_realized_fill_rate",
+            "weighted_calibration_error",
+            "expected_calibration_error",
+            "weighted_brier_score",
+            "worst_absolute_calibration_error",
+            "realized_fill_rate_gap_vs_shortest",
+            "brier_score_gap_vs_shortest",
+            "horizon_stability_label",
+        ]
+    )
+
+
+def _passive_fill_horizon_stability_label(
+    *, index: int, realized_gap: float, brier_gap: float
+) -> str:
+    if index == 0:
+        return "anchor_horizon"
+    if realized_gap >= 0.10 and brier_gap <= 0.0:
+        return "later_fill_realization"
+    if realized_gap <= -0.10 or brier_gap >= 0.05:
+        return "horizon_fragile"
+    return "horizon_stable"
 
 
 def _empty_passive_fill_event_windows() -> pd.DataFrame:

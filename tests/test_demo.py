@@ -123,6 +123,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_passive_fill_calibration_curve.csv").exists()
     assert (tmp_path / "passive_fill_calibration_summary.json").exists()
     assert (tmp_path / "heldout_passive_fill_calibration_summary.json").exists()
+    assert (tmp_path / "passive_fill_realization_horizon_sweep.csv").exists()
+    assert (tmp_path / "heldout_passive_fill_realization_horizon_sweep.csv").exists()
     assert (tmp_path / "queue_position_fill_surface.csv").exists()
     assert (tmp_path / "heldout_queue_position_fill_surface.csv").exists()
     assert (tmp_path / "queue_position_fraction_sweep.csv").exists()
@@ -216,6 +218,16 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "expected_calibration_error" in passive_fill_calibration_summary
     assert "weighted_brier_score" in passive_fill_calibration_summary
     assert passive_fill_calibration_summary["realization_horizon_snapshots"] == 2
+    horizon_sweep_columns = set(
+        pd.read_csv(tmp_path / "passive_fill_realization_horizon_sweep.csv", nrows=1).columns
+    )
+    assert {
+        "horizon",
+        "weighted_realized_fill_rate",
+        "weighted_brier_score",
+        "realized_fill_rate_gap_vs_shortest",
+        "horizon_stability_label",
+    }.issubset(horizon_sweep_columns)
     queue_surface_columns = set(
         pd.read_csv(tmp_path / "queue_position_fill_surface.csv", nrows=1).columns
     )
@@ -321,9 +333,11 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["passive_fill_event_windows.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_toxicity_scorecard.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["passive_fill_realization_horizon_sweep.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_passive_fill_event_windows.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_passive_fill_event_toxicity_scorecard.json"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_passive_fill_realization_horizon_sweep.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["queue_position_fill_surface.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_queue_position_fill_surface.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["queue_position_fraction_sweep.csv"]["size_bytes"] > 0
@@ -370,6 +384,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## Execution-adjusted edge summary" in summary
     assert "## Passive-fill event-window regime diagnostics" in summary
     assert "## Passive-fill event-window toxicity scorecard" in summary
+    assert "## Passive-fill realization horizon sweep" in summary
     assert "## Queue-position fill calibration surface" in summary
     assert "## Queue-position fraction sweep" in summary
     assert "## Queue-position capacity frontier" in summary

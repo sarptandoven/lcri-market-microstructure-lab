@@ -23,6 +23,7 @@ from lcri_lab.reporting import (
     verify_adverse_selection_phase_shift_summary,
     verify_execution_publishability_review_artifacts,
     verify_figure_artifacts,
+    verify_passive_fill_realization_horizon_sweep,
     verify_generalization_fragility_consistency,
     verify_generalization_fragility_diagnostics,
     verify_generalization_fragility_summary,
@@ -194,6 +195,51 @@ def test_verify_hidden_resiliency_asymmetry_summary_checks_schema(tmp_path) -> N
     assert verify_hidden_resiliency_asymmetry_summary(tmp_path) == []
     write_json(tmp_path / "hidden_resiliency_asymmetry_summary.json", {"interpretation": "x"})
     assert "incomplete hidden resiliency" in verify_hidden_resiliency_asymmetry_summary(tmp_path)[0]
+
+
+def test_verify_passive_fill_realization_horizon_sweep_checks_schema_and_bounds(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {
+                "horizon": 1,
+                "rows": 100,
+                "bins": 3,
+                "regimes": 2,
+                "weighted_mean_predicted_fill_probability": 0.45,
+                "weighted_realized_fill_rate": 0.40,
+                "weighted_calibration_error": 0.05,
+                "expected_calibration_error": 0.06,
+                "weighted_brier_score": 0.22,
+                "worst_absolute_calibration_error": 0.10,
+                "realized_fill_rate_gap_vs_shortest": 0.0,
+                "brier_score_gap_vs_shortest": 0.0,
+                "horizon_stability_label": "anchor_horizon",
+            },
+            {
+                "horizon": 5,
+                "rows": 100,
+                "bins": 3,
+                "regimes": 2,
+                "weighted_mean_predicted_fill_probability": 0.45,
+                "weighted_realized_fill_rate": 0.52,
+                "weighted_calibration_error": 0.07,
+                "expected_calibration_error": 0.08,
+                "weighted_brier_score": 0.20,
+                "worst_absolute_calibration_error": 0.12,
+                "realized_fill_rate_gap_vs_shortest": 0.12,
+                "brier_score_gap_vs_shortest": -0.02,
+                "horizon_stability_label": "later_fill_realization",
+            },
+        ]
+    ).to_csv(tmp_path / "passive_fill_realization_horizon_sweep.csv", index=False)
+
+    assert verify_passive_fill_realization_horizon_sweep(tmp_path) == []
+
+    pd.DataFrame([{"horizon": 0, "horizon_stability_label": "unknown"}]).to_csv(
+        tmp_path / "passive_fill_realization_horizon_sweep.csv", index=False
+    )
+    errors = verify_passive_fill_realization_horizon_sweep(tmp_path)
+    assert "incomplete passive-fill realization horizon sweep" in errors[0]
 
 
 def test_verify_adverse_selection_phase_shift_summary_checks_schema(tmp_path) -> None:

@@ -17,6 +17,7 @@ from lcri_lab.execution import (
     passive_fill_event_window_diagnostics,
     execution_publishability_review_packet,
     passive_fill_edge_curve,
+    passive_fill_realization_horizon_sweep,
     queue_position_capacity_frontier,
     queue_position_capacity_stability,
     queue_position_execution_quality_gate,
@@ -251,6 +252,38 @@ def test_execution_adjusted_edge_summary_quantifies_tradability_drag() -> None:
     assert summary["publishable_side_conflict_rows"] == 2
     assert summary["publishable_side_conflict_share"] == pytest.approx(0.50)
     assert summary["dominant_execution_side"] == "long"
+
+
+def test_passive_fill_realization_horizon_sweep_relabels_and_calibrates_each_horizon() -> None:
+    frame = pd.DataFrame(
+        {
+            "bid_px_1": [100.0, 100.0, 99.0],
+            "ask_px_1": [101.0, 101.0, 102.0],
+            "bid_sz_1": [100.0, 85.0, 120.0],
+            "ask_sz_1": [80.0, 70.0, 90.0],
+            "bid_queue_ahead": [40.0, 40.0, 40.0],
+            "ask_queue_ahead": [30.0, 30.0, 30.0],
+            "best_execution_side": ["long", "short", "long"],
+            "bid_fill_probability": [0.60, 0.20, 0.80],
+            "ask_fill_probability": [0.30, 0.70, 0.40],
+        }
+    )
+
+    sweep = passive_fill_realization_horizon_sweep(frame, horizons=[1, 2], bins=1)
+
+    assert sweep["horizon"].tolist() == [1, 2]
+    assert sweep["rows"].tolist() == [3, 3]
+    assert sweep["weighted_mean_predicted_fill_probability"].tolist() == pytest.approx([0.70, 0.70])
+    assert sweep["weighted_realized_fill_rate"].tolist() == pytest.approx([1.0 / 3.0, 2.0 / 3.0])
+    assert sweep["realized_fill_rate_gap_vs_shortest"].tolist() == pytest.approx([0.0, 1.0 / 3.0])
+    assert sweep["horizon_stability_label"].tolist() == ["anchor_horizon", "later_fill_realization"]
+
+
+def test_passive_fill_realization_horizon_sweep_rejects_invalid_horizons() -> None:
+    with pytest.raises(ValueError, match="horizons must be a non-empty sequence"):
+        passive_fill_realization_horizon_sweep(pd.DataFrame(), horizons=[])
+    with pytest.raises(ValueError, match="horizon values must be positive integers"):
+        passive_fill_realization_horizon_sweep(pd.DataFrame(), horizons=[1, 0])
 
 
 def test_passive_fill_edge_curve_bins_execution_quality_by_predicted_fill() -> None:

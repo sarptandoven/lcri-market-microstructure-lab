@@ -97,6 +97,7 @@ from lcri_lab.execution import (
     passive_fill_event_transition_scorecard,
     passive_fill_event_transition_summary,
     passive_fill_event_window_diagnostics,
+    passive_fill_realization_horizon_sweep,
     queue_position_capacity_frontier,
     queue_position_capacity_stability,
     queue_position_edge_decay,
@@ -141,6 +142,7 @@ from lcri_lab.reporting import (
     verify_hidden_resiliency_asymmetry_summary,
     verify_adverse_selection_phase_shift_summary,
     verify_execution_publishability_review_artifacts,
+    verify_passive_fill_realization_horizon_sweep,
     verify_phase_shift_artifact_review,
     verify_lcri_fragility_gate_alignment,
     verify_lcri_fragility_gate_scorecard,
@@ -568,6 +570,17 @@ def run_demo(
         heldout_passive_fill_calibration
     )
     heldout_passive_fill_calibration_stats["realization_horizon_snapshots"] = passive_fill_horizon
+    passive_fill_horizons = tuple(sorted({1, passive_fill_horizon, 5}))
+    passive_fill_horizon_sweep = passive_fill_realization_horizon_sweep(
+        scored,
+        horizons=passive_fill_horizons,
+        regime_col="pressure_memory_decay_state",
+    )
+    heldout_passive_fill_horizon_sweep = passive_fill_realization_horizon_sweep(
+        heldout_scored,
+        horizons=passive_fill_horizons,
+        regime_col="pressure_memory_decay_state",
+    )
     queue_fill_surface = queue_position_fill_surface(
         passive_fill_labeled,
         regime_col="pressure_memory_decay_state",
@@ -715,6 +728,8 @@ def run_demo(
         "heldout_passive_fill_calibration_curve.csv",
         "passive_fill_calibration_summary.json",
         "heldout_passive_fill_calibration_summary.json",
+        "passive_fill_realization_horizon_sweep.csv",
+        "heldout_passive_fill_realization_horizon_sweep.csv",
         "queue_position_fill_surface.csv",
         "heldout_queue_position_fill_surface.csv",
         "queue_position_fraction_sweep.csv",
@@ -965,6 +980,12 @@ def run_demo(
         output / "heldout_passive_fill_calibration_summary.json",
         heldout_passive_fill_calibration_stats,
     )
+    passive_fill_horizon_sweep.to_csv(
+        output / "passive_fill_realization_horizon_sweep.csv", index=False
+    )
+    heldout_passive_fill_horizon_sweep.to_csv(
+        output / "heldout_passive_fill_realization_horizon_sweep.csv", index=False
+    )
     queue_fill_surface.to_csv(output / "queue_position_fill_surface.csv", index=False)
     heldout_queue_fill_surface.to_csv(
         output / "heldout_queue_position_fill_surface.csv", index=False
@@ -1112,6 +1133,8 @@ def run_demo(
         heldout_passive_fill_event_transition_toxicity=heldout_passive_fill_event_transition_toxicity,
         passive_fill_calibration_summary=passive_fill_calibration_stats,
         heldout_passive_fill_calibration_summary=heldout_passive_fill_calibration_stats,
+        passive_fill_horizon_sweep=passive_fill_horizon_sweep,
+        heldout_passive_fill_horizon_sweep=heldout_passive_fill_horizon_sweep,
         queue_fill_surface=queue_fill_surface,
         heldout_queue_fill_surface=heldout_queue_fill_surface,
         queue_fraction_sweep=queue_fraction_sweep,
@@ -1326,6 +1349,8 @@ def _append_execution_adjusted_summary(
     heldout_passive_fill_event_transition_toxicity: dict[str, float | int | str],
     passive_fill_calibration_summary: dict[str, float | int | str],
     heldout_passive_fill_calibration_summary: dict[str, float | int | str],
+    passive_fill_horizon_sweep: pd.DataFrame,
+    heldout_passive_fill_horizon_sweep: pd.DataFrame,
     queue_fill_surface: pd.DataFrame,
     heldout_queue_fill_surface: pd.DataFrame,
     queue_fraction_sweep: pd.DataFrame,
@@ -1353,6 +1378,10 @@ def _append_execution_adjusted_summary(
     )
     heldout_passive_calibration_lines = _passive_fill_calibration_summary_lines(
         heldout_passive_fill_calibration_summary
+    )
+    passive_horizon_lines = _passive_fill_horizon_sweep_lines(passive_fill_horizon_sweep)
+    heldout_passive_horizon_lines = _passive_fill_horizon_sweep_lines(
+        heldout_passive_fill_horizon_sweep
     )
     queue_surface_lines = _queue_position_fill_surface_lines(queue_fill_surface)
     heldout_queue_surface_lines = _queue_position_fill_surface_lines(heldout_queue_fill_surface)
@@ -1408,6 +1437,14 @@ def _append_execution_adjusted_summary(
         "## Heldout passive-fill calibration summary",
         "",
         *heldout_passive_calibration_lines,
+        "",
+        "## Passive-fill realization horizon sweep",
+        "",
+        *passive_horizon_lines,
+        "",
+        "## Heldout passive-fill realization horizon sweep",
+        "",
+        *heldout_passive_horizon_lines,
         "",
         "## Queue-position fill calibration surface",
         "",
@@ -1518,6 +1555,24 @@ def _passive_fill_calibration_summary_lines(summary: dict[str, float | int | str
         "worst_absolute_calibration_error",
     ]
     return [f"- {key}: {summary.get(key, 'n/a')}" for key in keys]
+
+
+def _passive_fill_horizon_sweep_lines(sweep: pd.DataFrame) -> list[str]:
+    if sweep.empty:
+        return ["- no passive-fill realization horizon rows"]
+    rows = []
+    for row in sweep.to_dict("records"):
+        rows.append(
+            "- "
+            f"horizon={int(row['horizon'])}: rows={int(row['rows'])}, "
+            f"predicted_fill={row['weighted_mean_predicted_fill_probability']:.3f}, "
+            f"realized_fill={row['weighted_realized_fill_rate']:.3f}, "
+            f"realized_gap={row['realized_fill_rate_gap_vs_shortest']:.3f}, "
+            f"brier={row['weighted_brier_score']:.3f}, "
+            f"brier_gap={row['brier_score_gap_vs_shortest']:.3f}, "
+            f"label={row['horizon_stability_label']}"
+        )
+    return rows
 
 
 def _queue_position_fill_surface_lines(surface: pd.DataFrame) -> list[str]:
@@ -1686,6 +1741,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_execution_publishability_review_packet.csv"
             )
             if "heldout_execution_publishability_review_packet.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_passive_fill_realization_horizon_sweep(report_dir)
+            if "passive_fill_realization_horizon_sweep.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_passive_fill_realization_horizon_sweep(
+                report_dir, "heldout_passive_fill_realization_horizon_sweep.csv"
+            )
+            if "heldout_passive_fill_realization_horizon_sweep.csv" in manifest_artifacts
             else []
         ),
         *(

@@ -545,6 +545,78 @@ def verify_execution_publishability_review_artifacts(
     return errors
 
 
+def verify_passive_fill_realization_horizon_sweep(
+    output_dir: Path, artifact: str = "passive_fill_realization_horizon_sweep.csv"
+) -> list[str]:
+    """Return errors for horizon-sensitivity passive-fill calibration sweeps."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing passive-fill realization horizon sweep: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "horizon",
+        "rows",
+        "bins",
+        "regimes",
+        "weighted_mean_predicted_fill_probability",
+        "weighted_realized_fill_rate",
+        "weighted_calibration_error",
+        "expected_calibration_error",
+        "weighted_brier_score",
+        "worst_absolute_calibration_error",
+        "realized_fill_rate_gap_vs_shortest",
+        "brier_score_gap_vs_shortest",
+        "horizon_stability_label",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete passive-fill realization horizon sweep {artifact}: {missing}"]
+
+    numeric_columns = list(required - {"horizon_stability_label"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite passive-fill horizon sweep values in {artifact}")
+    if not numeric[["horizon", "rows", "bins", "regimes"]].ge(1.0).all().all():
+        errors.append(f"non-positive passive-fill horizon sweep counts in {artifact}")
+    if not numeric["horizon"].is_monotonic_increasing:
+        errors.append(f"unsorted passive-fill realization horizons in {artifact}")
+    if numeric["horizon"].duplicated().any():
+        errors.append(f"duplicate passive-fill realization horizons in {artifact}")
+    probability_columns = [
+        "weighted_mean_predicted_fill_probability",
+        "weighted_realized_fill_rate",
+        "expected_calibration_error",
+        "weighted_brier_score",
+        "worst_absolute_calibration_error",
+    ]
+    if not numeric[probability_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        errors.append(f"bounded passive-fill horizon sweep probabilities violated in {artifact}")
+    signed_columns = [
+        "weighted_calibration_error",
+        "realized_fill_rate_gap_vs_shortest",
+        "brier_score_gap_vs_shortest",
+    ]
+    if not numeric[signed_columns].apply(lambda col: col.between(-1.0, 1.0).all()).all():
+        errors.append(f"bounded passive-fill horizon sweep signed gaps violated in {artifact}")
+    if abs(float(numeric.iloc[0]["realized_fill_rate_gap_vs_shortest"])) > 1e-12:
+        errors.append(f"first passive-fill realization horizon is not anchored in {artifact}")
+    if abs(float(numeric.iloc[0]["brier_score_gap_vs_shortest"])) > 1e-12:
+        errors.append(f"first passive-fill brier horizon is not anchored in {artifact}")
+    allowed_labels = {
+        "anchor_horizon",
+        "later_fill_realization",
+        "horizon_fragile",
+        "horizon_stable",
+    }
+    unknown_labels = sorted(set(frame["horizon_stability_label"].astype(str)) - allowed_labels)
+    if unknown_labels:
+        errors.append(f"unknown passive-fill horizon stability labels in {artifact}: {unknown_labels}")
+    if str(frame.iloc[0]["horizon_stability_label"]) != "anchor_horizon":
+        errors.append(f"first passive-fill realization horizon is not labeled anchor_horizon in {artifact}")
+    return errors
+
+
 def verify_alpha_event_review_artifacts(output_dir: Path) -> list[str]:
     """Return errors when alpha event review artifacts are incomplete or stale."""
     paths = {
