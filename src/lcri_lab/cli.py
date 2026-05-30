@@ -99,6 +99,7 @@ from lcri_lab.execution import (
     passive_fill_event_transition_summary,
     passive_fill_event_window_diagnostics,
     passive_fill_realization_horizon_sweep,
+    passive_fill_threshold_policy_curve,
     queue_position_capacity_frontier,
     queue_position_capacity_stability,
     queue_position_edge_decay,
@@ -146,6 +147,7 @@ from lcri_lab.reporting import (
     verify_execution_publishability_review_artifacts,
     verify_execution_publishability_release_gate,
     verify_passive_fill_realization_horizon_sweep,
+    verify_passive_fill_threshold_policy_curve,
     verify_phase_shift_artifact_review,
     verify_lcri_fragility_gate_alignment,
     verify_lcri_fragility_gate_scorecard,
@@ -584,6 +586,10 @@ def run_demo(
         horizons=passive_fill_horizons,
         regime_col="pressure_memory_decay_state",
     )
+    passive_fill_threshold_policy = passive_fill_threshold_policy_curve(passive_fill_labeled)
+    heldout_passive_fill_threshold_policy = passive_fill_threshold_policy_curve(
+        heldout_passive_fill_labeled
+    )
     queue_fill_surface = queue_position_fill_surface(
         passive_fill_labeled,
         regime_col="pressure_memory_decay_state",
@@ -753,6 +759,8 @@ def run_demo(
         "heldout_passive_fill_calibration_summary.json",
         "passive_fill_realization_horizon_sweep.csv",
         "heldout_passive_fill_realization_horizon_sweep.csv",
+        "passive_fill_threshold_policy_curve.csv",
+        "heldout_passive_fill_threshold_policy_curve.csv",
         "queue_position_fill_surface.csv",
         "heldout_queue_position_fill_surface.csv",
         "queue_position_fraction_sweep.csv",
@@ -1013,6 +1021,12 @@ def run_demo(
     )
     heldout_passive_fill_horizon_sweep.to_csv(
         output / "heldout_passive_fill_realization_horizon_sweep.csv", index=False
+    )
+    passive_fill_threshold_policy.to_csv(
+        output / "passive_fill_threshold_policy_curve.csv", index=False
+    )
+    heldout_passive_fill_threshold_policy.to_csv(
+        output / "heldout_passive_fill_threshold_policy_curve.csv", index=False
     )
     queue_fill_surface.to_csv(output / "queue_position_fill_surface.csv", index=False)
     heldout_queue_fill_surface.to_csv(
@@ -1836,6 +1850,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_passive_fill_realization_horizon_sweep.csv"
             )
             if "heldout_passive_fill_realization_horizon_sweep.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_passive_fill_threshold_policy_curve(report_dir)
+            if "passive_fill_threshold_policy_curve.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_passive_fill_threshold_policy_curve(
+                report_dir, "heldout_passive_fill_threshold_policy_curve.csv"
+            )
+            if "heldout_passive_fill_threshold_policy_curve.csv" in manifest_artifacts
             else []
         ),
         *(

@@ -459,6 +459,27 @@ def test_verify_report_checks_execution_publishability_packets(tmp_path: Path) -
         verify_report(tmp_path)
 
 
+def test_verify_report_checks_passive_fill_threshold_policy_curve(tmp_path: Path) -> None:
+    (tmp_path / "passive_fill_threshold_policy_curve.csv").write_text(
+        "threshold,candidate_rows,trade_share,long_rows,short_rows,"
+        "mean_predicted_fill_probability,realized_fill_rate,weighted_brier_score,"
+        "mean_realized_edge_ticks,positive_edge_rate,"
+        "mean_execution_adjusted_edge_ticks,policy_label\n"
+        "1.2,2,1.4,1,1,0.6,0.7,0.2,0.1,0.5,0.08,unknown\n"
+    )
+    (tmp_path / "artifact_manifest.json").write_text(
+        json.dumps(
+            {
+                "artifacts": ["passive_fill_threshold_policy_curve.csv"],
+                "artifact_metadata": {},
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="passive fill threshold policy"):
+        verify_report(tmp_path)
+
+
 def test_verify_report_error_includes_summary(tmp_path: Path) -> None:
     (tmp_path / "artifact_manifest.json").write_text(json.dumps({"artifacts": []}))
 

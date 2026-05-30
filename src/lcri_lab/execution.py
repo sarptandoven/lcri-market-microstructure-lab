@@ -931,6 +931,138 @@ def passive_fill_edge_curve(
     return pd.DataFrame(rows)[list(_empty_passive_fill_edge_curve().columns)]
 
 
+def passive_fill_threshold_policy_curve(
+    frame: pd.DataFrame,
+    *,
+    thresholds: list[float] | tuple[float, ...] = (0.50, 0.60, 0.70, 0.80),
+    side_col: str = "best_execution_side",
+    bid_realized_col: str = "bid_realized_fill",
+    ask_realized_col: str = "ask_realized_fill",
+    long_return_col: str = "long_net_return_ticks",
+    short_return_col: str = "short_net_return_ticks",
+) -> pd.DataFrame:
+    """Evaluate executable passive-fill cutoffs as a threshold policy curve.
+
+    Calibration bins show whether probabilities are honest; execution review also
+    needs the trade-off between selectivity and realized edge. This diagnostic
+    selects the side-specific passive-fill probability for rows where the execution
+    engine would trade, applies each cutoff, and reports coverage, realized fills,
+    Brier loss, and realized/ex-ante edge so demos can defend an actionable fill
+    threshold instead of cherry-picking one cutoff.
+    """
+    if isinstance(thresholds, (str, bytes)):
+        raise ValueError("thresholds must be a non-empty sequence of finite values")
+    thresholds = list(thresholds)
+    if not thresholds:
+        raise ValueError("thresholds must be a non-empty sequence")
+    for threshold in thresholds:
+        if not math.isfinite(float(threshold)):
+            raise ValueError("threshold values must be finite")
+        if not 0.0 <= float(threshold) <= 1.0:
+            raise ValueError("threshold values must be in [0.0, 1.0]")
+
+    required = {
+        side_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        bid_realized_col,
+        ask_realized_col,
+        long_return_col,
+        short_return_col,
+        "execution_adjusted_edge_ticks",
+    }
+    _require_columns(frame, required, "passive fill threshold policy curve")
+    if frame.empty:
+        return _empty_passive_fill_threshold_policy_curve()
+
+    values = _finite_values(
+        frame,
+        [
+            "bid_fill_probability",
+            "ask_fill_probability",
+            bid_realized_col,
+            ask_realized_col,
+            long_return_col,
+            short_return_col,
+            "execution_adjusted_edge_ticks",
+        ],
+        "passive fill threshold policy curve",
+    )
+    side = frame[side_col].astype(str)
+    tradable = side.isin(["long", "short"])
+    if not bool(tradable.any()):
+        return _empty_passive_fill_threshold_policy_curve()
+
+    selected = pd.DataFrame(index=frame.index[tradable])
+    selected_side = side.loc[tradable]
+    selected["side"] = selected_side
+    selected["predicted_fill_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_fill_probability"],
+        values.loc[tradable, "ask_fill_probability"],
+    )
+    selected["realized_fill"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, bid_realized_col],
+        values.loc[tradable, ask_realized_col],
+    )
+    selected["realized_edge_ticks"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, long_return_col],
+        values.loc[tradable, short_return_col],
+    )
+    selected["execution_adjusted_edge_ticks"] = values.loc[tradable, "execution_adjusted_edge_ticks"]
+
+    rows: list[dict[str, float | int | str]] = []
+    total_rows = len(frame)
+    for threshold in sorted(float(value) for value in thresholds):
+        candidate = selected[selected["predicted_fill_probability"] >= threshold]
+        candidate_rows = len(candidate)
+        if candidate_rows:
+            realized_fill = candidate["realized_fill"]
+            predicted = candidate["predicted_fill_probability"]
+            realized_edge = candidate["realized_edge_ticks"]
+            adjusted_edge = candidate["execution_adjusted_edge_ticks"]
+            long_rows = int((candidate["side"] == "long").sum())
+            short_rows = int((candidate["side"] == "short").sum())
+            mean_predicted = float(predicted.mean())
+            realized_fill_rate = float(realized_fill.mean())
+            brier = float(np.mean((predicted - realized_fill) ** 2))
+            mean_realized_edge = float(realized_edge.mean())
+            positive_edge_rate = float((realized_edge > 0.0).mean())
+            mean_adjusted_edge = float(adjusted_edge.mean())
+        else:
+            long_rows = 0
+            short_rows = 0
+            mean_predicted = 0.0
+            realized_fill_rate = 0.0
+            brier = 0.0
+            mean_realized_edge = 0.0
+            positive_edge_rate = 0.0
+            mean_adjusted_edge = 0.0
+        rows.append(
+            {
+                "threshold": threshold,
+                "candidate_rows": int(candidate_rows),
+                "trade_share": float(candidate_rows / total_rows) if total_rows else 0.0,
+                "long_rows": long_rows,
+                "short_rows": short_rows,
+                "mean_predicted_fill_probability": mean_predicted,
+                "realized_fill_rate": realized_fill_rate,
+                "weighted_brier_score": brier,
+                "mean_realized_edge_ticks": mean_realized_edge,
+                "positive_edge_rate": positive_edge_rate,
+                "mean_execution_adjusted_edge_ticks": mean_adjusted_edge,
+                "policy_label": _passive_fill_threshold_policy_label(
+                    trade_share=float(candidate_rows / total_rows) if total_rows else 0.0,
+                    realized_fill_rate=realized_fill_rate,
+                    mean_realized_edge=mean_realized_edge,
+                ),
+            }
+        )
+    return pd.DataFrame(rows)[list(_empty_passive_fill_threshold_policy_curve().columns)]
+
+
 def queue_position_fill_surface(
     frame: pd.DataFrame,
     *,
@@ -2517,6 +2649,41 @@ def _empty_passive_fill_edge_curve() -> pd.DataFrame:
             "mean_execution_adjusted_edge_ticks",
         ]
     )
+
+
+def _empty_passive_fill_threshold_policy_curve() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "threshold",
+            "candidate_rows",
+            "trade_share",
+            "long_rows",
+            "short_rows",
+            "mean_predicted_fill_probability",
+            "realized_fill_rate",
+            "weighted_brier_score",
+            "mean_realized_edge_ticks",
+            "positive_edge_rate",
+            "mean_execution_adjusted_edge_ticks",
+            "policy_label",
+        ]
+    )
+
+
+def _passive_fill_threshold_policy_label(
+    *, trade_share: float, realized_fill_rate: float, mean_realized_edge: float
+) -> str:
+    if trade_share <= 0.0:
+        return "no_executable_policy"
+    if realized_fill_rate >= 0.75 and mean_realized_edge > 0.0:
+        if trade_share >= 0.50:
+            return "broad_execution_policy"
+        return "selective_high_quality_policy"
+    if trade_share >= 0.50 and realized_fill_rate >= 0.60 and mean_realized_edge > 0.0:
+        return "broad_execution_policy"
+    if mean_realized_edge > 0.0:
+        return "edge_positive_fill_uncertain_policy"
+    return "execution_policy_rejected"
 
 
 def _empty_queue_position_fill_surface() -> pd.DataFrame:

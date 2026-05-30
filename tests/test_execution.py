@@ -22,6 +22,7 @@ from lcri_lab.execution import (
     execution_publishability_review_packet,
     passive_fill_edge_curve,
     passive_fill_realization_horizon_sweep,
+    passive_fill_threshold_policy_curve,
     queue_position_capacity_frontier,
     queue_position_capacity_stability,
     queue_position_execution_quality_gate,
@@ -1422,3 +1423,43 @@ def test_execution_functions_reject_non_finite_inputs() -> None:
 
     with pytest.raises(ValueError, match="finite"):
         add_queue_position_features(frame, levels=2)
+
+
+def test_passive_fill_threshold_policy_curve_scores_actionable_cutoffs() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "long", "short", "short", "abstain"],
+            "bid_fill_probability": [0.82, 0.55, 0.20, 0.25, 0.90],
+            "ask_fill_probability": [0.20, 0.35, 0.77, 0.45, 0.10],
+            "bid_realized_fill": [1.0, 0.0, 0.0, 0.0, 1.0],
+            "ask_realized_fill": [0.0, 0.0, 1.0, 0.0, 0.0],
+            "long_net_return_ticks": [0.60, -0.20, 0.10, 0.20, 0.40],
+            "short_net_return_ticks": [-0.10, 0.30, 0.50, -0.40, -0.20],
+            "execution_adjusted_edge_ticks": [0.32, 0.05, 0.28, -0.05, 0.0],
+        }
+    )
+
+    curve = passive_fill_threshold_policy_curve(frame, thresholds=(0.50, 0.75))
+
+    assert curve["threshold"].tolist() == pytest.approx([0.50, 0.75])
+    assert curve["candidate_rows"].tolist() == [3, 2]
+    assert curve["trade_share"].tolist() == pytest.approx([3 / 5, 2 / 5])
+    assert curve["long_rows"].tolist() == [2, 1]
+    assert curve["short_rows"].tolist() == [1, 1]
+    assert curve["mean_predicted_fill_probability"].tolist() == pytest.approx(
+        [(0.82 + 0.55 + 0.77) / 3, (0.82 + 0.77) / 2]
+    )
+    assert curve["realized_fill_rate"].tolist() == pytest.approx([2 / 3, 1.0])
+    assert curve["mean_realized_edge_ticks"].tolist() == pytest.approx(
+        [(0.60 - 0.20 + 0.50) / 3, (0.60 + 0.50) / 2]
+    )
+    assert curve["positive_edge_rate"].tolist() == pytest.approx([2 / 3, 1.0])
+    assert curve["mean_execution_adjusted_edge_ticks"].tolist() == pytest.approx(
+        [(0.32 + 0.05 + 0.28) / 3, (0.32 + 0.28) / 2]
+    )
+    assert curve["policy_label"].tolist() == ["broad_execution_policy", "selective_high_quality_policy"]
+
+
+def test_passive_fill_threshold_policy_curve_rejects_invalid_thresholds() -> None:
+    with pytest.raises(ValueError, match="threshold values must be in"):
+        passive_fill_threshold_policy_curve(pd.DataFrame(), thresholds=(1.25,))
