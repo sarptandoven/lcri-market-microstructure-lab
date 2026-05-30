@@ -37,6 +37,11 @@ def test_public_api_exports_baseline_liquidity_stress_curve() -> None:
     assert "baseline_liquidity_stress_curve" in lcri_lab.__all__
 
 
+def test_public_api_exports_baseline_basis_comparison() -> None:
+    assert callable(lcri_lab.baseline_basis_comparison)
+    assert "baseline_basis_comparison" in lcri_lab.__all__
+
+
 def test_public_api_exports_execution_adjusted_lcri_quantile_diagnostics() -> None:
     assert callable(lcri_lab.execution_adjusted_lcri_quantile_diagnostics)
     assert "execution_adjusted_lcri_quantile_diagnostics" in lcri_lab.__all__

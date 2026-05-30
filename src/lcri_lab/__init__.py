@@ -19,6 +19,7 @@ from lcri_lab.alpha import (
 )
 from lcri_lab.baseline import (
     LiquidityBaseline,
+    baseline_basis_comparison,
     baseline_component_attribution,
     baseline_liquidity_stress_curve,
     compute_lcri,
@@ -226,6 +227,7 @@ __all__ = [
     "publishability_margin_diagnostics",
     "publishability_margin_summary",
     "SimulationConfig",
+    "baseline_basis_comparison",
     "baseline_component_attribution",
     "baseline_liquidity_stress_curve",
     "compute_lcri",

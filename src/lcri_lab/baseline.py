@@ -89,6 +89,106 @@ def design_feature_names() -> list[str]:
     return [*feature_columns(), *INTERACTION_FEATURES, *NONLINEAR_LIQUIDITY_FEATURES]
 
 
+def baseline_basis_comparison(
+    frame: pd.DataFrame,
+    *,
+    train_fraction: float = 0.60,
+    ridge: float = 1e-3,
+) -> pd.DataFrame:
+    """Compare chronological out-of-sample residual fit across baseline bases.
+
+    LCRI neutralization is publishable only if nonlinear liquidity terms improve
+    held-out residual control rather than merely increasing in-sample flexibility.
+    This diagnostic fits core, interaction-augmented, and full nonlinear liquidity
+    ridge bases on the earliest ``train_fraction`` of the frame, then reports test
+    RMSE lift versus the core basis on the remaining chronological holdout.
+    """
+    columns = [
+        "basis",
+        "features",
+        "train_rows",
+        "test_rows",
+        "train_rmse",
+        "test_rmse",
+        "test_rmse_lift_vs_core",
+        "test_residual_mean",
+        "test_residual_std",
+        "overfit_ratio",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    if not math.isfinite(train_fraction) or not 0.0 < train_fraction < 1.0:
+        raise ValueError("train_fraction must be finite and in (0, 1)")
+    if not math.isfinite(ridge) or ridge < 0.0:
+        raise ValueError("ridge must be a finite non-negative value")
+    if "raw_imbalance" not in frame.columns:
+        raise ValueError("missing baseline basis comparison columns: ['raw_imbalance']")
+
+    y = frame["raw_imbalance"].to_numpy(dtype=float)
+    if not np.isfinite(y).all():
+        raise ValueError("raw_imbalance values must be finite")
+    train_rows = int(len(frame) * train_fraction)
+    if train_rows < 1 or train_rows >= len(frame):
+        raise ValueError("train_fraction leaves no train or test rows")
+
+    x = _design_matrix(frame)
+    feature_names = design_feature_names()
+    basis_indexes = {
+        "core": list(range(len(feature_columns()))),
+        "interaction": list(range(len(feature_columns()) + len(INTERACTION_FEATURES))),
+        "nonlinear_liquidity": list(range(len(feature_names))),
+    }
+
+    def fit_predict(indexes: list[int]) -> tuple[np.ndarray, np.ndarray]:
+        x_basis = x[:, indexes]
+        x_train = x_basis[:train_rows]
+        x_test = x_basis[train_rows:]
+        mean = x_train.mean(axis=0)
+        scale = x_train.std(axis=0)
+        scale[scale == 0.0] = 1.0
+        train_design = np.column_stack([np.ones(train_rows), (x_train - mean) / scale])
+        test_design = np.column_stack([np.ones(len(x_test)), (x_test - mean) / scale])
+        penalty = np.sqrt(ridge) * np.eye(train_design.shape[1])
+        penalty[0, 0] = 0.0
+        coefficients = np.linalg.lstsq(
+            np.vstack([train_design, penalty]),
+            np.concatenate([y[:train_rows], np.zeros(train_design.shape[1])]),
+            rcond=None,
+        )[0]
+        return train_design @ coefficients, test_design @ coefficients
+
+    rows: list[dict[str, float | int | str]] = []
+    core_test_rmse: float | None = None
+    for basis, indexes in basis_indexes.items():
+        train_pred, test_pred = fit_predict(indexes)
+        train_residual = y[:train_rows] - train_pred
+        test_residual = y[train_rows:] - test_pred
+        train_rmse = float(np.sqrt(np.mean(train_residual**2)))
+        test_rmse = float(np.sqrt(np.mean(test_residual**2)))
+        if core_test_rmse is None:
+            core_test_rmse = test_rmse
+        lift = 0.0 if core_test_rmse <= 0.0 else (core_test_rmse - test_rmse) / core_test_rmse
+        if train_rmse > 0.0:
+            overfit_ratio = test_rmse / train_rmse
+        else:
+            overfit_ratio = 1.0 if test_rmse == 0.0 else float("inf")
+        rows.append(
+            {
+                "basis": basis,
+                "features": int(len(indexes)),
+                "train_rows": int(train_rows),
+                "test_rows": int(len(frame) - train_rows),
+                "train_rmse": train_rmse,
+                "test_rmse": test_rmse,
+                "test_rmse_lift_vs_core": float(lift),
+                "test_residual_mean": float(test_residual.mean()),
+                "test_residual_std": float(test_residual.std()),
+                "overfit_ratio": float(overfit_ratio),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
 def baseline_component_attribution(frame: pd.DataFrame, baseline: LiquidityBaseline) -> pd.DataFrame:
     """Attribute a fitted baseline's prediction to core, interaction, and nonlinear terms.
 

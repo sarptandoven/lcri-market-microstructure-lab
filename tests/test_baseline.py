@@ -3,6 +3,7 @@ import pytest
 
 from lcri_lab.baseline import (
     LiquidityBaseline,
+    baseline_basis_comparison,
     baseline_component_attribution,
     baseline_liquidity_stress_curve,
     compute_lcri,
@@ -125,6 +126,40 @@ def test_baseline_liquidity_stress_curve_rejects_unknown_feature() -> None:
 
     with pytest.raises(ValueError, match="unknown design feature"):
         baseline_liquidity_stress_curve(features, baseline, feature="not_a_feature")
+
+
+def test_baseline_basis_comparison_quantifies_out_of_sample_nonlinear_lift() -> None:
+    books = simulate_order_books(SimulationConfig(rows=900, seed=18))
+    features = compute_features(books)
+    features["raw_imbalance"] = (
+        0.10 * features["spread_ticks"].to_numpy(dtype=float) ** 2
+        - 0.32 * features["volatility"].to_numpy(dtype=float) ** 2
+        + 0.40 * features["liquidity_void_ratio"].to_numpy(dtype=float)
+        * features["volatility"].to_numpy(dtype=float)
+        - 0.20 / (1.0 + features["replenishment_rate"].to_numpy(dtype=float))
+    )
+
+    comparison = baseline_basis_comparison(features, train_fraction=0.55, ridge=1e-8)
+    by_basis = comparison.set_index("basis")
+
+    assert comparison.columns.tolist() == [
+        "basis",
+        "features",
+        "train_rows",
+        "test_rows",
+        "train_rmse",
+        "test_rmse",
+        "test_rmse_lift_vs_core",
+        "test_residual_mean",
+        "test_residual_std",
+        "overfit_ratio",
+    ]
+    assert by_basis.index.tolist() == ["core", "interaction", "nonlinear_liquidity"]
+    assert by_basis.loc["core", "features"] < by_basis.loc["nonlinear_liquidity", "features"]
+    assert by_basis.loc["core", "test_rmse_lift_vs_core"] == pytest.approx(0.0)
+    assert by_basis.loc["nonlinear_liquidity", "test_rmse"] < by_basis.loc["core", "test_rmse"] * 0.30
+    assert by_basis.loc["nonlinear_liquidity", "test_rmse_lift_vs_core"] > 0.70
+    assert by_basis.loc["nonlinear_liquidity", "overfit_ratio"] < 2.0
 
 
 def test_baseline_rejects_invalid_ridge() -> None:
