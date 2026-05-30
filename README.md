@@ -256,14 +256,14 @@ tests/
 - The included workflow uses synthetic data.
 - Real order book feeds must be normalized into the snapshot schema before scoring.
 - The current baseline is transparent and ridge-regularized; nonlinear stress enters through explicit basis terms rather than a black-box estimator.
-- Queue-position-aware passive fill probability is snapshot-proxy based, not an event-level queue simulator; demo calibration labels now use configurable-horizon visible best-level depletion versus estimated queue-ahead instead of only next-mid touches. The public realized-fill proxy also accepts grouping columns to avoid label leakage across symbols, venues, or sessions in batched books.
+- Queue-position-aware passive fill probability is snapshot-proxy based for demos, but the execution module also includes an event-level realized-fill adapter that maps configurable venue-specific trade/cancel event-type and side aliases into side-specific `bid_realized_fill`/`ask_realized_fill` labels with symbol/session grouping. Demo calibration labels now use configurable-horizon visible best-level depletion versus estimated queue-ahead instead of only next-mid touches.
 - Passive-fill calibration curves can compare that proxy to side-specific realized fill flags, but event-level add/cancel/trade data remains the live-calibration target.
 - Passive-fill event windows now surface side-specific post-fill drift by regime and are emitted as demo/report artifacts with calibration summaries.
 
 ## Next steps
 
 - Add a real-data adapter for normalized TAQ or crypto L2 snapshots.
-- Map event-level add/cancel/trade messages into `bid_realized_fill`/`ask_realized_fill` labels for passive-fill calibration curves.
+- Wire the event-level realized-fill adapter into a real-data ingestion example with venue-specific trade/cancel side conventions.
 - Evaluate liquidity fracture features on real L2 data against raw LCRI.
 - Test whether pressure memory improves publishable-edge filtering.
 - Compare publishable-edge hit rate across shadow absorption regimes.

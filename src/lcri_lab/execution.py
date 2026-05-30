@@ -254,6 +254,164 @@ def add_queue_position_realized_fill_proxy(
     return output
 
 
+def add_event_level_realized_fill_proxy(
+    snapshots: pd.DataFrame,
+    events: pd.DataFrame,
+    *,
+    horizon: float,
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    timestamp_col: str = "timestamp",
+    event_type_col: str = "event_type",
+    event_side_col: str = "side",
+    event_price_col: str = "price",
+    event_size_col: str = "size",
+    bid_realized_col: str = "bid_realized_fill",
+    ask_realized_col: str = "ask_realized_fill",
+    trade_event_types: tuple[str, ...] = ("trade",),
+    cancel_event_types: tuple[str, ...] = ("cancel", "delete"),
+    bid_trade_sides: tuple[str, ...] = ("sell", "bid"),
+    ask_trade_sides: tuple[str, ...] = ("buy", "ask"),
+    bid_cancel_sides: tuple[str, ...] = ("bid",),
+    ask_cancel_sides: tuple[str, ...] = ("ask",),
+) -> pd.DataFrame:
+    """Label passive fills from event-level queue-depleting trades and cancels.
+
+    This is the live-data counterpart to the snapshot depletion proxy. For each
+    snapshot, the function measures queue depletion at the displayed best bid/ask
+    over ``(snapshot_time, snapshot_time + horizon]``. By default, sell trades and
+    bid-side cancels consume bid queue-ahead while buy trades and ask-side cancels
+    consume ask queue-ahead. Venue-specific event-type and side aliases can be
+    supplied for feeds that encode aggressor side or book side differently.
+    Optional grouping columns keep symbols, venues, or sessions from sharing event
+    flow in batched data.
+    """
+    if not math.isfinite(horizon) or horizon <= 0.0:
+        raise ValueError("horizon must be a finite positive value")
+    if group_cols is None:
+        grouping_columns: list[str] = []
+    elif isinstance(group_cols, str):
+        grouping_columns = [group_cols]
+    else:
+        grouping_columns = list(group_cols)
+    if group_cols is not None and not grouping_columns:
+        raise ValueError("group_cols must be a non-empty sequence when provided")
+
+    snapshot_required = {
+        timestamp_col,
+        "bid_px_1",
+        "ask_px_1",
+        "bid_queue_ahead",
+        "ask_queue_ahead",
+        *grouping_columns,
+    }
+    event_required = {
+        timestamp_col,
+        event_type_col,
+        event_side_col,
+        event_price_col,
+        event_size_col,
+        *grouping_columns,
+    }
+    _require_columns(snapshots, snapshot_required, "event-level realized fill snapshot")
+    _require_columns(events, event_required, "event-level realized fill event")
+
+    output = snapshots.copy()
+    output["bid_event_depletion"] = pd.Series(0.0, index=snapshots.index)
+    output["ask_event_depletion"] = pd.Series(0.0, index=snapshots.index)
+    output["bid_event_depletion_ratio"] = pd.Series(0.0, index=snapshots.index)
+    output["ask_event_depletion_ratio"] = pd.Series(0.0, index=snapshots.index)
+    output[bid_realized_col] = pd.Series(0.0, index=snapshots.index)
+    output[ask_realized_col] = pd.Series(0.0, index=snapshots.index)
+    if snapshots.empty:
+        return output
+
+    snapshot_numeric = _finite_values(
+        snapshots,
+        [timestamp_col, "bid_px_1", "ask_px_1", "bid_queue_ahead", "ask_queue_ahead"],
+        "event-level realized fill snapshot",
+    )
+    event_numeric = _finite_values(
+        events,
+        [timestamp_col, event_price_col, event_size_col],
+        "event-level realized fill event",
+    )
+    if (snapshot_numeric[["bid_queue_ahead", "ask_queue_ahead"]] < 0.0).any().any():
+        raise ValueError("event-level realized fill snapshot queues must be non-negative")
+    if (event_numeric[event_size_col] < 0.0).any():
+        raise ValueError("event-level realized fill event sizes must be non-negative")
+
+    def normalized_aliases(values: tuple[str, ...], label: str) -> set[str]:
+        if not values:
+            raise ValueError(f"{label} must contain at least one alias")
+        aliases = {str(value).lower() for value in values}
+        if any(alias == "" for alias in aliases):
+            raise ValueError(f"{label} aliases must be non-empty")
+        return aliases
+
+    trade_type_aliases = normalized_aliases(trade_event_types, "trade_event_types")
+    cancel_type_aliases = normalized_aliases(cancel_event_types, "cancel_event_types")
+    bid_trade_side_aliases = normalized_aliases(bid_trade_sides, "bid_trade_sides")
+    ask_trade_side_aliases = normalized_aliases(ask_trade_sides, "ask_trade_sides")
+    bid_cancel_side_aliases = normalized_aliases(bid_cancel_sides, "bid_cancel_sides")
+    ask_cancel_side_aliases = normalized_aliases(ask_cancel_sides, "ask_cancel_sides")
+
+    event_types = events[event_type_col].astype(str).str.lower()
+    event_sides = events[event_side_col].astype(str).str.lower()
+    bid_depleting_events = (event_types.isin(trade_type_aliases) & event_sides.isin(bid_trade_side_aliases)) | (
+        event_types.isin(cancel_type_aliases) & event_sides.isin(bid_cancel_side_aliases)
+    )
+    ask_depleting_events = (event_types.isin(trade_type_aliases) & event_sides.isin(ask_trade_side_aliases)) | (
+        event_types.isin(cancel_type_aliases) & event_sides.isin(ask_cancel_side_aliases)
+    )
+
+    bid_depletions: list[float] = []
+    ask_depletions: list[float] = []
+    for _, row in snapshots.iterrows():
+        start = float(row[timestamp_col])
+        event_window = (event_numeric[timestamp_col] > start) & (
+            event_numeric[timestamp_col] <= start + horizon
+        )
+        if grouping_columns:
+            for group_col in grouping_columns:
+                event_window = event_window & (events[group_col] == row[group_col])
+
+        bid_at_price = event_numeric[event_price_col] == float(row["bid_px_1"])
+        ask_at_price = event_numeric[event_price_col] == float(row["ask_px_1"])
+        bid_size = event_numeric.loc[event_window & bid_at_price & bid_depleting_events, event_size_col].sum()
+        ask_size = event_numeric.loc[event_window & ask_at_price & ask_depleting_events, event_size_col].sum()
+        bid_depletions.append(float(bid_size))
+        ask_depletions.append(float(ask_size))
+
+    bid_depletion = pd.Series(bid_depletions, index=snapshots.index)
+    ask_depletion = pd.Series(ask_depletions, index=snapshots.index)
+    bid_queue = snapshot_numeric["bid_queue_ahead"]
+    ask_queue = snapshot_numeric["ask_queue_ahead"]
+    bid_ratio = pd.Series(
+        np.where(
+            bid_queue > 0.0,
+            bid_depletion / bid_queue.replace(0.0, np.nan),
+            np.where(bid_depletion > 0.0, 1.0, 0.0),
+        ),
+        index=snapshots.index,
+    ).fillna(0.0)
+    ask_ratio = pd.Series(
+        np.where(
+            ask_queue > 0.0,
+            ask_depletion / ask_queue.replace(0.0, np.nan),
+            np.where(ask_depletion > 0.0, 1.0, 0.0),
+        ),
+        index=snapshots.index,
+    ).fillna(0.0)
+
+    output["bid_event_depletion"] = bid_depletion
+    output["ask_event_depletion"] = ask_depletion
+    output["bid_event_depletion_ratio"] = bid_ratio
+    output["ask_event_depletion_ratio"] = ask_ratio
+    output[bid_realized_col] = np.where(bid_queue > 0.0, bid_depletion >= bid_queue, bid_depletion > 0.0).astype(float)
+    output[ask_realized_col] = np.where(ask_queue > 0.0, ask_depletion >= ask_queue, ask_depletion > 0.0).astype(float)
+    return output
+
+
 def add_passive_fill_probabilities(
     frame: pd.DataFrame,
     *,

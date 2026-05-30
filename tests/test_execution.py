@@ -5,6 +5,7 @@ from lcri_lab.execution import (
     FillProbabilityConfig,
     add_execution_adjusted_edge,
     add_passive_fill_probabilities,
+    add_event_level_realized_fill_proxy,
     add_queue_position_features,
     add_queue_position_realized_fill_proxy,
     execution_adjusted_edge_summary,
@@ -144,6 +145,101 @@ def test_queue_position_realized_fill_proxy_respects_group_boundaries() -> None:
 def test_queue_position_realized_fill_proxy_rejects_missing_queue_state() -> None:
     with pytest.raises(ValueError, match="missing queue position realized fill proxy columns"):
         add_queue_position_realized_fill_proxy(pd.DataFrame({"bid_px_1": [100.0]}))
+
+
+def test_event_level_realized_fill_proxy_uses_trades_and_cancels_until_horizon() -> None:
+    snapshots = pd.DataFrame(
+        {
+            "timestamp": [0.0, 1.0],
+            "bid_px_1": [100.0, 100.0],
+            "ask_px_1": [101.0, 101.0],
+            "bid_queue_ahead": [45.0, 20.0],
+            "ask_queue_ahead": [35.0, 30.0],
+        }
+    )
+    events = pd.DataFrame(
+        {
+            "timestamp": [0.25, 0.50, 0.75, 1.40],
+            "event_type": ["trade", "cancel", "trade", "trade"],
+            "side": ["sell", "bid", "buy", "sell"],
+            "price": [100.0, 100.0, 101.0, 100.0],
+            "size": [25.0, 20.0, 35.0, 20.0],
+        }
+    )
+
+    output = add_event_level_realized_fill_proxy(snapshots, events, horizon=1.0)
+
+    assert output["bid_event_depletion"].tolist() == pytest.approx([45.0, 20.0])
+    assert output["ask_event_depletion"].tolist() == pytest.approx([35.0, 0.0])
+    assert output["bid_event_depletion_ratio"].tolist() == pytest.approx([1.0, 1.0])
+    assert output["ask_event_depletion_ratio"].tolist() == pytest.approx([1.0, 0.0])
+    assert output["bid_realized_fill"].tolist() == pytest.approx([1.0, 1.0])
+    assert output["ask_realized_fill"].tolist() == pytest.approx([1.0, 0.0])
+
+
+def test_event_level_realized_fill_proxy_respects_group_boundaries() -> None:
+    snapshots = pd.DataFrame(
+        {
+            "symbol": ["A", "B"],
+            "timestamp": [0.0, 0.0],
+            "bid_px_1": [100.0, 50.0],
+            "ask_px_1": [101.0, 51.0],
+            "bid_queue_ahead": [20.0, 20.0],
+            "ask_queue_ahead": [20.0, 20.0],
+        }
+    )
+    events = pd.DataFrame(
+        {
+            "symbol": ["B"],
+            "timestamp": [0.50],
+            "event_type": ["trade"],
+            "side": ["sell"],
+            "price": [50.0],
+            "size": [25.0],
+        }
+    )
+
+    output = add_event_level_realized_fill_proxy(snapshots, events, horizon=1.0, group_cols="symbol")
+
+    assert output["bid_event_depletion"].tolist() == pytest.approx([0.0, 25.0])
+    assert output["bid_realized_fill"].tolist() == pytest.approx([0.0, 1.0])
+    assert output["ask_realized_fill"].tolist() == pytest.approx([0.0, 0.0])
+
+
+def test_event_level_realized_fill_proxy_accepts_venue_side_aliases() -> None:
+    snapshots = pd.DataFrame(
+        {
+            "timestamp": [0.0],
+            "bid_px_1": [100.0],
+            "ask_px_1": [101.0],
+            "bid_queue_ahead": [10.0],
+            "ask_queue_ahead": [10.0],
+        }
+    )
+    events = pd.DataFrame(
+        {
+            "timestamp": [0.25, 0.50],
+            "event_type": ["execution", "remove"],
+            "side": ["BID_HIT", "OFFER"],
+            "price": [100.0, 101.0],
+            "size": [10.0, 10.0],
+        }
+    )
+
+    output = add_event_level_realized_fill_proxy(
+        snapshots,
+        events,
+        horizon=1.0,
+        trade_event_types=("execution",),
+        cancel_event_types=("remove",),
+        bid_trade_sides=("bid_hit",),
+        ask_cancel_sides=("offer",),
+    )
+
+    assert output["bid_event_depletion"].tolist() == pytest.approx([10.0])
+    assert output["ask_event_depletion"].tolist() == pytest.approx([10.0])
+    assert output["bid_realized_fill"].tolist() == pytest.approx([1.0])
+    assert output["ask_realized_fill"].tolist() == pytest.approx([1.0])
 
 
 def test_passive_fill_probabilities_move_with_pressure_and_queue() -> None:
