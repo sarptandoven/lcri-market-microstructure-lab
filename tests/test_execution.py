@@ -46,6 +46,7 @@ from lcri_lab.execution import (
     queue_position_edge_decay,
     queue_position_fill_calibration_surface,
     queue_position_fill_surface,
+    queue_position_toxicity_surface,
     queue_position_fraction_sweep,
     queue_position_regime_fraction_sweep,
 )
@@ -624,6 +625,49 @@ def test_queue_position_fill_surface_rejects_invalid_inputs() -> None:
         queue_position_fill_surface(pd.DataFrame(), probability_bins=0)
     with pytest.raises(ValueError, match="missing queue position fill surface columns"):
         queue_position_fill_surface(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_toxicity_surface_flags_adverse_deep_queue_cells() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "long", "short", "short", "abstain", "long"],
+            "regime": ["open", "open", "open", "thin", "open", "thin"],
+            "bid_queue_share": [0.10, 0.85, 0.20, 0.40, 0.50, 0.90],
+            "ask_queue_share": [0.30, 0.50, 0.20, 0.80, 0.50, 0.25],
+            "bid_fill_probability": [0.75, 0.80, 0.20, 0.30, 0.50, 0.90],
+            "ask_fill_probability": [0.20, 0.40, 0.70, 0.85, 0.50, 0.30],
+            "bid_adverse_fill_probability": [0.10, 0.65, 0.20, 0.30, 0.50, 0.70],
+            "ask_adverse_fill_probability": [0.20, 0.40, 0.15, 0.75, 0.50, 0.30],
+            "bid_realized_fill": [1.0, 1.0, 0.0, 0.0, 1.0, 1.0],
+            "ask_realized_fill": [0.0, 0.0, 1.0, 1.0, 1.0, 0.0],
+            "long_net_return_ticks": [0.40, -0.20, 0.0, 0.0, 0.0, -0.50],
+            "short_net_return_ticks": [0.0, 0.0, 0.30, -0.40, 0.0, 0.0],
+            "execution_adjusted_edge_ticks": [0.30, -0.10, 0.20, -0.30, 0.0, -0.40],
+        }
+    )
+
+    surface = queue_position_toxicity_surface(frame, queue_bins=2, regime_col="regime")
+
+    assert surface["regime"].tolist() == ["open", "open", "open", "thin", "thin"]
+    assert surface["best_execution_side"].tolist() == ["long", "long", "short", "long", "short"]
+    assert surface["queue_toxicity_label"].tolist() == [
+        "benign_queue_fill",
+        "toxic_queue_fill",
+        "benign_queue_fill",
+        "toxic_queue_fill",
+        "toxic_queue_fill",
+    ]
+    assert surface["adverse_to_fill_ratio"].tolist() == pytest.approx(
+        [0.10 / 0.75, 0.65 / 0.80, 0.15 / 0.70, 0.70 / 0.90, 0.75 / 0.85]
+    )
+    assert surface["realized_loss_rate"].tolist() == pytest.approx([0.0, 1.0, 0.0, 1.0, 1.0])
+
+
+def test_queue_position_toxicity_surface_rejects_invalid_inputs() -> None:
+    with pytest.raises(ValueError, match="queue_bins"):
+        queue_position_toxicity_surface(pd.DataFrame(), queue_bins=0)
+    with pytest.raises(ValueError, match="missing queue position toxicity surface columns"):
+        queue_position_toxicity_surface(pd.DataFrame({"best_execution_side": ["long"]}))
 
 
 def test_queue_position_fraction_sweep_quantifies_quote_placement_decay() -> None:

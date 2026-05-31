@@ -79,6 +79,25 @@ A healthy prototype should usually show higher predicted-fill buckets with non-d
 curve = passive_fill_edge_curve(execution_frame, bins=5)
 ```
 
+## Queue-position toxicity surface
+
+`queue_position_toxicity_surface` adds an adverse-selection check to queue-capacity claims. It keeps only tradable rows, selects side-appropriate bid/ask queue share, fill probability, adverse-fill probability, realized fill, and realized return, then bins each regime/side by queue depth. Each cell reports:
+
+- `mean_predicted_fill_probability`
+- `mean_adverse_fill_probability`
+- `adverse_to_fill_ratio`
+- `realized_fill_rate`
+- `realized_loss_rate`
+- `mean_realized_edge_ticks`
+- `mean_execution_adjusted_edge_ticks`
+- `queue_toxicity_label`
+
+A cell is labeled `toxic_queue_fill` when adverse-fill probability is large relative to fill probability, the realized loss rate is high, or execution-adjusted edge is negative. This is the review artifact for the failure mode where a strategy appears to have enough passive capacity only because it gets filled mostly during adverse selection.
+
+```python
+toxicity = queue_position_toxicity_surface(execution_frame, queue_bins=5)
+```
+
 This changes the research question from:
 
 ```text

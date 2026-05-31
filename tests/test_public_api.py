@@ -97,6 +97,11 @@ def test_public_api_exports_queue_position_regime_capacity_concentration() -> No
     assert "queue_position_regime_capacity_concentration" in lcri_lab.__all__
 
 
+def test_public_api_exports_queue_position_toxicity_surface() -> None:
+    assert callable(lcri_lab.queue_position_toxicity_surface)
+    assert "queue_position_toxicity_surface" in lcri_lab.__all__
+
+
 def test_public_api_exports_passive_fill_event_lead_lag_scorecard() -> None:
     assert callable(lcri_lab.passive_fill_event_lead_lag_scorecard)
     assert "passive_fill_event_lead_lag_scorecard" in lcri_lab.__all__

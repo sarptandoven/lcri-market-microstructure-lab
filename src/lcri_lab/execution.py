@@ -565,6 +565,171 @@ def add_execution_adjusted_edge(
     return output
 
 
+def queue_position_toxicity_surface(
+    frame: pd.DataFrame,
+    *,
+    queue_bins: int = 5,
+    regime_col: str | None = "regime",
+    side_col: str = "best_execution_side",
+    bid_realized_col: str = "bid_realized_fill",
+    ask_realized_col: str = "ask_realized_fill",
+    long_return_col: str = "long_net_return_ticks",
+    short_return_col: str = "short_net_return_ticks",
+    toxic_adverse_to_fill_ratio: float = 0.75,
+    toxic_loss_rate: float = 0.50,
+    toxic_edge_ticks: float = 0.0,
+) -> pd.DataFrame:
+    """Surface passive queue fills by depth and adverse-selection toxicity.
+
+    Fill probability alone can reward the wrong passive quotes: deeper queue cells
+    may fill primarily when the market is moving against them. This diagnostic is
+    side-aware, selects the bid/ask queue and fill columns for the chosen execution
+    side, and reports adverse-to-fill ratios, realized loss rates, and execution
+    edge per regime/queue bin so queue capacity claims can be screened for toxic
+    fills rather than raw fill volume.
+    """
+    if not isinstance(queue_bins, int) or isinstance(queue_bins, bool):
+        raise ValueError("queue_bins must be an integer")
+    if queue_bins < 1:
+        raise ValueError("queue_bins must be at least 1")
+    for name, value in {
+        "toxic_adverse_to_fill_ratio": toxic_adverse_to_fill_ratio,
+        "toxic_loss_rate": toxic_loss_rate,
+        "toxic_edge_ticks": toxic_edge_ticks,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if toxic_adverse_to_fill_ratio < 0.0:
+        raise ValueError("toxic_adverse_to_fill_ratio must be non-negative")
+    if not 0.0 <= toxic_loss_rate <= 1.0:
+        raise ValueError("toxic_loss_rate must be in [0.0, 1.0]")
+
+    required = {
+        side_col,
+        "bid_queue_share",
+        "ask_queue_share",
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+        bid_realized_col,
+        ask_realized_col,
+        long_return_col,
+        short_return_col,
+        "execution_adjusted_edge_ticks",
+    }
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(frame, required, "queue position toxicity surface")
+    if frame.empty:
+        return _empty_queue_position_toxicity_surface()
+
+    numeric_columns = [
+        "bid_queue_share",
+        "ask_queue_share",
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+        bid_realized_col,
+        ask_realized_col,
+        long_return_col,
+        short_return_col,
+        "execution_adjusted_edge_ticks",
+    ]
+    values = _finite_values(frame, numeric_columns, "queue position toxicity surface")
+    side = frame[side_col].astype(str)
+    tradable = side.isin(["long", "short"])
+    if not bool(tradable.any()):
+        return _empty_queue_position_toxicity_surface()
+
+    selected = pd.DataFrame(index=frame.index[tradable])
+    selected_side = side.loc[tradable]
+    selected["regime"] = (
+        frame.loc[tradable, regime_col].astype(str) if regime_col is not None else "all"
+    )
+    selected["best_execution_side"] = selected_side
+    selected["queue_share"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_queue_share"],
+        values.loc[tradable, "ask_queue_share"],
+    )
+    selected["predicted_fill_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_fill_probability"],
+        values.loc[tradable, "ask_fill_probability"],
+    )
+    selected["adverse_fill_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_adverse_fill_probability"],
+        values.loc[tradable, "ask_adverse_fill_probability"],
+    )
+    selected["realized_fill"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, bid_realized_col],
+        values.loc[tradable, ask_realized_col],
+    )
+    selected["realized_edge_ticks"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, long_return_col],
+        values.loc[tradable, short_return_col],
+    )
+    selected["execution_adjusted_edge_ticks"] = values.loc[
+        tradable, "execution_adjusted_edge_ticks"
+    ]
+
+    if not selected["queue_share"].ge(0.0).all():
+        raise ValueError("queue position toxicity surface queue shares must be non-negative")
+    for column in ["predicted_fill_probability", "adverse_fill_probability", "realized_fill"]:
+        if not selected[column].between(0.0, 1.0).all():
+            raise ValueError("queue position toxicity surface probabilities must be in [0, 1]")
+
+    rows: list[dict[str, float | int | str]] = []
+    for (regime, execution_side), side_group in selected.groupby(
+        ["regime", "best_execution_side"], sort=True
+    ):
+        side_group = side_group.copy()
+        side_group["queue_bin"] = _rank_probability_bins(side_group["queue_share"], queue_bins)
+        for queue_bin, group in side_group.groupby("queue_bin", sort=True):
+            fill_probability = float(group["predicted_fill_probability"].mean())
+            adverse_probability = float(group["adverse_fill_probability"].mean())
+            adverse_to_fill = (
+                adverse_probability / fill_probability if fill_probability > 0.0 else 0.0
+            )
+            realized_loss_rate = float((group["realized_edge_ticks"] < 0.0).mean())
+            mean_edge = float(group["execution_adjusted_edge_ticks"].mean())
+            toxic = (
+                adverse_to_fill >= toxic_adverse_to_fill_ratio
+                or realized_loss_rate >= toxic_loss_rate
+                or mean_edge < toxic_edge_ticks
+            )
+            rows.append(
+                {
+                    "regime": str(regime),
+                    "best_execution_side": str(execution_side),
+                    "queue_bin": int(queue_bin),
+                    "rows": int(len(group)),
+                    "mean_queue_share": float(group["queue_share"].mean()),
+                    "mean_predicted_fill_probability": fill_probability,
+                    "mean_adverse_fill_probability": adverse_probability,
+                    "adverse_to_fill_ratio": float(adverse_to_fill),
+                    "realized_fill_rate": float(group["realized_fill"].mean()),
+                    "realized_loss_rate": realized_loss_rate,
+                    "mean_realized_edge_ticks": float(group["realized_edge_ticks"].mean()),
+                    "mean_execution_adjusted_edge_ticks": mean_edge,
+                    "queue_toxicity_label": (
+                        "toxic_queue_fill" if toxic else "benign_queue_fill"
+                    ),
+                }
+            )
+    if not rows:
+        return _empty_queue_position_toxicity_surface()
+    output = pd.DataFrame(rows)[list(_empty_queue_position_toxicity_surface().columns)]
+    if regime_col is not None:
+        output = output.rename(columns={"regime": regime_col})
+    return output
+
+
 def queue_position_fraction_sweep(
     frame: pd.DataFrame,
     *,
@@ -4738,6 +4903,26 @@ def passive_fill_event_transition_scorecard(
         ),
         "transition_toxicity_label": label,
     }
+
+
+def _empty_queue_position_toxicity_surface() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "regime",
+            "best_execution_side",
+            "queue_bin",
+            "rows",
+            "mean_queue_share",
+            "mean_predicted_fill_probability",
+            "mean_adverse_fill_probability",
+            "adverse_to_fill_ratio",
+            "realized_fill_rate",
+            "realized_loss_rate",
+            "mean_realized_edge_ticks",
+            "mean_execution_adjusted_edge_ticks",
+            "queue_toxicity_label",
+        ]
+    )
 
 
 def _empty_queue_position_fraction_sweep() -> pd.DataFrame:
