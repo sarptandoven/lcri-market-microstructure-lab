@@ -126,6 +126,8 @@ from lcri_lab.execution import (
     queue_position_fraction_sweep,
     queue_position_regime_capacity_concentration,
     queue_position_regime_capacity_frontier,
+    queue_position_regime_capacity_stability,
+    queue_position_regime_capacity_stability_summary,
     queue_position_regime_fraction_sweep,
 )
 from lcri_lab.features import add_regime_transition_features
@@ -733,6 +735,15 @@ def run_demo(
         queue_capacity_frontier,
         heldout_queue_capacity_frontier,
     )
+    queue_regime_capacity_stability = queue_position_regime_capacity_stability(
+        queue_regime_capacity_frontier,
+        heldout_queue_regime_capacity_frontier,
+        regime_col="pressure_memory_decay_state",
+    )
+    queue_regime_capacity_stability_summary = queue_position_regime_capacity_stability_summary(
+        queue_regime_capacity_stability,
+        regime_col="pressure_memory_decay_state",
+    )
     queue_edge_decay = queue_position_edge_decay(queue_fill_surface)
     heldout_queue_edge_decay = queue_position_edge_decay(heldout_queue_fill_surface)
     queue_calibration_drift = queue_position_calibration_drift(
@@ -757,11 +768,13 @@ def run_demo(
         execution_publishability_packet,
         quality_gate=queue_execution_quality_gate,
         capacity_stability=queue_capacity_stability,
+        regime_capacity_stability=queue_regime_capacity_stability_summary,
     )
     heldout_execution_publishability_gate = execution_publishability_release_gate(
         heldout_execution_publishability_packet,
         quality_gate=heldout_queue_execution_quality_gate,
         capacity_stability=queue_capacity_stability,
+        regime_capacity_stability=queue_regime_capacity_stability_summary,
     )
     execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(scored)
     heldout_execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(heldout_scored)
@@ -954,6 +967,8 @@ def run_demo(
         "queue_position_regime_capacity_concentration.json",
         "heldout_queue_position_regime_capacity_concentration.json",
         "queue_position_capacity_stability.json",
+        "queue_position_regime_capacity_stability.csv",
+        "queue_position_regime_capacity_stability_summary.json",
         "queue_position_edge_decay.csv",
         "heldout_queue_position_edge_decay.csv",
         "queue_position_calibration_drift.csv",
@@ -1313,6 +1328,13 @@ def run_demo(
         heldout_queue_regime_capacity_concentration,
     )
     write_json(output / "queue_position_capacity_stability.json", queue_capacity_stability)
+    queue_regime_capacity_stability.to_csv(
+        output / "queue_position_regime_capacity_stability.csv", index=False
+    )
+    write_json(
+        output / "queue_position_regime_capacity_stability_summary.json",
+        queue_regime_capacity_stability_summary,
+    )
     queue_edge_decay.to_csv(output / "queue_position_edge_decay.csv", index=False)
     heldout_queue_edge_decay.to_csv(output / "heldout_queue_position_edge_decay.csv", index=False)
     queue_calibration_drift.to_csv(output / "queue_position_calibration_drift.csv", index=False)

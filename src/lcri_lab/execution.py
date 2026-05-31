@@ -1103,6 +1103,215 @@ def queue_position_capacity_stability(
     }
 
 
+def queue_position_regime_capacity_stability(
+    research_frontier: pd.DataFrame,
+    heldout_frontier: pd.DataFrame,
+    *,
+    regime_col: str = "regime",
+    max_fraction_gap: float = 0.10,
+    max_edge_gap_ticks: float = 0.10,
+    max_tradable_share_gap: float = 0.05,
+) -> pd.DataFrame:
+    """Compare passive queue-capacity frontiers by regime across samples.
+
+    A global heldout capacity check can pass while the state that matters most
+    loses executable depth. This joins research and heldout regime frontiers,
+    applies the same capacity stability logic per liquidity state, and flags
+    missing, gained, lost, stable, and fragile regime-specific passive capacity.
+    """
+    if not isinstance(regime_col, str) or not regime_col:
+        raise ValueError("regime_col must be a non-empty string")
+    frontier_columns = {
+        regime_col,
+        "viable_rows",
+        "max_viable_queue_position_fraction",
+        "max_viable_mean_execution_adjusted_edge_ticks",
+        "max_viable_tradable_share",
+        "dominant_execution_side_at_capacity",
+        "capacity_label",
+    }
+    if research_frontier.empty and heldout_frontier.empty:
+        return _empty_queue_position_regime_capacity_stability(regime_col=regime_col)
+    _require_columns(
+        research_frontier,
+        frontier_columns,
+        "research regime capacity frontier",
+    )
+    _require_columns(
+        heldout_frontier,
+        frontier_columns,
+        "heldout regime capacity frontier",
+    )
+
+    rows: list[dict[str, float | int | str | bool]] = []
+    research_by_regime = {
+        str(row[regime_col]): row for _, row in research_frontier.iterrows()
+    }
+    heldout_by_regime = {str(row[regime_col]): row for _, row in heldout_frontier.iterrows()}
+    regimes = sorted(set(research_by_regime) | set(heldout_by_regime))
+    empty_frontier = _empty_queue_position_capacity_frontier()
+    for regime in regimes:
+        research_missing = regime not in research_by_regime
+        heldout_missing = regime not in heldout_by_regime
+        research = (
+            empty_frontier.copy()
+            if research_missing
+            else research_by_regime[regime].to_dict()
+        )
+        heldout = (
+            empty_frontier.copy()
+            if heldout_missing
+            else heldout_by_regime[regime].to_dict()
+        )
+        stability = queue_position_capacity_stability(
+            research,
+            heldout,
+            max_fraction_gap=max_fraction_gap,
+            max_edge_gap_ticks=max_edge_gap_ticks,
+            max_tradable_share_gap=max_tradable_share_gap,
+        )
+        research_viable_rows = int(research["viable_rows"])
+        heldout_viable_rows = int(heldout["viable_rows"])
+        lost_capacity = research_viable_rows > 0 and heldout_viable_rows <= 0
+        gained_capacity = research_viable_rows <= 0 and heldout_viable_rows > 0
+        if lost_capacity or heldout_missing:
+            label = "regime_capacity_lost"
+        elif gained_capacity or research_missing:
+            label = "regime_capacity_gained"
+        elif stability["capacity_stability_label"] == "capacity_stable":
+            label = "regime_capacity_stable"
+        else:
+            label = "regime_capacity_fragile"
+        rows.append(
+            {
+                regime_col: regime,
+                "research_missing": bool(research_missing),
+                "heldout_missing": bool(heldout_missing),
+                "research_viable_rows": research_viable_rows,
+                "heldout_viable_rows": heldout_viable_rows,
+                "research_capacity_label": str(stability["research_capacity_label"]),
+                "heldout_capacity_label": str(stability["heldout_capacity_label"]),
+                "research_max_viable_queue_position_fraction": float(
+                    research["max_viable_queue_position_fraction"]
+                ),
+                "heldout_max_viable_queue_position_fraction": float(
+                    heldout["max_viable_queue_position_fraction"]
+                ),
+                "capacity_fraction_gap": float(stability["capacity_fraction_gap"]),
+                "capacity_edge_gap_ticks": float(stability["capacity_edge_gap_ticks"]),
+                "capacity_tradable_share_gap": float(
+                    stability["capacity_tradable_share_gap"]
+                ),
+                "capacity_viable_row_gap": int(stability["capacity_viable_row_gap"]),
+                "dominant_side_changed": bool(stability["dominant_side_changed"]),
+                "lost_capacity": bool(lost_capacity),
+                "gained_capacity": bool(gained_capacity),
+                "regime_capacity_stability_label": label,
+            }
+        )
+    output = pd.DataFrame(rows, columns=_empty_queue_position_regime_capacity_stability(regime_col=regime_col).columns)
+    for column in ["research_missing", "heldout_missing", "dominant_side_changed", "lost_capacity", "gained_capacity"]:
+        output[column] = output[column].astype(object)
+    return output
+
+
+def queue_position_regime_capacity_stability_summary(
+    stability: pd.DataFrame,
+    *,
+    regime_col: str = "regime",
+) -> dict[str, float | int | str]:
+    """Reduce regime capacity stability into a publishability gate summary."""
+    if not isinstance(regime_col, str) or not regime_col:
+        raise ValueError("regime_col must be a non-empty string")
+    empty = {
+        "regimes": 0,
+        "common_regimes": 0,
+        "missing_research_regimes": 0,
+        "missing_heldout_regimes": 0,
+        "stable_regimes": 0,
+        "fragile_regimes": 0,
+        "lost_capacity_regimes": 0,
+        "gained_capacity_regimes": 0,
+        "stable_regime_share": 0.0,
+        "lost_capacity_share": 0.0,
+        "mean_capacity_fraction_gap": 0.0,
+        "worst_regime": "none",
+        "worst_regime_capacity_stability_label": "none",
+        "regime_capacity_stability_label": "no_regime_capacity_stability_data",
+    }
+    if stability.empty:
+        return empty
+    required = {
+        regime_col,
+        "research_missing",
+        "heldout_missing",
+        "capacity_fraction_gap",
+        "capacity_edge_gap_ticks",
+        "capacity_tradable_share_gap",
+        "lost_capacity",
+        "gained_capacity",
+        "regime_capacity_stability_label",
+    }
+    _require_columns(stability, required, "regime capacity stability")
+    values = _finite_values(
+        stability,
+        [
+            "capacity_fraction_gap",
+            "capacity_edge_gap_ticks",
+            "capacity_tradable_share_gap",
+        ],
+        "regime capacity stability",
+    )
+    data = stability.copy()
+    regimes = int(len(data))
+    research_missing = data["research_missing"].astype(bool)
+    heldout_missing = data["heldout_missing"].astype(bool)
+    common = ~(research_missing | heldout_missing)
+    labels = data["regime_capacity_stability_label"].astype(str)
+    lost = data["lost_capacity"].astype(bool)
+    gained = data["gained_capacity"].astype(bool) | (labels == "regime_capacity_gained")
+    stable = labels == "regime_capacity_stable"
+    fragile = labels == "regime_capacity_fragile"
+    if bool(lost.any()) or bool(heldout_missing.any()):
+        label = "regime_capacity_not_replicated"
+    elif bool(fragile.any()):
+        label = "regime_capacity_fragile"
+    elif bool(stable.any()) and int(stable.sum()) == regimes:
+        label = "regime_capacity_stable"
+    else:
+        label = "regime_capacity_mixed"
+    sort_data = pd.DataFrame(
+        {
+            regime_col: data[regime_col].astype(str),
+            "label": labels,
+            "lost": lost.astype(int),
+            "heldout_missing": heldout_missing.astype(int),
+            "fraction_gap": values["capacity_fraction_gap"],
+            "edge_gap": values["capacity_edge_gap_ticks"],
+        }
+    )
+    worst = sort_data.sort_values(
+        ["lost", "heldout_missing", "fraction_gap", "edge_gap", regime_col],
+        ascending=[False, False, True, True, True],
+    ).iloc[0]
+    return {
+        "regimes": regimes,
+        "common_regimes": int(common.sum()),
+        "missing_research_regimes": int(research_missing.sum()),
+        "missing_heldout_regimes": int(heldout_missing.sum()),
+        "stable_regimes": int(stable.sum()),
+        "fragile_regimes": int(fragile.sum()),
+        "lost_capacity_regimes": int(lost.sum()),
+        "gained_capacity_regimes": int(gained.sum()),
+        "stable_regime_share": float(stable.sum() / regimes) if regimes else 0.0,
+        "lost_capacity_share": float(lost.sum() / regimes) if regimes else 0.0,
+        "mean_capacity_fraction_gap": float(values.loc[common, "capacity_fraction_gap"].mean()) if bool(common.any()) else 0.0,
+        "worst_regime": str(worst[regime_col]),
+        "worst_regime_capacity_stability_label": str(worst["label"]),
+        "regime_capacity_stability_label": label,
+    }
+
+
 def passive_fill_edge_curve(
     frame: pd.DataFrame,
     *,
@@ -4568,6 +4777,30 @@ def _empty_queue_position_capacity_frontier() -> dict[str, float | int | str]:
     }
 
 
+def _empty_queue_position_regime_capacity_stability(*, regime_col: str = "regime") -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            regime_col,
+            "research_missing",
+            "heldout_missing",
+            "research_viable_rows",
+            "heldout_viable_rows",
+            "research_capacity_label",
+            "heldout_capacity_label",
+            "research_max_viable_queue_position_fraction",
+            "heldout_max_viable_queue_position_fraction",
+            "capacity_fraction_gap",
+            "capacity_edge_gap_ticks",
+            "capacity_tradable_share_gap",
+            "capacity_viable_row_gap",
+            "dominant_side_changed",
+            "lost_capacity",
+            "gained_capacity",
+            "regime_capacity_stability_label",
+        ]
+    )
+
+
 def _queue_capacity_label(*, max_fraction: float, edge_decay: float, tradable_decay: float) -> str:
     if max_fraction >= 0.75 and edge_decay <= 0.25 and tradable_decay <= 0.15:
         return "deep_queue_resilient_capacity"
@@ -5016,6 +5249,7 @@ def execution_publishability_release_gate(
     *,
     quality_gate: dict[str, float | int | str] | None = None,
     capacity_stability: dict[str, float | int | str | bool] | None = None,
+    regime_capacity_stability: dict[str, float | int | str] | None = None,
     max_conflict_share: float = 0.25,
     max_high_priority_conflict_share: float = 0.10,
 ) -> dict[str, float | int | str | bool]:
@@ -5067,6 +5301,16 @@ def execution_publishability_release_gate(
             "capacity_stability_label", "missing_capacity_stability_gate"
         )
     )
+    regime_capacity = regime_capacity_stability or {}
+    regime_capacity_label = str(
+        regime_capacity.get(
+            "regime_capacity_stability_label",
+            "regime_capacity_stability_not_evaluated",
+        )
+    )
+    lost_capacity_regimes = int(regime_capacity.get("lost_capacity_regimes", 0))
+    stable_regime_share = float(regime_capacity.get("stable_regime_share", 0.0))
+    worst_capacity_regime = str(regime_capacity.get("worst_regime", "none"))
 
     blocking_reasons: list[str] = []
     review_reasons: list[str] = []
@@ -5084,6 +5328,10 @@ def execution_publishability_release_gate(
         blocking_reasons.append(capacity_label)
     elif capacity_label == "missing_capacity_stability_gate":
         review_reasons.append(capacity_label)
+    if regime_capacity_label == "regime_capacity_not_replicated":
+        blocking_reasons.append(regime_capacity_label)
+    elif regime_capacity_label in {"regime_capacity_fragile", "regime_capacity_mixed"}:
+        review_reasons.append(regime_capacity_label)
 
     if blocking_reasons:
         decision = "block"
@@ -5106,6 +5354,10 @@ def execution_publishability_release_gate(
         "high_priority_conflict_share": high_priority_conflict_share,
         "quality_gate_label": quality_label,
         "capacity_stability_label": capacity_label,
+        "regime_capacity_stability_label": regime_capacity_label,
+        "lost_capacity_regimes": lost_capacity_regimes,
+        "stable_regime_share": stable_regime_share,
+        "worst_capacity_regime": worst_capacity_regime,
         "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
         "review_reasons": ";".join(review_reasons) if review_reasons else "none",
         "decision": decision,

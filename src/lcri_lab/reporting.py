@@ -801,6 +801,10 @@ def verify_execution_publishability_release_gate(
         "high_priority_conflict_share",
         "quality_gate_label",
         "capacity_stability_label",
+        "regime_capacity_stability_label",
+        "lost_capacity_regimes",
+        "stable_regime_share",
+        "worst_capacity_regime",
         "blocking_reasons",
         "review_reasons",
         "decision",
@@ -818,16 +822,20 @@ def verify_execution_publishability_release_gate(
         "weighted_conflict_share",
         "high_priority_conflict_rows",
         "high_priority_conflict_share",
+        "lost_capacity_regimes",
+        "stable_regime_share",
     ]
     numeric = {key: float(gate[key]) for key in numeric_keys}
     if not all(math.isfinite(value) for value in numeric.values()):
         errors.append(f"non-finite execution publishability release gate values in {artifact}")
-    if any(numeric[key] < 0.0 for key in ["total_rows", "conflict_rows", "high_priority_conflict_rows"]):
+    if any(numeric[key] < 0.0 for key in ["total_rows", "conflict_rows", "high_priority_conflict_rows", "lost_capacity_regimes"]):
         errors.append(f"negative execution publishability release gate counts in {artifact}")
     if not 0.0 <= numeric["weighted_conflict_share"] <= 1.0:
         errors.append(f"bounded execution release conflict share violated in {artifact}")
     if not 0.0 <= numeric["high_priority_conflict_share"] <= 1.0:
         errors.append(f"bounded execution release high-priority conflict share violated in {artifact}")
+    if not 0.0 <= numeric["stable_regime_share"] <= 1.0:
+        errors.append(f"bounded execution release regime stability share violated in {artifact}")
     if numeric["conflict_rows"] > numeric["total_rows"]:
         errors.append(f"execution release conflict rows exceed total rows in {artifact}")
     if numeric["high_priority_conflict_rows"] > numeric["total_rows"]:
@@ -849,6 +857,10 @@ def verify_execution_publishability_release_gate(
         errors.append(f"blank execution release quality gate label in {artifact}")
     if not str(gate["capacity_stability_label"]):
         errors.append(f"blank execution release capacity stability label in {artifact}")
+    if not str(gate["regime_capacity_stability_label"]):
+        errors.append(f"blank execution release regime capacity stability label in {artifact}")
+    if not str(gate["worst_capacity_regime"]):
+        errors.append(f"blank execution release worst capacity regime in {artifact}")
     return errors
 
 

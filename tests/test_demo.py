@@ -162,6 +162,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "queue_position_regime_capacity_concentration.json").exists()
     assert (tmp_path / "heldout_queue_position_regime_capacity_concentration.json").exists()
     assert (tmp_path / "queue_position_capacity_stability.json").exists()
+    assert (tmp_path / "queue_position_regime_capacity_stability.csv").exists()
+    assert (tmp_path / "queue_position_regime_capacity_stability_summary.json").exists()
     assert (tmp_path / "queue_position_edge_decay.csv").exists()
     assert (tmp_path / "heldout_queue_position_edge_decay.csv").exists()
     assert (tmp_path / "queue_position_calibration_drift.csv").exists()
@@ -226,9 +228,20 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert baseline_regime_basis["regime"].nunique() >= 2
     release_gate = json.loads((tmp_path / "execution_publishability_release_gate.json").read_text())
     assert release_gate["decision"] in {"pass", "review", "block"}
-    assert "weighted_conflict_share" in release_gate
+    assert release_gate["total_rows"] > 0
     assert "quality_gate_label" in release_gate
     assert "capacity_stability_label" in release_gate
+    assert "regime_capacity_stability_label" in release_gate
+    regime_capacity_summary = json.loads(
+        (tmp_path / "queue_position_regime_capacity_stability_summary.json").read_text()
+    )
+    assert regime_capacity_summary["regimes"] >= 1
+    regime_capacity_stability = pd.read_csv(tmp_path / "queue_position_regime_capacity_stability.csv")
+    assert {
+        "pressure_memory_decay_state",
+        "capacity_fraction_gap",
+        "regime_capacity_stability_label",
+    }.issubset(regime_capacity_stability.columns)
     queue_drift_columns = set(pd.read_csv(tmp_path / "queue_position_calibration_drift.csv", nrows=1).columns)
     assert {
         "fill_rate_range",

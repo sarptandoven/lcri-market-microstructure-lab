@@ -39,6 +39,8 @@ from lcri_lab.execution import (
     queue_position_execution_quality_gate,
     queue_position_regime_capacity_concentration,
     queue_position_regime_capacity_frontier,
+    queue_position_regime_capacity_stability,
+    queue_position_regime_capacity_stability_summary,
     queue_position_calibration_drift,
     queue_position_calibration_residual_summary,
     queue_position_edge_decay,
@@ -892,6 +894,76 @@ def test_queue_position_capacity_stability_labels_stable_capacity() -> None:
 def test_queue_position_capacity_stability_rejects_bad_frontiers() -> None:
     with pytest.raises(ValueError, match="missing research capacity frontier keys"):
         queue_position_capacity_stability({"capacity_label": "x"}, {})
+
+
+def test_queue_position_regime_capacity_stability_flags_heldout_state_fragility() -> None:
+    research = pd.DataFrame(
+        {
+            "regime": ["open", "stress", "thin"],
+            "viable_rows": [3, 1, 0],
+            "max_viable_queue_position_fraction": [0.75, 0.25, 0.0],
+            "max_viable_mean_execution_adjusted_edge_ticks": [0.42, 0.20, 0.0],
+            "max_viable_tradable_share": [0.80, 0.62, 0.0],
+            "dominant_execution_side_at_capacity": ["long", "short", "none"],
+            "capacity_label": [
+                "queue_capacity_constrained",
+                "queue_capacity_front_only",
+                "no_viable_passive_capacity",
+            ],
+        }
+    )
+    heldout = pd.DataFrame(
+        {
+            "regime": ["open", "stress", "auction"],
+            "viable_rows": [3, 0, 2],
+            "max_viable_queue_position_fraction": [0.50, 0.0, 0.50],
+            "max_viable_mean_execution_adjusted_edge_ticks": [0.30, 0.0, 0.25],
+            "max_viable_tradable_share": [0.70, 0.0, 0.65],
+            "dominant_execution_side_at_capacity": ["long", "none", "short"],
+            "capacity_label": [
+                "queue_capacity_constrained",
+                "no_viable_passive_capacity",
+                "queue_capacity_constrained",
+            ],
+        }
+    )
+
+    stability = queue_position_regime_capacity_stability(research, heldout)
+
+    rows = stability.set_index("regime")
+    assert rows.loc["open", "capacity_fraction_gap"] == pytest.approx(-0.25)
+    assert rows.loc["open", "regime_capacity_stability_label"] == "regime_capacity_fragile"
+    assert rows.loc["stress", "lost_capacity"] is True
+    assert rows.loc["stress", "regime_capacity_stability_label"] == "regime_capacity_lost"
+    assert rows.loc["thin", "heldout_missing"] is True
+    assert rows.loc["auction", "research_missing"] is True
+
+    summary = queue_position_regime_capacity_stability_summary(stability)
+    assert summary == {
+        "regimes": 4,
+        "common_regimes": 2,
+        "missing_research_regimes": 1,
+        "missing_heldout_regimes": 1,
+        "stable_regimes": 0,
+        "fragile_regimes": 1,
+        "lost_capacity_regimes": 1,
+        "gained_capacity_regimes": 1,
+        "stable_regime_share": pytest.approx(0.0),
+        "lost_capacity_share": pytest.approx(0.25),
+        "mean_capacity_fraction_gap": pytest.approx(-0.25),
+        "worst_regime": "stress",
+        "worst_regime_capacity_stability_label": "regime_capacity_lost",
+        "regime_capacity_stability_label": "regime_capacity_not_replicated",
+    }
+
+
+def test_queue_position_regime_capacity_stability_rejects_bad_inputs() -> None:
+    with pytest.raises(ValueError, match="regime_col"):
+        queue_position_regime_capacity_stability(pd.DataFrame(), pd.DataFrame(), regime_col="")
+    with pytest.raises(ValueError, match="missing research regime capacity frontier columns"):
+        queue_position_regime_capacity_stability(pd.DataFrame({"regime": ["open"]}), pd.DataFrame())
+    with pytest.raises(ValueError, match="missing regime capacity stability columns"):
+        queue_position_regime_capacity_stability_summary(pd.DataFrame({"regime": ["open"]}))
 
 
 def test_queue_position_calibration_drift_flags_regime_instability() -> None:
@@ -2195,6 +2267,42 @@ def test_execution_publishability_release_gate_blocks_fragile_capacity() -> None
     assert gate["high_priority_conflict_rows"] == 25
     assert gate["capacity_stability_label"] == "capacity_fragile"
     assert "capacity_fragile" in gate["blocking_reasons"]
+
+
+def test_execution_publishability_release_gate_blocks_regime_capacity_loss() -> None:
+    review_packet = pd.DataFrame(
+        {
+            "publishable_side": ["long"],
+            "best_execution_side": ["long"],
+            "rows": [100],
+            "conflict_rows": [0],
+            "review_priority": [0],
+        }
+    )
+    quality_gate = {"quality_gate_label": "queue_execution_publishable"}
+    capacity_stability = {"capacity_stability_label": "capacity_stable"}
+    regime_capacity_stability = {
+        "regime_capacity_stability_label": "regime_capacity_not_replicated",
+        "lost_capacity_regimes": 1,
+        "stable_regime_share": 0.5,
+        "worst_regime": "stress",
+    }
+
+    gate = execution_publishability_release_gate(
+        review_packet,
+        quality_gate=quality_gate,
+        capacity_stability=capacity_stability,
+        regime_capacity_stability=regime_capacity_stability,
+    )
+
+    assert gate["decision"] == "block"
+    assert gate["passes"] is False
+    assert gate["capacity_stability_label"] == "capacity_stable"
+    assert gate["regime_capacity_stability_label"] == "regime_capacity_not_replicated"
+    assert gate["lost_capacity_regimes"] == 1
+    assert gate["stable_regime_share"] == pytest.approx(0.5)
+    assert gate["worst_capacity_regime"] == "stress"
+    assert "regime_capacity_not_replicated" in gate["blocking_reasons"]
 
 
 def test_execution_publishability_release_gate_passes_clean_execution_evidence() -> None:
