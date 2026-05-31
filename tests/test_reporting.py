@@ -20,6 +20,7 @@ from lcri_lab.reporting import (
     verify_artifact_coverage_matrix,
     verify_artifact_manifest,
     verify_artifact_metadata_summary,
+    verify_baseline_tail_lift_diagnostics,
     verify_adverse_selection_phase_shift_summary,
     verify_event_level_passive_fill_horizon_sweep,
     verify_execution_publishability_review_artifacts,
@@ -241,6 +242,53 @@ def test_verify_execution_adjusted_lcri_quantile_diagnostics_checks_schema(tmp_p
     errors = verify_execution_adjusted_lcri_quantile_diagnostics(tmp_path)
     assert any("bounded execution-adjusted LCRI quantile probabilities" in error for error in errors)
     assert any("non-positive execution-adjusted LCRI quantile rows" in error for error in errors)
+
+
+def test_verify_baseline_tail_lift_diagnostics_checks_schema_and_bounds(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {
+                "tail_bucket": "high_tail",
+                "feature": "liquidity_void_x_volatility",
+                "test_rows": 42,
+                "feature_min": 0.1,
+                "feature_max": 0.9,
+                "core_rmse": 0.8,
+                "nonlinear_rmse": 0.3,
+                "nonlinear_rmse_lift_vs_core": 0.625,
+                "core_residual_mean": 0.2,
+                "nonlinear_residual_mean": 0.05,
+                "tail_publishability_note": "nonlinear_tail_lift_supported",
+            }
+        ]
+    ).to_csv(tmp_path / "baseline_tail_lift_diagnostics.csv", index=False)
+
+    assert verify_baseline_tail_lift_diagnostics(tmp_path) == []
+
+    pd.DataFrame(
+        [
+            {
+                "tail_bucket": "high_tail",
+                "feature": "liquidity_void_x_volatility",
+                "test_rows": 0,
+                "feature_min": 1.0,
+                "feature_max": 0.5,
+                "core_rmse": -0.1,
+                "nonlinear_rmse": 0.3,
+                "nonlinear_rmse_lift_vs_core": 1.2,
+                "core_residual_mean": 0.2,
+                "nonlinear_residual_mean": 0.05,
+                "tail_publishability_note": "unknown_note",
+            }
+        ]
+    ).to_csv(tmp_path / "baseline_tail_lift_diagnostics.csv", index=False)
+
+    errors = verify_baseline_tail_lift_diagnostics(tmp_path)
+    assert any("non-positive baseline tail lift rows" in error for error in errors)
+    assert any("negative baseline tail lift RMSE" in error for error in errors)
+    assert any("bounded baseline tail lift values" in error for error in errors)
+    assert any("baseline tail lift feature bounds inverted" in error for error in errors)
+    assert any("invalid baseline tail lift publishability notes" in error for error in errors)
 
 
 def test_verify_passive_fill_realization_horizon_sweep_checks_schema_and_bounds(tmp_path) -> None:

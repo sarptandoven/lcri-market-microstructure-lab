@@ -27,6 +27,7 @@ from lcri_lab.baseline import (
     baseline_regime_publishability_summary,
     baseline_rolling_basis_comparison,
     baseline_rolling_basis_summary,
+    baseline_tail_lift_diagnostics,
     compute_lcri,
     design_feature_names,
 )
@@ -272,6 +273,7 @@ __all__ = [
     "baseline_regime_publishability_summary",
     "baseline_rolling_basis_comparison",
     "baseline_rolling_basis_summary",
+    "baseline_tail_lift_diagnostics",
     "compute_lcri",
     "calibration_curve",
     "calibration_error_summary",

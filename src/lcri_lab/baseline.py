@@ -828,6 +828,123 @@ def baseline_liquidity_stress_curve(
     return pd.DataFrame(rows, columns=columns)
 
 
+def baseline_tail_lift_diagnostics(
+    frame: pd.DataFrame,
+    *,
+    feature: str,
+    train_fraction: float = 0.60,
+    tail_quantile: float = 0.20,
+    ridge: float = 1e-3,
+    min_tail_lift: float = 0.0,
+) -> pd.DataFrame:
+    """Audit nonlinear baseline lift in holdout liquidity-stress tails.
+
+    Average RMSE lift can mask exactly the failure mode reviewers care about: the
+    nonlinear neutralizer may improve the body while leaving convex spread/void or
+    volatility tails biased. This chronological holdout diagnostic compares a core
+    baseline against the full nonlinear-liquidity basis inside low-tail, body, and
+    high-tail slices of a selected design feature.
+    """
+    columns = [
+        "tail_bucket",
+        "feature",
+        "test_rows",
+        "feature_min",
+        "feature_max",
+        "core_rmse",
+        "nonlinear_rmse",
+        "nonlinear_rmse_lift_vs_core",
+        "core_residual_mean",
+        "nonlinear_residual_mean",
+        "tail_publishability_note",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    if not math.isfinite(train_fraction) or not 0.0 < train_fraction < 1.0:
+        raise ValueError("train_fraction must be finite and in (0, 1)")
+    if not math.isfinite(tail_quantile) or not 0.0 < tail_quantile < 0.5:
+        raise ValueError("tail_quantile must be finite and in (0, 0.5)")
+    if not math.isfinite(ridge) or ridge < 0.0:
+        raise ValueError("ridge must be a finite non-negative value")
+    if not math.isfinite(min_tail_lift):
+        raise ValueError("min_tail_lift must be finite")
+    if "raw_imbalance" not in frame.columns:
+        raise ValueError("missing tail lift diagnostics columns: ['raw_imbalance']")
+
+    feature_names = design_feature_names()
+    if feature not in feature_names:
+        raise ValueError(f"unknown design feature: {feature}")
+    y = frame["raw_imbalance"].to_numpy(dtype=float)
+    if not np.isfinite(y).all():
+        raise ValueError("raw_imbalance values must be finite")
+    train_rows = int(len(frame) * train_fraction)
+    if train_rows < 1 or train_rows >= len(frame):
+        raise ValueError("train_fraction leaves no train or test rows")
+
+    x = _design_matrix(frame)
+    feature_values = x[train_rows:, feature_names.index(feature)]
+    if not np.isfinite(feature_values).all():
+        raise ValueError("tail feature values must be finite")
+
+    def fit_test_residual(indexes: list[int]) -> np.ndarray:
+        x_basis = x[:, indexes]
+        x_train = x_basis[:train_rows]
+        x_test = x_basis[train_rows:]
+        mean = x_train.mean(axis=0)
+        scale = x_train.std(axis=0)
+        scale[scale == 0.0] = 1.0
+        train_design = np.column_stack([np.ones(train_rows), (x_train - mean) / scale])
+        test_design = np.column_stack([np.ones(len(x_test)), (x_test - mean) / scale])
+        penalty = np.sqrt(ridge) * np.eye(train_design.shape[1])
+        penalty[0, 0] = 0.0
+        coefficients = np.linalg.lstsq(
+            np.vstack([train_design, penalty]),
+            np.concatenate([y[:train_rows], np.zeros(train_design.shape[1])]),
+            rcond=None,
+        )[0]
+        return y[train_rows:] - test_design @ coefficients
+
+    core_residual = fit_test_residual(list(range(len(feature_columns()))))
+    nonlinear_residual = fit_test_residual(list(range(len(feature_names))))
+    low_cutoff = float(np.quantile(feature_values, tail_quantile))
+    high_cutoff = float(np.quantile(feature_values, 1.0 - tail_quantile))
+    bucket_masks = [
+        ("low_tail", feature_values <= low_cutoff),
+        ("body", (feature_values > low_cutoff) & (feature_values < high_cutoff)),
+        ("high_tail", feature_values >= high_cutoff),
+    ]
+
+    rows: list[dict[str, float | int | str]] = []
+    for bucket, mask in bucket_masks:
+        if not mask.any():
+            continue
+        bucket_core = core_residual[mask]
+        bucket_nonlinear = nonlinear_residual[mask]
+        core_rmse = float(np.sqrt(np.mean(bucket_core**2)))
+        nonlinear_rmse = float(np.sqrt(np.mean(bucket_nonlinear**2)))
+        lift = 0.0 if core_rmse <= 0.0 else (core_rmse - nonlinear_rmse) / core_rmse
+        if lift >= min_tail_lift:
+            note = "nonlinear_tail_lift_supported"
+        else:
+            note = "nonlinear_tail_lift_fragile"
+        rows.append(
+            {
+                "tail_bucket": bucket,
+                "feature": feature,
+                "test_rows": int(mask.sum()),
+                "feature_min": float(feature_values[mask].min()),
+                "feature_max": float(feature_values[mask].max()),
+                "core_rmse": core_rmse,
+                "nonlinear_rmse": nonlinear_rmse,
+                "nonlinear_rmse_lift_vs_core": float(lift),
+                "core_residual_mean": float(bucket_core.mean()),
+                "nonlinear_residual_mean": float(bucket_nonlinear.mean()),
+                "tail_publishability_note": note,
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
 def _component_for_feature(feature: str) -> str:
     if feature in NONLINEAR_LIQUIDITY_FEATURES:
         return "nonlinear_liquidity"

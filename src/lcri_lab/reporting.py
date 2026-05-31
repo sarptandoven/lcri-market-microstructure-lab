@@ -674,6 +674,56 @@ def verify_execution_adjusted_lcri_quantile_diagnostics(
     return errors
 
 
+def verify_baseline_tail_lift_diagnostics(
+    output_dir: Path, artifact: str = "baseline_tail_lift_diagnostics.csv"
+) -> list[str]:
+    """Return errors for nonlinear-baseline holdout tail lift diagnostics."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing baseline tail lift diagnostics: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "tail_bucket",
+        "feature",
+        "test_rows",
+        "feature_min",
+        "feature_max",
+        "core_rmse",
+        "nonlinear_rmse",
+        "nonlinear_rmse_lift_vs_core",
+        "core_residual_mean",
+        "nonlinear_residual_mean",
+        "tail_publishability_note",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete baseline tail lift diagnostics {artifact}: {missing}"]
+
+    numeric_columns = list(required - {"tail_bucket", "feature", "tail_publishability_note"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite baseline tail lift values in {artifact}")
+    if not numeric["test_rows"].ge(1.0).all():
+        errors.append(f"non-positive baseline tail lift rows in {artifact}")
+    if not numeric[["core_rmse", "nonlinear_rmse"]].ge(0.0).all().all():
+        errors.append(f"negative baseline tail lift RMSE in {artifact}")
+    if not numeric["nonlinear_rmse_lift_vs_core"].between(-1.0, 1.0).all():
+        errors.append(f"bounded baseline tail lift values violated in {artifact}")
+    if (numeric["feature_max"] < numeric["feature_min"]).any():
+        errors.append(f"baseline tail lift feature bounds inverted in {artifact}")
+    if frame["tail_bucket"].astype(str).str.len().eq(0).any():
+        errors.append(f"blank baseline tail lift buckets in {artifact}")
+    if frame["tail_bucket"].astype(str).duplicated().any():
+        errors.append(f"duplicate baseline tail lift buckets in {artifact}")
+    if frame["feature"].astype(str).str.len().eq(0).any():
+        errors.append(f"blank baseline tail lift features in {artifact}")
+    valid_notes = {"nonlinear_tail_lift_supported", "nonlinear_tail_lift_fragile"}
+    if not frame["tail_publishability_note"].astype(str).isin(valid_notes).all():
+        errors.append(f"invalid baseline tail lift publishability notes in {artifact}")
+    return errors
+
+
 def verify_execution_publishability_release_gate(
     output_dir: Path, artifact: str = "execution_publishability_release_gate.json"
 ) -> list[str]:
@@ -3945,6 +3995,7 @@ def write_research_summary(
     metrics: pd.DataFrame,
     heldout_metrics: pd.DataFrame | None = None,
     generalization_gap: pd.DataFrame | None = None,
+    baseline_tail_lift_diagnostics: pd.DataFrame | None = None,
     regime_generalization_gap: pd.DataFrame | None = None,
     transition_generalization_gap: pd.DataFrame | None = None,
     generalization_fragility_diagnostics: pd.DataFrame | None = None,
@@ -4039,6 +4090,12 @@ def write_research_summary(
                 "",
                 _markdown_table(generalization_gap)
                 if generalization_gap is not None
+                else "_Not generated._",
+                "",
+                "## Nonlinear baseline tail lift diagnostics",
+                "",
+                _markdown_table(baseline_tail_lift_diagnostics)
+                if baseline_tail_lift_diagnostics is not None
                 else "_Not generated._",
                 "",
                 "## Regime generalization gap",
@@ -4564,6 +4621,7 @@ _RESEARCH_SUMMARY_ARTIFACT_SECTIONS = {
     "Signal quality": "metrics.csv",
     "Heldout signal quality": "heldout_metrics.csv",
     "Signal generalization gap": "generalization_gap.csv",
+    "Nonlinear baseline tail lift diagnostics": "baseline_tail_lift_diagnostics.csv",
     "Regime generalization gap": "regime_generalization_gap.csv",
     "Transition generalization gap": "transition_generalization_gap.csv",
     "Generalization fragility diagnostics": "generalization_fragility_diagnostics.csv",

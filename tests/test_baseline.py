@@ -12,6 +12,7 @@ from lcri_lab.baseline import (
     baseline_regime_publishability_summary,
     baseline_rolling_basis_comparison,
     baseline_rolling_basis_summary,
+    baseline_tail_lift_diagnostics,
     compute_lcri,
     design_feature_names,
 )
@@ -132,6 +133,53 @@ def test_baseline_liquidity_stress_curve_rejects_unknown_feature() -> None:
 
     with pytest.raises(ValueError, match="unknown design feature"):
         baseline_liquidity_stress_curve(features, baseline, feature="not_a_feature")
+
+
+def test_baseline_tail_lift_diagnostics_audits_stressed_holdout_tails() -> None:
+    books = simulate_order_books(SimulationConfig(rows=900, seed=27))
+    features = compute_features(books)
+    stress = features["liquidity_void_ratio"].to_numpy(dtype=float) * features[
+        "volatility"
+    ].to_numpy(dtype=float)
+    features["raw_imbalance"] = (
+        0.08 * features["spread_ticks"].to_numpy(dtype=float) ** 2
+        + 0.55 * stress
+        - 0.18 / (1.0 + features["replenishment_rate"].to_numpy(dtype=float))
+    )
+
+    diagnostics = baseline_tail_lift_diagnostics(
+        features,
+        feature="liquidity_void_x_volatility",
+        train_fraction=0.55,
+        ridge=1e-8,
+    )
+    by_bucket = diagnostics.set_index("tail_bucket")
+
+    assert diagnostics.columns.tolist() == [
+        "tail_bucket",
+        "feature",
+        "test_rows",
+        "feature_min",
+        "feature_max",
+        "core_rmse",
+        "nonlinear_rmse",
+        "nonlinear_rmse_lift_vs_core",
+        "core_residual_mean",
+        "nonlinear_residual_mean",
+        "tail_publishability_note",
+    ]
+    assert diagnostics["tail_bucket"].tolist() == ["low_tail", "body", "high_tail"]
+    assert by_bucket.loc["high_tail", "nonlinear_rmse_lift_vs_core"] > 0.70
+    assert by_bucket.loc["high_tail", "tail_publishability_note"] == "nonlinear_tail_lift_supported"
+    assert by_bucket.loc["body", "test_rows"] > by_bucket.loc["high_tail", "test_rows"]
+
+
+def test_baseline_tail_lift_diagnostics_rejects_unknown_feature() -> None:
+    books = simulate_order_books(SimulationConfig(rows=80, seed=28))
+    features = compute_features(books)
+
+    with pytest.raises(ValueError, match="unknown design feature"):
+        baseline_tail_lift_diagnostics(features, feature="not_a_feature")
 
 
 def test_baseline_basis_comparison_quantifies_out_of_sample_nonlinear_lift() -> None:

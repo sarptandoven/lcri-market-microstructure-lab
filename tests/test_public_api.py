@@ -52,6 +52,11 @@ def test_public_api_exports_baseline_rolling_basis_summary() -> None:
     assert "baseline_rolling_basis_summary" in lcri_lab.__all__
 
 
+def test_public_api_exports_baseline_tail_lift_diagnostics() -> None:
+    assert callable(lcri_lab.baseline_tail_lift_diagnostics)
+    assert "baseline_tail_lift_diagnostics" in lcri_lab.__all__
+
+
 def test_public_api_exports_baseline_nonlinear_publishability_summary() -> None:
     assert callable(lcri_lab.baseline_nonlinear_publishability_summary)
     assert "baseline_nonlinear_publishability_summary" in lcri_lab.__all__
