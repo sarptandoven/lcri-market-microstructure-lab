@@ -33,6 +33,7 @@ from lcri_lab.execution import (
     passive_fill_edge_curve,
     passive_fill_realization_horizon_sweep,
     passive_fill_threshold_policy_curve,
+    queue_position_adverse_selection_policy_frontier,
     queue_position_capacity_frontier,
     queue_position_capacity_stability,
     queue_position_execution_readiness_scorecard,
@@ -582,6 +583,51 @@ def test_passive_fill_edge_curve_rejects_invalid_inputs() -> None:
         passive_fill_edge_curve(pd.DataFrame(), bins=0)
     with pytest.raises(ValueError, match="missing passive fill edge curve columns"):
         passive_fill_edge_curve(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_adverse_selection_policy_frontier_scores_fill_and_toxicity_cutoffs() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "long", "short", "short", "abstain"],
+            "bid_fill_probability": [0.80, 0.65, 0.20, 0.30, 0.95],
+            "ask_fill_probability": [0.40, 0.35, 0.72, 0.88, 0.95],
+            "bid_adverse_fill_probability": [0.15, 0.35, 0.10, 0.10, 0.05],
+            "ask_adverse_fill_probability": [0.10, 0.20, 0.25, 0.45, 0.05],
+            "bid_realized_fill": [1.0, 0.0, 0.0, 0.0, 1.0],
+            "ask_realized_fill": [0.0, 0.0, 1.0, 1.0, 1.0],
+            "long_net_return_ticks": [2.0, -1.0, 0.0, 0.0, 3.0],
+            "short_net_return_ticks": [0.0, 0.0, 1.5, -2.0, 3.0],
+            "execution_adjusted_edge_ticks": [1.6, 0.2, 1.1, -0.4, 2.0],
+        }
+    )
+
+    frontier = queue_position_adverse_selection_policy_frontier(
+        frame,
+        fill_thresholds=(0.60, 0.75),
+        adverse_thresholds=(0.30, 0.40),
+    )
+
+    assert frontier["policy_label"].tolist() == [
+        "balanced_execution_policy",
+        "edge_positive_fill_uncertain_policy",
+        "selective_toxicity_control_policy",
+        "selective_toxicity_control_policy",
+    ]
+    first = frontier.iloc[0]
+    assert first["candidate_rows"] == 2
+    assert first["trade_share"] == pytest.approx(0.40)
+    assert first["realized_fill_rate"] == pytest.approx(1.0)
+    assert first["mean_adverse_fill_probability"] == pytest.approx(0.20)
+    assert first["mean_realized_edge_ticks"] == pytest.approx(1.75)
+    assert first["toxicity_filtered_rows"] == 2
+    assert first["toxicity_filtered_share"] == pytest.approx(0.50)
+
+
+def test_queue_position_adverse_selection_policy_frontier_rejects_bad_thresholds() -> None:
+    with pytest.raises(ValueError, match="fill_thresholds must be a non-empty sequence"):
+        queue_position_adverse_selection_policy_frontier(pd.DataFrame(), fill_thresholds=())
+    with pytest.raises(ValueError, match="adverse threshold values must be in"):
+        queue_position_adverse_selection_policy_frontier(pd.DataFrame(), adverse_thresholds=(1.20,))
 
 
 def test_queue_position_fill_surface_crosses_queue_depth_with_realized_fills() -> None:

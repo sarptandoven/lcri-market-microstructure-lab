@@ -1704,6 +1704,148 @@ def passive_fill_threshold_policy_curve(
     return pd.DataFrame(rows)[list(_empty_passive_fill_threshold_policy_curve().columns)]
 
 
+def queue_position_adverse_selection_policy_frontier(
+    frame: pd.DataFrame,
+    *,
+    fill_thresholds: list[float] | tuple[float, ...] = (0.50, 0.60, 0.70, 0.80),
+    adverse_thresholds: list[float] | tuple[float, ...] = (0.20, 0.30, 0.40),
+    side_col: str = "best_execution_side",
+    bid_realized_col: str = "bid_realized_fill",
+    ask_realized_col: str = "ask_realized_fill",
+    long_return_col: str = "long_net_return_ticks",
+    short_return_col: str = "short_net_return_ticks",
+) -> pd.DataFrame:
+    """Evaluate passive policies jointly on fill probability and adverse-selection risk.
+
+    A fill cutoff alone can accidentally select toxic queues where execution is
+    likely precisely because informed flow is about to trade through the quote.
+    This frontier sweeps fill-probability lower bounds against adverse-fill upper
+    bounds, reporting capacity, realized fill, realized edge, and how many otherwise
+    executable rows were filtered by toxicity controls.
+    """
+    _validate_probability_thresholds(fill_thresholds, "fill_thresholds", "fill")
+    _validate_probability_thresholds(adverse_thresholds, "adverse_thresholds", "adverse")
+
+    required = {
+        side_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+        bid_realized_col,
+        ask_realized_col,
+        long_return_col,
+        short_return_col,
+        "execution_adjusted_edge_ticks",
+    }
+    _require_columns(frame, required, "queue position adverse-selection policy frontier")
+    if frame.empty:
+        return _empty_queue_position_adverse_selection_policy_frontier()
+
+    values = _finite_values(
+        frame,
+        [
+            "bid_fill_probability",
+            "ask_fill_probability",
+            "bid_adverse_fill_probability",
+            "ask_adverse_fill_probability",
+            bid_realized_col,
+            ask_realized_col,
+            long_return_col,
+            short_return_col,
+            "execution_adjusted_edge_ticks",
+        ],
+        "queue position adverse-selection policy frontier",
+    )
+    side = frame[side_col].astype(str)
+    tradable = side.isin(["long", "short"])
+    if not bool(tradable.any()):
+        return _empty_queue_position_adverse_selection_policy_frontier()
+
+    selected_side = side.loc[tradable]
+    selected = pd.DataFrame(index=frame.index[tradable])
+    selected["side"] = selected_side
+    selected["predicted_fill_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_fill_probability"],
+        values.loc[tradable, "ask_fill_probability"],
+    )
+    selected["adverse_fill_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_adverse_fill_probability"],
+        values.loc[tradable, "ask_adverse_fill_probability"],
+    )
+    selected["realized_fill"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, bid_realized_col],
+        values.loc[tradable, ask_realized_col],
+    )
+    selected["realized_edge_ticks"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, long_return_col],
+        values.loc[tradable, short_return_col],
+    )
+    selected["execution_adjusted_edge_ticks"] = values.loc[tradable, "execution_adjusted_edge_ticks"]
+
+    rows: list[dict[str, float | int | str]] = []
+    total_rows = len(frame)
+    tradable_rows = len(selected)
+    for fill_threshold in sorted(float(value) for value in fill_thresholds):
+        fill_eligible = selected["predicted_fill_probability"] >= fill_threshold
+        for adverse_threshold in sorted(float(value) for value in adverse_thresholds):
+            toxicity_ok = selected["adverse_fill_probability"] <= adverse_threshold
+            candidate = selected[fill_eligible & toxicity_ok]
+            candidate_rows = len(candidate)
+            toxicity_filtered_rows = int((fill_eligible & ~toxicity_ok).sum())
+            if candidate_rows:
+                mean_predicted = float(candidate["predicted_fill_probability"].mean())
+                mean_adverse = float(candidate["adverse_fill_probability"].mean())
+                realized_fill_rate = float(candidate["realized_fill"].mean())
+                mean_realized_edge = float(candidate["realized_edge_ticks"].mean())
+                positive_edge_rate = float((candidate["realized_edge_ticks"] > 0.0).mean())
+                mean_adjusted_edge = float(candidate["execution_adjusted_edge_ticks"].mean())
+                long_rows = int((candidate["side"] == "long").sum())
+                short_rows = int((candidate["side"] == "short").sum())
+            else:
+                mean_predicted = 0.0
+                mean_adverse = 0.0
+                realized_fill_rate = 0.0
+                mean_realized_edge = 0.0
+                positive_edge_rate = 0.0
+                mean_adjusted_edge = 0.0
+                long_rows = 0
+                short_rows = 0
+            trade_share = float(candidate_rows / total_rows) if total_rows else 0.0
+            toxicity_filtered_share = (
+                float(toxicity_filtered_rows / tradable_rows) if tradable_rows else 0.0
+            )
+            rows.append(
+                {
+                    "fill_threshold": fill_threshold,
+                    "adverse_threshold": adverse_threshold,
+                    "candidate_rows": int(candidate_rows),
+                    "trade_share": trade_share,
+                    "long_rows": long_rows,
+                    "short_rows": short_rows,
+                    "mean_predicted_fill_probability": mean_predicted,
+                    "mean_adverse_fill_probability": mean_adverse,
+                    "realized_fill_rate": realized_fill_rate,
+                    "mean_realized_edge_ticks": mean_realized_edge,
+                    "positive_edge_rate": positive_edge_rate,
+                    "mean_execution_adjusted_edge_ticks": mean_adjusted_edge,
+                    "toxicity_filtered_rows": toxicity_filtered_rows,
+                    "toxicity_filtered_share": toxicity_filtered_share,
+                    "policy_label": _queue_position_policy_frontier_label(
+                        trade_share=trade_share,
+                        realized_fill_rate=realized_fill_rate,
+                        mean_realized_edge=mean_realized_edge,
+                        mean_adverse_fill_probability=mean_adverse,
+                    ),
+                }
+            )
+    return pd.DataFrame(rows)[list(_empty_queue_position_adverse_selection_policy_frontier().columns)]
+
+
 def queue_position_fill_surface(
     frame: pd.DataFrame,
     *,
@@ -5064,6 +5206,63 @@ def _empty_passive_fill_threshold_policy_curve() -> pd.DataFrame:
             "policy_label",
         ]
     )
+
+
+def _empty_queue_position_adverse_selection_policy_frontier() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "fill_threshold",
+            "adverse_threshold",
+            "candidate_rows",
+            "trade_share",
+            "long_rows",
+            "short_rows",
+            "mean_predicted_fill_probability",
+            "mean_adverse_fill_probability",
+            "realized_fill_rate",
+            "mean_realized_edge_ticks",
+            "positive_edge_rate",
+            "mean_execution_adjusted_edge_ticks",
+            "toxicity_filtered_rows",
+            "toxicity_filtered_share",
+            "policy_label",
+        ]
+    )
+
+
+def _validate_probability_thresholds(
+    thresholds: list[float] | tuple[float, ...], argument_name: str, label: str
+) -> None:
+    if isinstance(thresholds, (str, bytes)):
+        raise ValueError(f"{argument_name} must be a non-empty sequence of finite values")
+    values = list(thresholds)
+    if not values:
+        raise ValueError(f"{argument_name} must be a non-empty sequence")
+    for threshold in values:
+        if not math.isfinite(float(threshold)):
+            raise ValueError(f"{label} threshold values must be finite")
+        if not 0.0 <= float(threshold) <= 1.0:
+            raise ValueError(f"{label} threshold values must be in [0.0, 1.0]")
+
+
+def _queue_position_policy_frontier_label(
+    *,
+    trade_share: float,
+    realized_fill_rate: float,
+    mean_realized_edge: float,
+    mean_adverse_fill_probability: float,
+) -> str:
+    if trade_share <= 0.0:
+        return "no_executable_policy"
+    if mean_realized_edge <= 0.0:
+        return "execution_policy_rejected"
+    if trade_share >= 0.30 and realized_fill_rate >= 0.70 and mean_adverse_fill_probability <= 0.25:
+        return "balanced_execution_policy"
+    if realized_fill_rate >= 0.70 and mean_adverse_fill_probability <= 0.30:
+        return "selective_toxicity_control_policy"
+    if realized_fill_rate >= 0.70:
+        return "high_quality_capacity_constrained_policy"
+    return "edge_positive_fill_uncertain_policy"
 
 
 def _passive_fill_threshold_policy_label(
