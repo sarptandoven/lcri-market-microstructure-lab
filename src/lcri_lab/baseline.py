@@ -1200,6 +1200,128 @@ def baseline_regime_tail_lift_summary(
     return output
 
 
+def baseline_stress_residual_drift(
+    frame: pd.DataFrame,
+    *,
+    feature: str,
+    buckets: int = 5,
+    train_fraction: float = 0.60,
+    ridge: float = 1e-3,
+) -> pd.DataFrame:
+    """Audit holdout residual drift across liquidity-stress quantile buckets.
+
+    Nonlinear baseline lift is only publication-worthy if it removes the systematic
+    residual bias that remains in stressed liquidity states, not merely if it lowers
+    aggregate RMSE. This diagnostic fits a core linear basis and the full nonlinear
+    liquidity basis on an early chronological training split, buckets the holdout
+    by a chosen design feature, and reports how much nonlinear neutralization
+    shrinks bucket-level residual means and drift versus the lowest-stress bucket.
+    """
+    columns = [
+        "stress_bucket",
+        "feature",
+        "test_rows",
+        "feature_min",
+        "feature_max",
+        "core_residual_mean",
+        "nonlinear_residual_mean",
+        "residual_mean_abs_reduction",
+        "core_residual_drift_vs_low_bucket",
+        "nonlinear_residual_drift_vs_low_bucket",
+        "drift_publishability_note",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    if not isinstance(buckets, int) or isinstance(buckets, bool) or buckets < 2:
+        raise ValueError("buckets must be an integer greater than 1")
+    if not math.isfinite(train_fraction) or not 0.0 < train_fraction < 1.0:
+        raise ValueError("train_fraction must be finite and in (0, 1)")
+    if not math.isfinite(ridge) or ridge < 0.0:
+        raise ValueError("ridge must be a finite non-negative value")
+    feature_names = design_feature_names()
+    if feature not in feature_names:
+        raise ValueError(f"unknown design feature: {feature}")
+    if "raw_imbalance" not in frame.columns:
+        raise ValueError("missing stress residual drift columns: ['raw_imbalance']")
+
+    y = frame["raw_imbalance"].to_numpy(dtype=float)
+    if not np.isfinite(y).all():
+        raise ValueError("raw_imbalance values must be finite")
+    train_rows = int(len(frame) * train_fraction)
+    if train_rows < 1 or train_rows >= len(frame):
+        raise ValueError("train_fraction leaves no train or test rows")
+
+    x = _design_matrix(frame)
+    feature_values = x[:, feature_names.index(feature)]
+    core_indexes = list(range(len(feature_columns())))
+    nonlinear_indexes = list(range(len(feature_names)))
+
+    def fit_residual(indexes: list[int]) -> np.ndarray:
+        x_basis = x[:, indexes]
+        x_train = x_basis[:train_rows]
+        x_test = x_basis[train_rows:]
+        mean = x_train.mean(axis=0)
+        scale = x_train.std(axis=0)
+        scale[scale == 0.0] = 1.0
+        train_design = np.column_stack([np.ones(train_rows), (x_train - mean) / scale])
+        test_design = np.column_stack([np.ones(len(x_test)), (x_test - mean) / scale])
+        penalty = np.sqrt(ridge) * np.eye(train_design.shape[1])
+        penalty[0, 0] = 0.0
+        coefficients = np.linalg.lstsq(
+            np.vstack([train_design, penalty]),
+            np.concatenate([y[:train_rows], np.zeros(train_design.shape[1])]),
+            rcond=None,
+        )[0]
+        return y[train_rows:] - test_design @ coefficients
+
+    core_residual = fit_residual(core_indexes)
+    nonlinear_residual = fit_residual(nonlinear_indexes)
+    holdout_feature = pd.Series(feature_values[train_rows:]).reset_index(drop=True)
+    ranks = holdout_feature.rank(method="first")
+    bucket_codes = pd.qcut(ranks, q=min(buckets, len(holdout_feature)), labels=False)
+
+    data = pd.DataFrame(
+        {
+            "bucket_code": bucket_codes.astype(int),
+            "feature_value": holdout_feature,
+            "core_residual": core_residual,
+            "nonlinear_residual": nonlinear_residual,
+        }
+    )
+    low_core_mean: float | None = None
+    low_nonlinear_mean: float | None = None
+    rows: list[dict[str, float | int | str]] = []
+    for bucket_code, group in data.groupby("bucket_code", sort=True):
+        core_mean = float(group["core_residual"].mean())
+        nonlinear_mean = float(group["nonlinear_residual"].mean())
+        if low_core_mean is None:
+            low_core_mean = core_mean
+            low_nonlinear_mean = nonlinear_mean
+        core_drift = core_mean - low_core_mean
+        nonlinear_drift = nonlinear_mean - float(low_nonlinear_mean)
+        reduction = abs(core_mean) - abs(nonlinear_mean)
+        rows.append(
+            {
+                "stress_bucket": f"q{int(bucket_code) + 1}",
+                "feature": feature,
+                "test_rows": int(len(group)),
+                "feature_min": float(group["feature_value"].min()),
+                "feature_max": float(group["feature_value"].max()),
+                "core_residual_mean": core_mean,
+                "nonlinear_residual_mean": nonlinear_mean,
+                "residual_mean_abs_reduction": float(reduction),
+                "core_residual_drift_vs_low_bucket": float(core_drift),
+                "nonlinear_residual_drift_vs_low_bucket": float(nonlinear_drift),
+                "drift_publishability_note": (
+                    "nonlinear_residual_drift_neutralized"
+                    if reduction >= 0.0 and abs(nonlinear_drift) <= abs(core_drift) + 1e-12
+                    else "nonlinear_residual_drift_fragile"
+                ),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
 def baseline_stress_tail_publishability_summary(
     diagnostics: pd.DataFrame,
     *,

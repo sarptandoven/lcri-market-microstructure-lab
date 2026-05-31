@@ -20,6 +20,7 @@ from lcri_lab.reporting import (
     verify_artifact_coverage_matrix,
     verify_artifact_manifest,
     verify_artifact_metadata_summary,
+    verify_baseline_stress_residual_drift,
     verify_baseline_tail_lift_diagnostics,
     verify_adverse_selection_phase_shift_summary,
     verify_event_level_passive_fill_horizon_sweep,
@@ -291,6 +292,79 @@ def test_verify_baseline_tail_lift_diagnostics_checks_schema_and_bounds(tmp_path
     assert any("bounded baseline tail lift values" in error for error in errors)
     assert any("baseline tail lift feature bounds inverted" in error for error in errors)
     assert any("invalid baseline tail lift publishability notes" in error for error in errors)
+
+
+def test_verify_baseline_stress_residual_drift_checks_schema_and_neutralization(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {
+                "stress_bucket": "q1",
+                "feature": "liquidity_void_x_volatility",
+                "test_rows": 50,
+                "feature_min": 0.1,
+                "feature_max": 0.4,
+                "core_residual_mean": 0.2,
+                "nonlinear_residual_mean": 0.02,
+                "residual_mean_abs_reduction": 0.18,
+                "core_residual_drift_vs_low_bucket": 0.0,
+                "nonlinear_residual_drift_vs_low_bucket": 0.0,
+                "drift_publishability_note": "nonlinear_residual_drift_neutralized",
+            },
+            {
+                "stress_bucket": "q2",
+                "feature": "liquidity_void_x_volatility",
+                "test_rows": 50,
+                "feature_min": 0.4,
+                "feature_max": 0.9,
+                "core_residual_mean": 0.7,
+                "nonlinear_residual_mean": 0.03,
+                "residual_mean_abs_reduction": 0.67,
+                "core_residual_drift_vs_low_bucket": 0.5,
+                "nonlinear_residual_drift_vs_low_bucket": 0.01,
+                "drift_publishability_note": "nonlinear_residual_drift_neutralized",
+            },
+        ]
+    ).to_csv(tmp_path / "baseline_stress_residual_drift.csv", index=False)
+
+    assert verify_baseline_stress_residual_drift(tmp_path) == []
+
+    pd.DataFrame(
+        [
+            {
+                "stress_bucket": "q1",
+                "feature": "liquidity_void_x_volatility",
+                "test_rows": 0,
+                "feature_min": 1.0,
+                "feature_max": 0.5,
+                "core_residual_mean": 0.2,
+                "nonlinear_residual_mean": 0.4,
+                "residual_mean_abs_reduction": -0.2,
+                "core_residual_drift_vs_low_bucket": 0.1,
+                "nonlinear_residual_drift_vs_low_bucket": 0.3,
+                "drift_publishability_note": "nonlinear_residual_drift_neutralized",
+            },
+            {
+                "stress_bucket": "q2",
+                "feature": "liquidity_void_x_volatility",
+                "test_rows": 1,
+                "feature_min": 0.5,
+                "feature_max": 1.0,
+                "core_residual_mean": 0.2,
+                "nonlinear_residual_mean": 0.4,
+                "residual_mean_abs_reduction": -0.2,
+                "core_residual_drift_vs_low_bucket": 0.1,
+                "nonlinear_residual_drift_vs_low_bucket": 0.3,
+                "drift_publishability_note": "unknown_note",
+            }
+        ]
+    ).to_csv(tmp_path / "baseline_stress_residual_drift.csv", index=False)
+
+    errors = verify_baseline_stress_residual_drift(tmp_path)
+    assert any("non-positive baseline stress residual drift rows" in error for error in errors)
+    assert any("baseline stress residual drift feature bounds inverted" in error for error in errors)
+    assert any("negative baseline stress residual drift reductions" in error for error in errors)
+    assert any("baseline stress residual drift not neutralized" in error for error in errors)
+    assert any("invalid baseline stress residual drift publishability notes" in error for error in errors)
 
 
 def test_verify_passive_fill_realization_horizon_sweep_checks_schema_and_bounds(tmp_path) -> None:

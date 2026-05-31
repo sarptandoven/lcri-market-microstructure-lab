@@ -16,6 +16,7 @@ from lcri_lab.baseline import (
     baseline_regime_tail_lift_summary,
     baseline_rolling_basis_comparison,
     baseline_rolling_basis_summary,
+    baseline_stress_residual_drift,
     baseline_stress_tail_publishability_summary,
     baseline_tail_lift_diagnostics,
     compute_lcri,
@@ -450,6 +451,57 @@ def test_baseline_stress_tail_publishability_summary_flags_unsupported_tail() ->
     assert row["unsupported_tail_buckets"] == 1
     assert row["worst_tail_bucket"] == "high_tail"
     assert row["review_note"] == "nonlinear_stress_tail_fragile"
+
+
+def test_baseline_stress_residual_drift_shows_nonlinear_neutralization_by_bucket() -> None:
+    books = simulate_order_books(SimulationConfig(rows=900, seed=44))
+    features = compute_features(books)
+    stress = features["liquidity_void_ratio"].to_numpy(dtype=float) * features[
+        "volatility"
+    ].to_numpy(dtype=float)
+    features["raw_imbalance"] = (
+        0.10 * features["spread_ticks"].to_numpy(dtype=float) ** 2
+        + 0.75 * stress
+        - 0.22 / (1.0 + features["replenishment_rate"].to_numpy(dtype=float))
+    )
+
+    drift = baseline_stress_residual_drift(
+        features,
+        feature="liquidity_void_x_volatility",
+        buckets=4,
+        train_fraction=0.60,
+        ridge=1e-8,
+    )
+
+    assert drift.columns.tolist() == [
+        "stress_bucket",
+        "feature",
+        "test_rows",
+        "feature_min",
+        "feature_max",
+        "core_residual_mean",
+        "nonlinear_residual_mean",
+        "residual_mean_abs_reduction",
+        "core_residual_drift_vs_low_bucket",
+        "nonlinear_residual_drift_vs_low_bucket",
+        "drift_publishability_note",
+    ]
+    assert drift["stress_bucket"].tolist() == ["q1", "q2", "q3", "q4"]
+    assert drift["test_rows"].sum() == len(features) - int(len(features) * 0.60)
+    assert drift["residual_mean_abs_reduction"].min() > 0.0
+    assert drift["core_residual_drift_vs_low_bucket"].abs().max() > 0.02
+    assert drift["nonlinear_residual_drift_vs_low_bucket"].abs().max() < 1e-6
+    assert drift["drift_publishability_note"].unique().tolist() == [
+        "nonlinear_residual_drift_neutralized"
+    ]
+
+
+def test_baseline_stress_residual_drift_rejects_unknown_stress_feature() -> None:
+    books = simulate_order_books(SimulationConfig(rows=80, seed=45))
+    features = compute_features(books)
+
+    with pytest.raises(ValueError, match="unknown design feature"):
+        baseline_stress_residual_drift(features, feature="missing_stress")
 
 
 def test_baseline_basis_comparison_quantifies_out_of_sample_nonlinear_lift() -> None:

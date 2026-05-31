@@ -724,6 +724,61 @@ def verify_baseline_tail_lift_diagnostics(
     return errors
 
 
+def verify_baseline_stress_residual_drift(
+    output_dir: Path, artifact: str = "baseline_stress_residual_drift.csv"
+) -> list[str]:
+    """Return errors for stress-bucket residual drift neutralization diagnostics."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing baseline stress residual drift diagnostics: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "stress_bucket",
+        "feature",
+        "test_rows",
+        "feature_min",
+        "feature_max",
+        "core_residual_mean",
+        "nonlinear_residual_mean",
+        "residual_mean_abs_reduction",
+        "core_residual_drift_vs_low_bucket",
+        "nonlinear_residual_drift_vs_low_bucket",
+        "drift_publishability_note",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete baseline stress residual drift diagnostics {artifact}: {missing}"]
+
+    numeric_columns = list(required - {"stress_bucket", "feature", "drift_publishability_note"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite baseline stress residual drift values in {artifact}")
+    if not numeric["test_rows"].ge(1.0).all():
+        errors.append(f"non-positive baseline stress residual drift rows in {artifact}")
+    if (numeric["feature_max"] < numeric["feature_min"]).any():
+        errors.append(f"baseline stress residual drift feature bounds inverted in {artifact}")
+    neutralized_note = frame["drift_publishability_note"].astype(str).eq(
+        "nonlinear_residual_drift_neutralized"
+    )
+    if (numeric.loc[neutralized_note, "residual_mean_abs_reduction"] < 0.0).any():
+        errors.append(f"negative baseline stress residual drift reductions in {artifact}")
+    core_drift = numeric["core_residual_drift_vs_low_bucket"].abs()
+    nonlinear_drift = numeric["nonlinear_residual_drift_vs_low_bucket"].abs()
+    if ((nonlinear_drift - core_drift > 1e-9) & neutralized_note).any():
+        errors.append(f"baseline stress residual drift not neutralized in {artifact}")
+    if frame["stress_bucket"].astype(str).str.len().eq(0).any():
+        errors.append(f"blank baseline stress residual drift buckets in {artifact}")
+    if frame["stress_bucket"].astype(str).duplicated().any():
+        errors.append(f"duplicate baseline stress residual drift buckets in {artifact}")
+    if frame["feature"].astype(str).str.len().eq(0).any():
+        errors.append(f"blank baseline stress residual drift features in {artifact}")
+    valid_notes = {"nonlinear_residual_drift_neutralized", "nonlinear_residual_drift_fragile"}
+    if not frame["drift_publishability_note"].astype(str).isin(valid_notes).all():
+        errors.append(f"invalid baseline stress residual drift publishability notes in {artifact}")
+    return errors
+
+
 def verify_baseline_regime_publishability_summary(
     output_dir: Path, artifact: str = "baseline_regime_publishability_summary.json"
 ) -> list[str]:
@@ -4339,6 +4394,7 @@ def write_research_summary(
     heldout_metrics: pd.DataFrame | None = None,
     generalization_gap: pd.DataFrame | None = None,
     baseline_tail_lift_diagnostics: pd.DataFrame | None = None,
+    baseline_stress_residual_drift: pd.DataFrame | None = None,
     baseline_regime_publishability_summary: dict[str, Any] | None = None,
     regime_generalization_gap: pd.DataFrame | None = None,
     transition_generalization_gap: pd.DataFrame | None = None,
@@ -4440,6 +4496,12 @@ def write_research_summary(
                 "",
                 _markdown_table(baseline_tail_lift_diagnostics)
                 if baseline_tail_lift_diagnostics is not None
+                else "_Not generated._",
+                "",
+                "## Nonlinear baseline stress residual drift",
+                "",
+                _markdown_table(baseline_stress_residual_drift)
+                if baseline_stress_residual_drift is not None
                 else "_Not generated._",
                 "",
                 "## Nonlinear baseline regime publishability",
@@ -4974,6 +5036,7 @@ _RESEARCH_SUMMARY_ARTIFACT_SECTIONS = {
     "Heldout signal quality": "heldout_metrics.csv",
     "Signal generalization gap": "generalization_gap.csv",
     "Nonlinear baseline tail lift diagnostics": "baseline_tail_lift_diagnostics.csv",
+    "Nonlinear baseline stress residual drift": "baseline_stress_residual_drift.csv",
     "Regime generalization gap": "regime_generalization_gap.csv",
     "Transition generalization gap": "transition_generalization_gap.csv",
     "Generalization fragility diagnostics": "generalization_fragility_diagnostics.csv",
