@@ -2189,6 +2189,134 @@ def queue_position_execution_quality_gate(
     return gate
 
 
+def queue_position_execution_readiness_scorecard(
+    quality_gate: dict[str, float | int | str | bool],
+    capacity_stability: dict[str, float | int | str | bool],
+    capacity_concentration: dict[str, float | int | str] | None = None,
+) -> dict[str, float | int | str | bool]:
+    """Combine queue execution quality, stability, and capacity into one release gate.
+
+    Execution-adjusted LCRI should not be published solely because a fill model is
+    calibrated on average. This scorecard joins three orthogonal blockers:
+    side-aware queue calibration quality, out-of-sample capacity stability, and
+    regime concentration of viable passive capacity. The result is a compact
+    artifact for demos/review packets that states whether execution evidence is
+    publishable or still needs queue-model/capacity remediation.
+    """
+    quality_required = {
+        "quality_gate_label",
+        "blocked_regimes",
+        "eligible_regimes",
+        "weighted_absolute_calibration_error",
+        "weighted_brier_score",
+        "max_regime_absolute_calibration_error",
+        "worst_calibration_regime",
+        "worst_decay_regime",
+    }
+    stability_required = {
+        "capacity_stability_label",
+        "capacity_fraction_gap",
+        "capacity_edge_gap_ticks",
+        "capacity_tradable_share_gap",
+        "dominant_side_changed",
+    }
+    missing_quality = sorted(quality_required - set(quality_gate))
+    if missing_quality:
+        raise ValueError(f"missing queue execution readiness quality keys: {missing_quality}")
+    missing_stability = sorted(stability_required - set(capacity_stability))
+    if missing_stability:
+        raise ValueError(f"missing queue execution readiness stability keys: {missing_stability}")
+
+    quality_numeric = {
+        "blocked_regimes": float(quality_gate["blocked_regimes"]),
+        "eligible_regimes": float(quality_gate["eligible_regimes"]),
+        "weighted_absolute_calibration_error": float(
+            quality_gate["weighted_absolute_calibration_error"]
+        ),
+        "weighted_brier_score": float(quality_gate["weighted_brier_score"]),
+        "max_regime_absolute_calibration_error": float(
+            quality_gate["max_regime_absolute_calibration_error"]
+        ),
+    }
+    stability_numeric = {
+        "capacity_fraction_gap": float(capacity_stability["capacity_fraction_gap"]),
+        "capacity_edge_gap_ticks": float(capacity_stability["capacity_edge_gap_ticks"]),
+        "capacity_tradable_share_gap": float(capacity_stability["capacity_tradable_share_gap"]),
+    }
+    if not all(math.isfinite(value) for value in quality_numeric.values()):
+        raise ValueError("queue execution readiness quality values must be finite")
+    if not all(math.isfinite(value) for value in stability_numeric.values()):
+        raise ValueError("queue execution readiness stability values must be finite")
+    if quality_numeric["blocked_regimes"] < 0.0 or quality_numeric["eligible_regimes"] < 0.0:
+        raise ValueError("queue execution readiness regime counts must be non-negative")
+    if (
+        quality_numeric["weighted_absolute_calibration_error"] < 0.0
+        or quality_numeric["weighted_brier_score"] < 0.0
+        or quality_numeric["max_regime_absolute_calibration_error"] < 0.0
+    ):
+        raise ValueError("queue execution readiness quality errors must be non-negative")
+
+    concentration_label = "not_supplied"
+    front_only_share = 0.0
+    worst_capacity_regime = "none"
+    concentration_blocked = False
+    if capacity_concentration is not None:
+        concentration_required = {
+            "capacity_concentration_label",
+            "front_only_or_no_capacity_share",
+            "worst_capacity_regime",
+        }
+        missing_concentration = sorted(concentration_required - set(capacity_concentration))
+        if missing_concentration:
+            raise ValueError(
+                f"missing queue execution readiness concentration keys: {missing_concentration}"
+            )
+        concentration_label = str(capacity_concentration["capacity_concentration_label"])
+        front_only_share = float(capacity_concentration["front_only_or_no_capacity_share"])
+        worst_capacity_regime = str(capacity_concentration["worst_capacity_regime"])
+        if not math.isfinite(front_only_share) or not 0.0 <= front_only_share <= 1.0:
+            raise ValueError("queue execution readiness concentration share must be in [0, 1]")
+        concentration_blocked = concentration_label in {
+            "capacity_regime_concentrated",
+            "capacity_regime_blocked",
+        }
+
+    quality_blocked = str(quality_gate["quality_gate_label"]) == "queue_execution_blocked"
+    stability_blocked = str(capacity_stability["capacity_stability_label"]) == "capacity_fragile"
+    blocker_count = int(quality_blocked) + int(stability_blocked) + int(concentration_blocked)
+    if blocker_count > 0:
+        readiness_label = "execution_not_publishable"
+    elif str(quality_gate["quality_gate_label"]) == "queue_execution_review":
+        readiness_label = "execution_review"
+    else:
+        readiness_label = "execution_publishable"
+
+    return {
+        "quality_gate_label": str(quality_gate["quality_gate_label"]),
+        "capacity_stability_label": str(capacity_stability["capacity_stability_label"]),
+        "capacity_concentration_label": concentration_label,
+        "blocked_regimes": int(quality_numeric["blocked_regimes"]),
+        "eligible_regimes": int(quality_numeric["eligible_regimes"]),
+        "execution_blocker_count": blocker_count,
+        "worst_calibration_regime": str(quality_gate["worst_calibration_regime"]),
+        "worst_decay_regime": str(quality_gate["worst_decay_regime"]),
+        "worst_capacity_regime": worst_capacity_regime,
+        "weighted_absolute_calibration_error": quality_numeric[
+            "weighted_absolute_calibration_error"
+        ],
+        "weighted_brier_score": quality_numeric["weighted_brier_score"],
+        "max_regime_absolute_calibration_error": quality_numeric[
+            "max_regime_absolute_calibration_error"
+        ],
+        "capacity_fraction_gap": stability_numeric["capacity_fraction_gap"],
+        "capacity_edge_gap_ticks": stability_numeric["capacity_edge_gap_ticks"],
+        "capacity_tradable_share_gap": stability_numeric["capacity_tradable_share_gap"],
+        "front_only_or_no_capacity_share": front_only_share,
+        "dominant_side_changed": bool(capacity_stability["dominant_side_changed"]),
+        "execution_readiness_label": readiness_label,
+    }
+
+
 def _weighted_queue_quality_surface_row(group: pd.DataFrame) -> pd.Series:
     total_rows = float(group["rows"].sum())
     weights = group["rows"] / total_rows if total_rows > 0.0 else group["rows"]

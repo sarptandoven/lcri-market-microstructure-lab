@@ -32,6 +32,7 @@ from lcri_lab.execution import (
     passive_fill_threshold_policy_curve,
     queue_position_capacity_frontier,
     queue_position_capacity_stability,
+    queue_position_execution_readiness_scorecard,
     queue_position_execution_quality_gate,
     queue_position_regime_capacity_concentration,
     queue_position_regime_capacity_frontier,
@@ -1102,6 +1103,87 @@ def test_queue_position_execution_quality_gate_blocks_calibration_drift() -> Non
     assert gate["max_drift_fill_rate_range"] == pytest.approx(0.32)
     assert gate["max_drift_calibration_error_range"] == pytest.approx(0.22)
     assert gate["quality_gate_label"] == "queue_execution_blocked"
+
+
+def test_queue_position_execution_readiness_scorecard_blocks_quality_and_capacity_risks() -> None:
+    quality_gate = {
+        "quality_gate_label": "queue_execution_blocked",
+        "blocked_regimes": 2,
+        "eligible_regimes": 3,
+        "weighted_absolute_calibration_error": 0.18,
+        "weighted_brier_score": 0.12,
+        "max_regime_absolute_calibration_error": 0.31,
+        "worst_calibration_regime": "stress",
+        "worst_decay_regime": "thin",
+    }
+    capacity_stability = {
+        "capacity_stability_label": "capacity_fragile",
+        "capacity_fraction_gap": -0.25,
+        "capacity_edge_gap_ticks": -0.18,
+        "capacity_tradable_share_gap": -0.09,
+        "dominant_side_changed": True,
+    }
+    concentration = {
+        "capacity_concentration_label": "capacity_regime_concentrated",
+        "front_only_or_no_capacity_share": 0.50,
+        "worst_capacity_regime": "stress",
+    }
+
+    scorecard = queue_position_execution_readiness_scorecard(
+        quality_gate, capacity_stability, concentration
+    )
+
+    assert scorecard == {
+        "quality_gate_label": "queue_execution_blocked",
+        "capacity_stability_label": "capacity_fragile",
+        "capacity_concentration_label": "capacity_regime_concentrated",
+        "blocked_regimes": 2,
+        "eligible_regimes": 3,
+        "execution_blocker_count": 3,
+        "worst_calibration_regime": "stress",
+        "worst_decay_regime": "thin",
+        "worst_capacity_regime": "stress",
+        "weighted_absolute_calibration_error": pytest.approx(0.18),
+        "weighted_brier_score": pytest.approx(0.12),
+        "max_regime_absolute_calibration_error": pytest.approx(0.31),
+        "capacity_fraction_gap": pytest.approx(-0.25),
+        "capacity_edge_gap_ticks": pytest.approx(-0.18),
+        "capacity_tradable_share_gap": pytest.approx(-0.09),
+        "front_only_or_no_capacity_share": pytest.approx(0.50),
+        "dominant_side_changed": True,
+        "execution_readiness_label": "execution_not_publishable",
+    }
+
+
+def test_queue_position_execution_readiness_scorecard_labels_publishable() -> None:
+    scorecard = queue_position_execution_readiness_scorecard(
+        {
+            "quality_gate_label": "queue_execution_publishable",
+            "blocked_regimes": 0,
+            "eligible_regimes": 2,
+            "weighted_absolute_calibration_error": 0.04,
+            "weighted_brier_score": 0.05,
+            "max_regime_absolute_calibration_error": 0.06,
+            "worst_calibration_regime": "open",
+            "worst_decay_regime": "open",
+        },
+        {
+            "capacity_stability_label": "capacity_stable",
+            "capacity_fraction_gap": -0.02,
+            "capacity_edge_gap_ticks": -0.01,
+            "capacity_tradable_share_gap": -0.01,
+            "dominant_side_changed": False,
+        },
+    )
+
+    assert scorecard["execution_blocker_count"] == 0
+    assert scorecard["capacity_concentration_label"] == "not_supplied"
+    assert scorecard["execution_readiness_label"] == "execution_publishable"
+
+
+def test_queue_position_execution_readiness_scorecard_rejects_missing_keys() -> None:
+    with pytest.raises(ValueError, match="missing queue execution readiness quality keys"):
+        queue_position_execution_readiness_scorecard({"quality_gate_label": "x"}, {})
 
 
 def test_passive_fill_calibration_curve_scores_realized_side_fills_by_regime() -> None:
