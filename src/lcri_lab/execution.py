@@ -2341,6 +2341,260 @@ def queue_position_calibration_drift(
     return pd.DataFrame(rows, columns=columns)
 
 
+def queue_position_calibration_stability(
+    research_surface: pd.DataFrame,
+    heldout_surface: pd.DataFrame,
+    *,
+    regime_col: str = "regime",
+    max_error_gap: float = 0.10,
+    max_fill_rate_gap: float = 0.20,
+) -> pd.DataFrame:
+    """Compare queue-position fill calibration cells across research/holdout samples.
+
+    A queue-aware fill model is publishable only if its calibration cells replicate
+    outside the sample used to tune queue depth and probability cutoffs. This join
+    keeps regime, execution side, queue-depth bin, and predicted-fill bin fixed,
+    then measures heldout gaps in fill rate, calibration error, Brier score, and
+    execution-adjusted edge so fragile passive-fill cells can be gated explicitly.
+    """
+    if not regime_col:
+        raise ValueError("regime_col must be non-empty")
+    if not math.isfinite(max_error_gap) or max_error_gap < 0.0:
+        raise ValueError("max_error_gap must be a finite non-negative value")
+    if not math.isfinite(max_fill_rate_gap) or max_fill_rate_gap < 0.0:
+        raise ValueError("max_fill_rate_gap must be a finite non-negative value")
+    if research_surface.empty and heldout_surface.empty:
+        return _empty_queue_position_calibration_stability(regime_col=regime_col)
+
+    required = {
+        regime_col,
+        "best_execution_side",
+        "queue_share_bin",
+        "fill_probability_bin",
+        "rows",
+        "realized_fill_rate",
+        "calibration_error",
+        "absolute_calibration_error",
+        "brier_score",
+        "mean_execution_adjusted_edge_ticks",
+    }
+    _require_columns(research_surface, required, "research queue position calibration stability")
+    _require_columns(heldout_surface, required, "heldout queue position calibration stability")
+
+    def normalize(surface: pd.DataFrame, label: str) -> pd.DataFrame:
+        values = _finite_values(
+            surface,
+            [
+                "queue_share_bin",
+                "fill_probability_bin",
+                "rows",
+                "realized_fill_rate",
+                "calibration_error",
+                "absolute_calibration_error",
+                "brier_score",
+                "mean_execution_adjusted_edge_ticks",
+            ],
+            f"{label} queue position calibration stability",
+        )
+        if not values["rows"].ge(0.0).all():
+            raise ValueError(f"{label} queue position calibration stability rows must be non-negative")
+        for column in ["realized_fill_rate", "absolute_calibration_error", "brier_score"]:
+            if not values[column].between(0.0, 1.0).all():
+                raise ValueError(
+                    f"{label} queue position calibration stability {column} must be in [0, 1]"
+                )
+        if not values["calibration_error"].between(-1.0, 1.0).all():
+            raise ValueError(
+                f"{label} queue position calibration stability calibration_error must be in [-1, 1]"
+            )
+        output = pd.DataFrame(
+            {
+                regime_col: surface[regime_col].astype(str),
+                "best_execution_side": surface["best_execution_side"].astype(str),
+            }
+        )
+        for column in values.columns:
+            output[column] = values[column]
+        return output
+
+    research = normalize(research_surface, "research")
+    heldout = normalize(heldout_surface, "heldout")
+    key_cols = [regime_col, "best_execution_side", "queue_share_bin", "fill_probability_bin"]
+    joined = research.merge(
+        heldout,
+        on=key_cols,
+        how="outer",
+        suffixes=("_research", "_heldout"),
+        indicator=True,
+    )
+    if joined.empty:
+        return _empty_queue_position_calibration_stability(regime_col=regime_col)
+
+    rows: list[dict[str, float | int | str]] = []
+    for _, row in joined.sort_values(key_cols).iterrows():
+        merge_state = str(row["_merge"])
+        research_missing = merge_state == "right_only"
+        heldout_missing = merge_state == "left_only"
+        research_rows = 0 if research_missing else int(row["rows_research"])
+        heldout_rows = 0 if heldout_missing else int(row["rows_heldout"])
+        fill_gap = 0.0 if research_missing or heldout_missing else float(
+            row["realized_fill_rate_heldout"] - row["realized_fill_rate_research"]
+        )
+        calibration_gap = 0.0 if research_missing or heldout_missing else float(
+            row["calibration_error_heldout"] - row["calibration_error_research"]
+        )
+        abs_error_gap = float(
+            (0.0 if heldout_missing else row["absolute_calibration_error_heldout"])
+            - (0.0 if research_missing else row["absolute_calibration_error_research"])
+        )
+        brier_gap = float(
+            (0.0 if heldout_missing else row["brier_score_heldout"])
+            - (0.0 if research_missing else row["brier_score_research"])
+        )
+        edge_gap = 0.0 if research_missing or heldout_missing else float(
+            row["mean_execution_adjusted_edge_ticks_heldout"]
+            - row["mean_execution_adjusted_edge_ticks_research"]
+        )
+        label = _queue_calibration_stability_label(
+            research_missing=research_missing,
+            heldout_missing=heldout_missing,
+            fill_gap=fill_gap,
+            abs_error_gap=abs_error_gap,
+            edge_gap=edge_gap,
+            max_error_gap=max_error_gap,
+            max_fill_rate_gap=max_fill_rate_gap,
+        )
+        rows.append(
+            {
+                "regime": str(row[regime_col]),
+                "best_execution_side": str(row["best_execution_side"]),
+                "queue_share_bin": int(row["queue_share_bin"]),
+                "fill_probability_bin": int(row["fill_probability_bin"]),
+                "research_rows": research_rows,
+                "heldout_rows": heldout_rows,
+                "research_realized_fill_rate": 0.0 if research_missing else float(row["realized_fill_rate_research"]),
+                "heldout_realized_fill_rate": 0.0 if heldout_missing else float(row["realized_fill_rate_heldout"]),
+                "realized_fill_rate_gap": fill_gap,
+                "research_calibration_error": 0.0 if research_missing else float(row["calibration_error_research"]),
+                "heldout_calibration_error": 0.0 if heldout_missing else float(row["calibration_error_heldout"]),
+                "calibration_error_gap": calibration_gap,
+                "research_absolute_calibration_error": 0.0 if research_missing else float(row["absolute_calibration_error_research"]),
+                "heldout_absolute_calibration_error": 0.0 if heldout_missing else float(row["absolute_calibration_error_heldout"]),
+                "absolute_calibration_error_gap": abs_error_gap,
+                "brier_score_gap": brier_gap,
+                "research_mean_execution_adjusted_edge_ticks": 0.0 if research_missing else float(row["mean_execution_adjusted_edge_ticks_research"]),
+                "heldout_mean_execution_adjusted_edge_ticks": 0.0 if heldout_missing else float(row["mean_execution_adjusted_edge_ticks_heldout"]),
+                "execution_adjusted_edge_gap_ticks": edge_gap,
+                "calibration_stability_label": label,
+            }
+        )
+    output = pd.DataFrame(rows, columns=_empty_queue_position_calibration_stability().columns)
+    if regime_col != "regime":
+        output = output.rename(columns={"regime": regime_col})
+    return output
+
+
+def queue_position_calibration_stability_summary(
+    stability: pd.DataFrame,
+    *,
+    regime_col: str = "regime",
+) -> dict[str, float | int | str]:
+    """Reduce queue-position calibration stability into a release-gate summary."""
+    if not regime_col:
+        raise ValueError("regime_col must be non-empty")
+    empty: dict[str, float | int | str] = {
+        "cells": 0,
+        "common_cells": 0,
+        "replicated_cells": 0,
+        "degraded_cells": 0,
+        "lost_cells": 0,
+        "gained_cells": 0,
+        "degraded_cell_share": 0.0,
+        "mean_absolute_calibration_error_gap": 0.0,
+        "worst_regime": "none",
+        "worst_best_execution_side": "none",
+        "worst_queue_share_bin": 0,
+        "worst_fill_probability_bin": 0,
+        "worst_calibration_stability_label": "none",
+        "queue_calibration_stability_label": "no_queue_calibration_stability_data",
+    }
+    if stability.empty:
+        return empty
+    required = {
+        regime_col,
+        "best_execution_side",
+        "queue_share_bin",
+        "fill_probability_bin",
+        "research_rows",
+        "heldout_rows",
+        "absolute_calibration_error_gap",
+        "calibration_stability_label",
+    }
+    _require_columns(stability, required, "queue position calibration stability summary")
+    values = _finite_values(
+        stability,
+        [
+            "queue_share_bin",
+            "fill_probability_bin",
+            "research_rows",
+            "heldout_rows",
+            "absolute_calibration_error_gap",
+        ],
+        "queue position calibration stability summary",
+    )
+    if not values[["research_rows", "heldout_rows"]].ge(0.0).all().all():
+        raise ValueError("queue position calibration stability summary rows must be non-negative")
+
+    labels = stability["calibration_stability_label"].astype(str)
+    cells = int(len(stability))
+    common = (values["research_rows"] > 0.0) & (values["heldout_rows"] > 0.0)
+    degraded = labels == "calibration_degraded"
+    lost = labels == "calibration_cell_lost"
+    gained = labels == "calibration_cell_gained"
+    replicated = labels == "calibration_replicated"
+    if bool(lost.any()):
+        label = "queue_calibration_cells_lost"
+    elif bool(degraded.any()):
+        label = "queue_calibration_degraded"
+    elif bool(replicated.any()) and int(replicated.sum()) == int(common.sum()) and not bool(gained.any()):
+        label = "queue_calibration_replicated"
+    else:
+        label = "queue_calibration_mixed"
+    worst = pd.DataFrame(
+        {
+            regime_col: stability[regime_col].astype(str),
+            "best_execution_side": stability["best_execution_side"].astype(str),
+            "queue_share_bin": values["queue_share_bin"],
+            "fill_probability_bin": values["fill_probability_bin"],
+            "label": labels,
+            "lost": lost.astype(int),
+            "degraded": degraded.astype(int),
+            "abs_error_gap": values["absolute_calibration_error_gap"],
+        }
+    ).sort_values(
+        ["lost", "degraded", "abs_error_gap", regime_col, "best_execution_side"],
+        ascending=[False, False, False, True, True],
+    ).iloc[0]
+    return {
+        "cells": cells,
+        "common_cells": int(common.sum()),
+        "replicated_cells": int(replicated.sum()),
+        "degraded_cells": int(degraded.sum()),
+        "lost_cells": int(lost.sum()),
+        "gained_cells": int(gained.sum()),
+        "degraded_cell_share": float(degraded.sum() / cells) if cells else 0.0,
+        "mean_absolute_calibration_error_gap": float(
+            values.loc[common, "absolute_calibration_error_gap"].mean()
+        ) if bool(common.any()) else 0.0,
+        "worst_regime": str(worst[regime_col]),
+        "worst_best_execution_side": str(worst["best_execution_side"]),
+        "worst_queue_share_bin": int(worst["queue_share_bin"]),
+        "worst_fill_probability_bin": int(worst["fill_probability_bin"]),
+        "worst_calibration_stability_label": str(worst["label"]),
+        "queue_calibration_stability_label": label,
+    }
+
+
 def queue_position_edge_decay(surface: pd.DataFrame, *, min_rows: int = 1) -> pd.DataFrame:
     """Summarize how passive execution edge decays as queue position gets deeper.
 
@@ -5358,6 +5612,56 @@ def _empty_queue_position_calibration_residual_summary() -> pd.DataFrame:
             "residual_label",
         ]
     )
+
+
+def _empty_queue_position_calibration_stability(regime_col: str = "regime") -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            regime_col,
+            "best_execution_side",
+            "queue_share_bin",
+            "fill_probability_bin",
+            "research_rows",
+            "heldout_rows",
+            "research_realized_fill_rate",
+            "heldout_realized_fill_rate",
+            "realized_fill_rate_gap",
+            "research_calibration_error",
+            "heldout_calibration_error",
+            "calibration_error_gap",
+            "research_absolute_calibration_error",
+            "heldout_absolute_calibration_error",
+            "absolute_calibration_error_gap",
+            "brier_score_gap",
+            "research_mean_execution_adjusted_edge_ticks",
+            "heldout_mean_execution_adjusted_edge_ticks",
+            "execution_adjusted_edge_gap_ticks",
+            "calibration_stability_label",
+        ]
+    )
+
+
+def _queue_calibration_stability_label(
+    *,
+    research_missing: bool,
+    heldout_missing: bool,
+    fill_gap: float,
+    abs_error_gap: float,
+    edge_gap: float,
+    max_error_gap: float,
+    max_fill_rate_gap: float,
+) -> str:
+    if heldout_missing:
+        return "calibration_cell_lost"
+    if research_missing:
+        return "calibration_cell_gained"
+    if (
+        abs_error_gap > max_error_gap
+        or fill_gap < -max_fill_rate_gap
+        or edge_gap < -max_error_gap
+    ):
+        return "calibration_degraded"
+    return "calibration_replicated"
 
 
 def _queue_calibration_residual_label(

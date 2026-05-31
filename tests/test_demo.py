@@ -168,6 +168,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_queue_position_edge_decay.csv").exists()
     assert (tmp_path / "queue_position_calibration_drift.csv").exists()
     assert (tmp_path / "heldout_queue_position_calibration_drift.csv").exists()
+    assert (tmp_path / "queue_position_calibration_stability.csv").exists()
+    assert (tmp_path / "queue_position_calibration_stability_summary.json").exists()
     assert (tmp_path / "execution_adjusted_sample.csv").exists()
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
@@ -249,6 +251,20 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "weighted_mean_absolute_calibration_error",
         "drift_label",
     }.issubset(queue_drift_columns)
+    queue_calibration_stability = pd.read_csv(tmp_path / "queue_position_calibration_stability.csv")
+    assert {
+        "pressure_memory_decay_state",
+        "best_execution_side",
+        "queue_share_bin",
+        "fill_probability_bin",
+        "absolute_calibration_error_gap",
+        "execution_adjusted_edge_gap_ticks",
+        "calibration_stability_label",
+    }.issubset(queue_calibration_stability.columns)
+    queue_calibration_stability_summary = json.loads(
+        (tmp_path / "queue_position_calibration_stability_summary.json").read_text()
+    )
+    assert "queue_calibration_stability_label" in queue_calibration_stability_summary
     heldout_release_gate = json.loads(
         (tmp_path / "heldout_execution_publishability_release_gate.json").read_text()
     )
@@ -538,6 +554,13 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["queue_position_capacity_stability.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["queue_position_edge_decay.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_queue_position_edge_decay.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["queue_position_calibration_stability.csv"]["size_bytes"] > 0
+    assert (
+        manifest["artifact_metadata"]["queue_position_calibration_stability_summary.json"][
+            "size_bytes"
+        ]
+        > 0
+    )
     assert manifest["artifact_metadata"]["execution_adjusted_sample.csv"]["size_bytes"] > 0
     assert len(manifest["artifact_metadata"]["metrics.csv"]["sha256"]) == 64
     summary = (tmp_path / "research_summary.md").read_text()
@@ -585,6 +608,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## Queue-position capacity frontier" in summary
     assert "## Queue-position capacity stability" in summary
     assert "## Queue-position edge decay" in summary
+    assert "## Queue-position calibration stability summary" in summary
 
     verify_report(tmp_path)
 

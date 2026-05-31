@@ -44,6 +44,8 @@ from lcri_lab.execution import (
     queue_position_regime_capacity_stability_summary,
     queue_position_calibration_drift,
     queue_position_calibration_residual_summary,
+    queue_position_calibration_stability,
+    queue_position_calibration_stability_summary,
     queue_position_edge_decay,
     queue_position_fill_calibration_surface,
     queue_position_fill_surface,
@@ -1557,6 +1559,86 @@ def test_queue_position_calibration_residual_summary_rejects_bad_surface() -> No
         queue_position_calibration_residual_summary(pd.DataFrame(), error_threshold=-0.1)
     with pytest.raises(ValueError, match="missing queue position calibration residual summary columns"):
         queue_position_calibration_residual_summary(pd.DataFrame({"regime": ["thin"]}))
+
+
+def test_queue_position_calibration_stability_joins_holdout_queue_cells() -> None:
+    research = pd.DataFrame(
+        {
+            "regime": ["calm", "thin"],
+            "best_execution_side": ["long", "short"],
+            "queue_share_bin": [1, 2],
+            "fill_probability_bin": [1, 2],
+            "rows": [20, 10],
+            "realized_fill_rate": [0.70, 0.40],
+            "calibration_error": [0.05, -0.10],
+            "absolute_calibration_error": [0.05, 0.10],
+            "brier_score": [0.10, 0.20],
+            "mean_execution_adjusted_edge_ticks": [0.30, 0.10],
+        }
+    )
+    heldout = pd.DataFrame(
+        {
+            "regime": ["calm", "thin", "stress"],
+            "best_execution_side": ["long", "short", "long"],
+            "queue_share_bin": [1, 2, 1],
+            "fill_probability_bin": [1, 2, 1],
+            "rows": [15, 12, 8],
+            "realized_fill_rate": [0.68, 0.15, 0.50],
+            "calibration_error": [0.06, -0.35, -0.05],
+            "absolute_calibration_error": [0.06, 0.35, 0.05],
+            "brier_score": [0.11, 0.45, 0.16],
+            "mean_execution_adjusted_edge_ticks": [0.28, -0.20, 0.05],
+        }
+    )
+
+    stability = queue_position_calibration_stability(research, heldout, max_error_gap=0.10)
+
+    assert stability["calibration_stability_label"].tolist() == [
+        "calibration_replicated",
+        "calibration_cell_gained",
+        "calibration_degraded",
+    ]
+    degraded = stability[stability["regime"] == "thin"].iloc[0]
+    assert degraded["absolute_calibration_error_gap"] == pytest.approx(0.25)
+    assert degraded["heldout_mean_execution_adjusted_edge_ticks"] == pytest.approx(-0.20)
+
+
+def test_queue_position_calibration_stability_summary_flags_degraded_holdout_cells() -> None:
+    stability = pd.DataFrame(
+        {
+            "regime": ["calm", "thin", "stress"],
+            "best_execution_side": ["long", "short", "long"],
+            "queue_share_bin": [1, 2, 1],
+            "fill_probability_bin": [1, 2, 1],
+            "research_rows": [20, 10, 0],
+            "heldout_rows": [15, 12, 8],
+            "realized_fill_rate_gap": [-0.02, -0.25, 0.0],
+            "calibration_error_gap": [0.01, -0.25, 0.0],
+            "absolute_calibration_error_gap": [0.01, 0.25, 0.05],
+            "brier_score_gap": [0.01, 0.25, 0.16],
+            "execution_adjusted_edge_gap_ticks": [-0.02, -0.30, 0.05],
+            "calibration_stability_label": [
+                "calibration_replicated",
+                "calibration_degraded",
+                "calibration_cell_gained",
+            ],
+        }
+    )
+
+    summary = queue_position_calibration_stability_summary(stability)
+
+    assert summary["common_cells"] == 2
+    assert summary["degraded_cells"] == 1
+    assert summary["degraded_cell_share"] == pytest.approx(1 / 3)
+    assert summary["worst_regime"] == "thin"
+    assert summary["queue_calibration_stability_label"] == "queue_calibration_degraded"
+
+
+def test_queue_position_calibration_stability_rejects_bad_surface() -> None:
+    with pytest.raises(ValueError, match="max_error_gap"):
+        queue_position_calibration_stability(pd.DataFrame(), pd.DataFrame(), max_error_gap=-0.1)
+    with pytest.raises(ValueError, match="missing research queue position calibration stability columns"):
+        queue_position_calibration_stability(pd.DataFrame({"regime": ["thin"]}), pd.DataFrame())
 
 
 def test_passive_fill_event_window_diagnostics_tracks_side_specific_drift() -> None:

@@ -117,6 +117,8 @@ from lcri_lab.execution import (
     passive_fill_realization_horizon_sweep,
     passive_fill_threshold_policy_curve,
     queue_position_calibration_drift,
+    queue_position_calibration_stability,
+    queue_position_calibration_stability_summary,
     queue_position_capacity_frontier,
     queue_position_capacity_stability,
     queue_position_edge_decay,
@@ -754,6 +756,15 @@ def run_demo(
         heldout_queue_fill_calibration_surface,
         regime_col="pressure_memory_decay_state",
     )
+    queue_calibration_stability = queue_position_calibration_stability(
+        queue_fill_calibration_surface,
+        heldout_queue_fill_calibration_surface,
+        regime_col="pressure_memory_decay_state",
+    )
+    queue_calibration_stability_summary = queue_position_calibration_stability_summary(
+        queue_calibration_stability,
+        regime_col="pressure_memory_decay_state",
+    )
     queue_execution_quality_gate = queue_position_execution_quality_gate(
         queue_fill_surface,
         queue_edge_decay,
@@ -973,6 +984,8 @@ def run_demo(
         "heldout_queue_position_edge_decay.csv",
         "queue_position_calibration_drift.csv",
         "heldout_queue_position_calibration_drift.csv",
+        "queue_position_calibration_stability.csv",
+        "queue_position_calibration_stability_summary.json",
         "execution_adjusted_sample.csv",
         "research_summary.md",
         "artifact_coverage_matrix.csv",
@@ -1341,6 +1354,13 @@ def run_demo(
     heldout_queue_calibration_drift.to_csv(
         output / "heldout_queue_position_calibration_drift.csv", index=False
     )
+    queue_calibration_stability.to_csv(
+        output / "queue_position_calibration_stability.csv", index=False
+    )
+    write_json(
+        output / "queue_position_calibration_stability_summary.json",
+        queue_calibration_stability_summary,
+    )
     execution_lcri_side_attribution.to_csv(
         output / "execution_adjusted_lcri_side_attribution.csv", index=False
     )
@@ -1510,6 +1530,7 @@ def run_demo(
         heldout_queue_edge_decay=heldout_queue_edge_decay,
         queue_calibration_drift=queue_calibration_drift,
         heldout_queue_calibration_drift=heldout_queue_calibration_drift,
+        queue_calibration_stability_summary=queue_calibration_stability_summary,
     )
     coverage_matrix = artifact_coverage_matrix(artifact_paths)
     coverage_matrix.to_csv(output / "artifact_coverage_matrix.csv", index=False)
@@ -1745,6 +1766,7 @@ def _append_execution_adjusted_summary(
     heldout_queue_edge_decay: pd.DataFrame,
     queue_calibration_drift: pd.DataFrame,
     heldout_queue_calibration_drift: pd.DataFrame,
+    queue_calibration_stability_summary: dict[str, float | int | str],
 ) -> None:
     regime_lines = _passive_fill_regime_summary_lines(passive_fill_event_regimes)
     heldout_regime_lines = _passive_fill_regime_summary_lines(heldout_passive_fill_event_regimes)
@@ -1796,6 +1818,9 @@ def _append_execution_adjusted_summary(
     queue_drift_lines = _queue_position_calibration_drift_lines(queue_calibration_drift)
     heldout_queue_drift_lines = _queue_position_calibration_drift_lines(
         heldout_queue_calibration_drift
+    )
+    queue_calibration_stability_lines = _queue_position_calibration_stability_summary_lines(
+        queue_calibration_stability_summary
     )
     lines = [
         "",
@@ -1906,6 +1931,10 @@ def _append_execution_adjusted_summary(
         "## Heldout queue-position calibration drift",
         "",
         *heldout_queue_drift_lines,
+        "",
+        "## Queue-position calibration stability summary",
+        "",
+        *queue_calibration_stability_lines,
         "",
     ]
     path.write_text(path.read_text() + "\n".join(lines))
@@ -2144,6 +2173,30 @@ def _queue_position_calibration_drift_lines(drift: pd.DataFrame) -> list[str]:
             f"worst_regime={row['worst_regime']}, label={row['drift_label']}"
         )
     return rows
+
+
+def _queue_position_calibration_stability_summary_lines(
+    summary: dict[str, float | int | str],
+) -> list[str]:
+    if not summary or int(summary.get("cells", 0)) == 0:
+        return ["- no train/holdout queue calibration cells"]
+    keys = [
+        "queue_calibration_stability_label",
+        "cells",
+        "common_cells",
+        "replicated_cells",
+        "degraded_cells",
+        "lost_cells",
+        "gained_cells",
+        "degraded_cell_share",
+        "mean_absolute_calibration_error_gap",
+        "worst_regime",
+        "worst_best_execution_side",
+        "worst_queue_share_bin",
+        "worst_fill_probability_bin",
+        "worst_calibration_stability_label",
+    ]
+    return [f"- {key}: {summary.get(key, 'n/a')}" for key in keys]
 
 
 def verify_report(report_dir: Path) -> None:

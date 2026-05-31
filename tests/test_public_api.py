@@ -107,6 +107,13 @@ def test_public_api_exports_queue_position_adverse_selection_policy_frontier() -
     assert "queue_position_adverse_selection_policy_frontier" in lcri_lab.__all__
 
 
+def test_public_api_exports_queue_position_calibration_stability() -> None:
+    assert callable(lcri_lab.queue_position_calibration_stability)
+    assert callable(lcri_lab.queue_position_calibration_stability_summary)
+    assert "queue_position_calibration_stability" in lcri_lab.__all__
+    assert "queue_position_calibration_stability_summary" in lcri_lab.__all__
+
+
 def test_public_api_exports_passive_fill_event_lead_lag_scorecard() -> None:
     assert callable(lcri_lab.passive_fill_event_lead_lag_scorecard)
     assert "passive_fill_event_lead_lag_scorecard" in lcri_lab.__all__
