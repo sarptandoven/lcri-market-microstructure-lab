@@ -171,6 +171,40 @@ scored = model.score_frame(order_book_snapshots)
 
 Persisted models include a `schema_version` field so incompatible artifact changes fail fast.
 
+### Nonlinear regularization audit
+
+API users can test whether nonlinear liquidity-neutralization lift survives across a
+ridge path instead of depending on one tuning value:
+
+```python
+from lcri_lab import (
+    baseline_nonlinear_regularization_path,
+    baseline_nonlinear_regularization_summary,
+    compute_features,
+)
+
+features = compute_features(order_book_snapshots)
+path = baseline_nonlinear_regularization_path(
+    features,
+    ridges=(0.0, 1e-6, 1e-4, 1e-2, 1.0),
+    train_fraction=0.60,
+    min_lift=0.0,
+)
+summary = baseline_nonlinear_regularization_summary(
+    path,
+    min_supported_ridges=2,
+    min_median_lift=0.0,
+)
+```
+
+`path` returns one row per `(ridge, basis)` with chronological train/test RMSE,
+lift versus the core linear basis, residual bias, coefficient norms, and a
+`support_label`. `summary` converts that audit into a typed dictionary suitable
+for release gates: supported ridge count, best ridge, median lift, coefficient
+norm bound, `publishable`, and `review_note`. Treat this as a robustness screen
+for an original nonlinear LCRI hypothesis, not as proof that the basis is novel
+or universally stable.
+
 ## CLI usage
 
 Normalize flat L2 snapshots before fitting or scoring:

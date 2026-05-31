@@ -9,6 +9,8 @@ from lcri_lab.baseline import (
     baseline_liquidity_stress_curve,
     baseline_nonlinear_coefficient_stability,
     baseline_nonlinear_coefficient_stability_summary,
+    baseline_nonlinear_regularization_path,
+    baseline_nonlinear_regularization_summary,
     baseline_nonlinear_publishability_summary,
     baseline_regime_basis_comparison,
     baseline_regime_publishability_summary,
@@ -153,6 +155,104 @@ def test_baseline_nonlinear_coefficient_stability_rejects_invalid_windows() -> N
         baseline_nonlinear_coefficient_stability(features, train_window=0)
     with pytest.raises(ValueError, match="at least one coefficient stability window"):
         baseline_nonlinear_coefficient_stability(features, train_window=200)
+
+
+def test_baseline_nonlinear_regularization_path_identifies_robust_ridge_band() -> None:
+    books = simulate_order_books(SimulationConfig(rows=900, seed=42))
+    features = compute_features(books)
+    features["raw_imbalance"] = (
+        0.10 * features["spread_ticks"].to_numpy(dtype=float) ** 2
+        - 0.28 * features["volatility"].to_numpy(dtype=float) ** 2
+        + 0.20 * features["liquidity_void_ratio"].to_numpy(dtype=float)
+        * features["volatility"].to_numpy(dtype=float)
+    )
+
+    path = baseline_nonlinear_regularization_path(
+        features,
+        ridges=[0.0, 1e-6, 1e-3, 1e-1],
+        train_fraction=0.60,
+    )
+    supported = path[path["support_label"] == "supported"]
+
+    assert path.columns.tolist() == [
+        "ridge",
+        "basis",
+        "features",
+        "train_rows",
+        "test_rows",
+        "train_rmse",
+        "test_rmse",
+        "test_rmse_lift_vs_core",
+        "test_residual_mean",
+        "coefficient_l2_norm",
+        "max_abs_coefficient",
+        "support_label",
+    ]
+    assert set(path["basis"]) == {"core", "nonlinear_liquidity"}
+    assert supported["ridge"].tolist()[:2] == pytest.approx([0.0, 1e-6])
+    assert supported["test_rmse_lift_vs_core"].min() > 0.95
+    assert path[path["basis"] == "nonlinear_liquidity"]["coefficient_l2_norm"].is_monotonic_decreasing
+
+
+def test_baseline_nonlinear_regularization_summary_gates_unstable_paths() -> None:
+    path = pd.DataFrame(
+        {
+            "ridge": [0.0, 0.0, 1e-3, 1e-3, 1e-1, 1e-1],
+            "basis": [
+                "core",
+                "nonlinear_liquidity",
+                "core",
+                "nonlinear_liquidity",
+                "core",
+                "nonlinear_liquidity",
+            ],
+            "features": [11, 18, 11, 18, 11, 18],
+            "train_rows": [60] * 6,
+            "test_rows": [40] * 6,
+            "train_rmse": [1.0, 0.2, 1.0, 0.3, 1.0, 1.4],
+            "test_rmse": [1.0, 0.2, 1.0, 0.4, 1.0, 1.2],
+            "test_rmse_lift_vs_core": [0.0, 0.8, 0.0, 0.6, 0.0, -0.2],
+            "test_residual_mean": [0.0] * 6,
+            "coefficient_l2_norm": [0.5, 4.0, 0.4, 3.0, 0.3, 0.2],
+            "max_abs_coefficient": [0.2, 3.0, 0.2, 2.0, 0.1, 0.2],
+            "support_label": [
+                "core_reference",
+                "supported",
+                "core_reference",
+                "supported",
+                "core_reference",
+                "fragile",
+            ],
+        }
+    )
+
+    summary = baseline_nonlinear_regularization_summary(
+        path,
+        min_supported_ridges=3,
+        min_median_lift=0.70,
+    )
+
+    assert summary == {
+        "ridges": 3,
+        "supported_ridges": 2,
+        "best_ridge": 0.0,
+        "best_lift": pytest.approx(0.8),
+        "median_lift": pytest.approx(0.6),
+        "min_supported_lift": pytest.approx(0.6),
+        "max_supported_coefficient_l2_norm": pytest.approx(4.0),
+        "publishable": False,
+        "review_note": "nonlinear_regularization_fragile",
+    }
+
+
+def test_baseline_nonlinear_regularization_path_rejects_invalid_ridges() -> None:
+    books = simulate_order_books(SimulationConfig(rows=100, seed=43))
+    features = compute_features(books)
+
+    with pytest.raises(ValueError, match="ridges must be a non-empty sequence"):
+        baseline_nonlinear_regularization_path(features, ridges=[])
+    with pytest.raises(ValueError, match="ridges must be finite non-negative values"):
+        baseline_nonlinear_regularization_path(features, ridges=[-1.0])
 
 
 def test_baseline_nonlinear_coefficient_stability_summary_gates_fragile_terms() -> None:

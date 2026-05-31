@@ -1414,6 +1414,194 @@ def baseline_stress_tail_publishability_summary(
     return output
 
 
+def baseline_nonlinear_regularization_path(
+    frame: pd.DataFrame,
+    *,
+    ridges: list[float] | tuple[float, ...] = (0.0, 1e-6, 1e-4, 1e-2, 1.0),
+    train_fraction: float = 0.60,
+    min_lift: float = 0.0,
+) -> pd.DataFrame:
+    """Trace nonlinear LCRI baseline lift across ridge strengths.
+
+    Nonlinear liquidity terms are publishable only if the claimed neutralization is
+    not a one-ridge artifact. This diagnostic fits core and full nonlinear bases
+    on a chronological split for each ridge, then reports out-of-sample lift plus
+    coefficient shrinkage so reviewers can identify a robust regularization band.
+    """
+    columns = [
+        "ridge",
+        "basis",
+        "features",
+        "train_rows",
+        "test_rows",
+        "train_rmse",
+        "test_rmse",
+        "test_rmse_lift_vs_core",
+        "test_residual_mean",
+        "coefficient_l2_norm",
+        "max_abs_coefficient",
+        "support_label",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    if not ridges:
+        raise ValueError("ridges must be a non-empty sequence")
+    ridge_values = [float(ridge) for ridge in ridges]
+    if not all(math.isfinite(ridge) and ridge >= 0.0 for ridge in ridge_values):
+        raise ValueError("ridges must be finite non-negative values")
+    if not math.isfinite(train_fraction) or not 0.0 < train_fraction < 1.0:
+        raise ValueError("train_fraction must be finite and in (0, 1)")
+    if not math.isfinite(min_lift):
+        raise ValueError("min_lift must be finite")
+    if "raw_imbalance" not in frame.columns:
+        raise ValueError("missing nonlinear regularization path columns: ['raw_imbalance']")
+
+    y = frame["raw_imbalance"].to_numpy(dtype=float)
+    if not np.isfinite(y).all():
+        raise ValueError("raw_imbalance values must be finite")
+    train_rows = int(len(frame) * train_fraction)
+    if train_rows < 1 or train_rows >= len(frame):
+        raise ValueError("train_fraction leaves no train or test rows")
+
+    x = _design_matrix(frame)
+    feature_names = design_feature_names()
+    basis_indexes = {
+        "core": list(range(len(feature_columns()))),
+        "nonlinear_liquidity": list(range(len(feature_names))),
+    }
+
+    def fit_for(indexes: list[int], ridge: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        x_basis = x[:, indexes]
+        x_train = x_basis[:train_rows]
+        x_test = x_basis[train_rows:]
+        mean = x_train.mean(axis=0)
+        scale = x_train.std(axis=0)
+        scale[scale == 0.0] = 1.0
+        train_design = np.column_stack([np.ones(train_rows), (x_train - mean) / scale])
+        test_design = np.column_stack([np.ones(len(x_test)), (x_test - mean) / scale])
+        penalty = np.sqrt(ridge) * np.eye(train_design.shape[1])
+        penalty[0, 0] = 0.0
+        coefficients = np.linalg.lstsq(
+            np.vstack([train_design, penalty]),
+            np.concatenate([y[:train_rows], np.zeros(train_design.shape[1])]),
+            rcond=None,
+        )[0]
+        return train_design @ coefficients, test_design @ coefficients, coefficients[1:]
+
+    rows: list[dict[str, float | int | str]] = []
+    for ridge in sorted(ridge_values):
+        fit_results: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+        core_test_rmse: float | None = None
+        for basis, indexes in basis_indexes.items():
+            train_pred, test_pred, coefficients = fit_for(indexes, ridge)
+            fit_results[basis] = (train_pred, test_pred, coefficients)
+            if basis == "core":
+                core_residual = y[train_rows:] - test_pred
+                core_test_rmse = float(np.sqrt(np.mean(core_residual**2)))
+        assert core_test_rmse is not None
+        for basis, indexes in basis_indexes.items():
+            train_pred, test_pred, coefficients = fit_results[basis]
+            train_residual = y[:train_rows] - train_pred
+            test_residual = y[train_rows:] - test_pred
+            train_rmse = float(np.sqrt(np.mean(train_residual**2)))
+            test_rmse = float(np.sqrt(np.mean(test_residual**2)))
+            lift = 0.0 if core_test_rmse <= 0.0 else (core_test_rmse - test_rmse) / core_test_rmse
+            if basis == "core":
+                label = "core_reference"
+            elif lift >= min_lift:
+                label = "supported"
+            else:
+                label = "fragile"
+            abs_coefficients = np.abs(coefficients)
+            rows.append(
+                {
+                    "ridge": float(ridge),
+                    "basis": basis,
+                    "features": int(len(indexes)),
+                    "train_rows": int(train_rows),
+                    "test_rows": int(len(frame) - train_rows),
+                    "train_rmse": train_rmse,
+                    "test_rmse": test_rmse,
+                    "test_rmse_lift_vs_core": float(lift),
+                    "test_residual_mean": float(test_residual.mean()),
+                    "coefficient_l2_norm": float(np.sqrt(np.sum(coefficients**2))),
+                    "max_abs_coefficient": float(abs_coefficients.max()) if len(abs_coefficients) else 0.0,
+                    "support_label": label,
+                }
+            )
+    return pd.DataFrame(rows, columns=columns)
+
+
+def baseline_nonlinear_regularization_summary(
+    path: pd.DataFrame,
+    *,
+    min_supported_ridges: int = 2,
+    min_median_lift: float = 0.0,
+) -> dict[str, bool | float | int | str]:
+    """Gate nonlinear baseline publishability on ridge-path robustness."""
+    required = {
+        "ridge",
+        "basis",
+        "test_rmse_lift_vs_core",
+        "coefficient_l2_norm",
+        "support_label",
+    }
+    missing = sorted(required - set(path.columns))
+    if missing:
+        raise ValueError(f"missing nonlinear regularization summary columns: {missing}")
+    if not isinstance(min_supported_ridges, int) or isinstance(min_supported_ridges, bool):
+        raise ValueError("min_supported_ridges must be an integer")
+    if min_supported_ridges < 1:
+        raise ValueError("min_supported_ridges must be positive")
+    if not math.isfinite(min_median_lift):
+        raise ValueError("min_median_lift must be finite")
+
+    nonlinear = path[path["basis"].astype(str) == "nonlinear_liquidity"].copy()
+    if nonlinear.empty:
+        return {
+            "ridges": 0,
+            "supported_ridges": 0,
+            "best_ridge": 0.0,
+            "best_lift": 0.0,
+            "median_lift": 0.0,
+            "min_supported_lift": 0.0,
+            "max_supported_coefficient_l2_norm": 0.0,
+            "publishable": False,
+            "review_note": "nonlinear_regularization_fragile",
+        }
+    numeric_columns = ["ridge", "test_rmse_lift_vs_core", "coefficient_l2_norm"]
+    numeric = nonlinear[numeric_columns].astype(float)
+    if not np.isfinite(numeric.to_numpy()).all():
+        raise ValueError("nonlinear regularization summary metrics must be finite")
+    if (numeric[["ridge", "coefficient_l2_norm"]] < 0.0).any().any():
+        raise ValueError("nonlinear regularization summary metrics must be non-negative")
+
+    supported_mask = nonlinear["support_label"].astype(str) == "supported"
+    supported = nonlinear[supported_mask]
+    best_index = numeric["test_rmse_lift_vs_core"].idxmax()
+    supported_lifts = supported["test_rmse_lift_vs_core"].astype(float)
+    supported_ridges = int(supported_mask.sum())
+    median_lift = float(numeric["test_rmse_lift_vs_core"].median())
+    publishable = supported_ridges >= min_supported_ridges and median_lift >= min_median_lift
+    return {
+        "ridges": int(nonlinear["ridge"].astype(float).nunique()),
+        "supported_ridges": supported_ridges,
+        "best_ridge": float(nonlinear.loc[best_index, "ridge"]),
+        "best_lift": float(nonlinear.loc[best_index, "test_rmse_lift_vs_core"]),
+        "median_lift": median_lift,
+        "min_supported_lift": float(supported_lifts.min()) if not supported.empty else 0.0,
+        "max_supported_coefficient_l2_norm": (
+            float(supported["coefficient_l2_norm"].astype(float).max()) if not supported.empty else 0.0
+        ),
+        "publishable": bool(publishable),
+        "review_note": (
+            "nonlinear_regularization_supported"
+            if publishable
+            else "nonlinear_regularization_fragile"
+        ),
+    }
+
+
 def baseline_nonlinear_coefficient_stability_summary(
     stability: pd.DataFrame,
     *,
