@@ -6,6 +6,7 @@ from lcri_lab.execution import (
     add_execution_adjusted_edge,
     add_passive_fill_probabilities,
     add_event_level_realized_fill_proxy,
+    add_passive_fill_event_window_regimes,
     add_queue_position_features,
     add_queue_position_realized_fill_proxy,
     execution_adjusted_edge_summary,
@@ -22,6 +23,7 @@ from lcri_lab.execution import (
     passive_fill_event_transition_policy_curve,
     passive_fill_event_transition_scorecard,
     passive_fill_event_transition_summary,
+    passive_fill_event_window_regime_summary,
     passive_fill_event_window_diagnostics,
     execution_publishability_release_gate,
     execution_publishability_review_packet,
@@ -1330,6 +1332,101 @@ def test_passive_fill_event_window_diagnostics_respects_group_boundaries() -> No
     assert events["pre_realized_edge_sum"].tolist() == pytest.approx([0.50, 0.0])
     assert events["post_realized_edge_sum"].tolist() == pytest.approx([0.0, -1.20])
     assert events["regime_transition"].tolist() == ["calm->calm", "stress->stress"]
+
+
+def test_add_passive_fill_event_window_regimes_labels_execution_toxicity_neighborhoods() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "long", "short", "short", "long", "long"],
+            "bid_fill_probability": [0.20, 0.92, 0.10, 0.20, 0.91, 0.10],
+            "ask_fill_probability": [0.10, 0.15, 0.88, 0.10, 0.20, 0.20],
+            "bid_adverse_fill_probability": [0.05, 0.55, 0.10, 0.10, 0.20, 0.05],
+            "ask_adverse_fill_probability": [0.05, 0.10, 0.52, 0.10, 0.10, 0.05],
+        }
+    )
+
+    output = add_passive_fill_event_window_regimes(frame, threshold=0.85, window=1)
+
+    assert output["passive_fill_event_window_regime"].tolist() == [
+        "pre_event",
+        "event",
+        "event",
+        "post_event",
+        "event",
+        "post_event",
+    ]
+    assert output["passive_fill_event_distance"].tolist() == pytest.approx([-1, 0, 0, 1, 0, 1])
+    assert output["passive_fill_event_side"].tolist() == ["long", "long", "short", "short", "long", "long"]
+    assert output["passive_fill_event_fill_probability"].tolist() == pytest.approx(
+        [0.92, 0.92, 0.88, 0.88, 0.91, 0.91]
+    )
+    assert output["passive_fill_event_toxicity_probability"].tolist() == pytest.approx(
+        [0.55, 0.55, 0.52, 0.52, 0.20, 0.20]
+    )
+
+
+def test_add_passive_fill_event_window_regimes_respects_group_boundaries() -> None:
+    frame = pd.DataFrame(
+        {
+            "symbol": ["A", "A", "B", "B"],
+            "best_execution_side": ["long", "long", "long", "long"],
+            "bid_fill_probability": [0.10, 0.95, 0.95, 0.10],
+            "ask_fill_probability": [0.10, 0.10, 0.10, 0.10],
+            "bid_adverse_fill_probability": [0.05, 0.40, 0.60, 0.05],
+            "ask_adverse_fill_probability": [0.05, 0.05, 0.05, 0.05],
+        }
+    )
+
+    output = add_passive_fill_event_window_regimes(
+        frame, threshold=0.90, window=1, group_cols="symbol"
+    )
+
+    assert output["passive_fill_event_window_regime"].tolist() == [
+        "pre_event",
+        "event",
+        "event",
+        "post_event",
+    ]
+    assert output["passive_fill_event_distance"].tolist() == pytest.approx([-1, 0, 0, 1])
+    assert output["passive_fill_event_fill_probability"].tolist() == pytest.approx(
+        [0.95, 0.95, 0.95, 0.95]
+    )
+
+
+def test_passive_fill_event_window_regime_summary_ranks_toxic_executable_neighborhoods() -> None:
+    frame = pd.DataFrame(
+        {
+            "passive_fill_event_window_regime": [
+                "pre_event",
+                "event",
+                "post_event",
+                "post_event",
+                "calm",
+            ],
+            "passive_fill_event_side": ["long", "long", "long", "short", "none"],
+            "passive_fill_event_fill_probability": [0.90, 0.90, 0.90, 0.88, 0.0],
+            "passive_fill_event_toxicity_probability": [0.40, 0.40, 0.40, 0.70, 0.0],
+            "execution_adjusted_edge_ticks": [0.10, 0.25, -0.50, -0.70, 0.05],
+        }
+    )
+
+    summary = passive_fill_event_window_regime_summary(frame)
+
+    assert summary["passive_fill_event_window_regime"].tolist() == [
+        "post_event",
+        "event",
+        "pre_event",
+        "calm",
+    ]
+    post_event = summary.iloc[0]
+    assert post_event["rows"] == 2
+    assert post_event["event_rows"] == 0
+    assert post_event["row_share"] == pytest.approx(0.40)
+    assert post_event["mean_passive_fill_event_fill_probability"] == pytest.approx(0.89)
+    assert post_event["mean_passive_fill_event_toxicity_probability"] == pytest.approx(0.55)
+    assert post_event["mean_execution_adjusted_edge_ticks"] == pytest.approx(-0.60)
+    assert post_event["negative_edge_share"] == pytest.approx(1.0)
+    assert post_event["dominant_passive_fill_event_side"] == "long"
 
 
 def test_passive_fill_event_lead_lag_profile_respects_group_boundaries() -> None:

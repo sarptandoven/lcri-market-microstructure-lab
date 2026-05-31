@@ -2561,6 +2561,227 @@ def passive_fill_realization_horizon_sweep(
     return pd.DataFrame(rows)[list(_empty_passive_fill_realization_horizon_sweep().columns)]
 
 
+def add_passive_fill_event_window_regimes(
+    frame: pd.DataFrame,
+    *,
+    threshold: float = 0.75,
+    window: int = 3,
+    side_col: str = "best_execution_side",
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+) -> pd.DataFrame:
+    """Label rows by proximity to high-probability passive-fill execution events.
+
+    Sparse passive-fill event diagnostics are useful for review, but evaluation and
+    demo artifacts also need row-level strata: pre-event rows show queue pressure
+    buildup, event rows capture the tradable passive-fill opportunity, and
+    post-event rows expose immediate adverse-selection aftermath. The event side,
+    side-specific fill probability, and adverse-fill probability are copied from
+    the nearest triggering event so downstream slices can attribute toxicity to
+    the executable passive side. ``group_cols`` isolates independent symbols,
+    venues, dates, or sessions in panel data.
+    """
+    if not isinstance(window, int) or isinstance(window, bool):
+        raise ValueError("window must be an integer")
+    if window < 1:
+        raise ValueError("window must be at least 1")
+    if not math.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
+        raise ValueError("threshold must be finite and between 0 and 1")
+
+    required = {
+        side_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+    }
+    grouping_columns = _normalize_group_columns(
+        frame, group_cols, "passive fill event window regime group"
+    )
+    _require_columns(frame, required, "passive fill event window regime")
+
+    output = frame.copy()
+    distance = pd.Series(len(frame) + window, index=frame.index, dtype=int)
+    event_side = pd.Series("none", index=frame.index, dtype=object)
+    event_fill_out = pd.Series(0.0, index=frame.index, dtype=float)
+    event_toxicity_out = pd.Series(0.0, index=frame.index, dtype=float)
+    if frame.empty:
+        output["passive_fill_event_distance"] = distance
+        output["passive_fill_event_window_position"] = pd.Series(dtype=float)
+        output["passive_fill_event_window_regime"] = pd.Series(dtype=object)
+        output["passive_fill_event_side"] = event_side
+        output["passive_fill_event_fill_probability"] = event_fill_out
+        output["passive_fill_event_toxicity_probability"] = event_toxicity_out
+        return output
+
+    values = _finite_values(
+        frame,
+        [
+            "bid_fill_probability",
+            "ask_fill_probability",
+            "bid_adverse_fill_probability",
+            "ask_adverse_fill_probability",
+        ],
+        "passive fill event window regime",
+    ).reset_index(drop=True)
+    side = frame[side_col].astype(str).reset_index(drop=True)
+    fill_probability = pd.Series(
+        np.select(
+            [side == "long", side == "short"],
+            [values["bid_fill_probability"], values["ask_fill_probability"]],
+            default=0.0,
+        ),
+        index=range(len(frame)),
+    )
+    adverse_probability = pd.Series(
+        np.select(
+            [side == "long", side == "short"],
+            [values["bid_adverse_fill_probability"], values["ask_adverse_fill_probability"]],
+            default=0.0,
+        ),
+        index=range(len(frame)),
+    )
+    if grouping_columns:
+        grouped_positions = (
+            frame[grouping_columns]
+            .reset_index(drop=True)
+            .groupby(grouping_columns, sort=False, dropna=False)
+            .indices
+            .values()
+        )
+    else:
+        grouped_positions = [np.arange(len(frame))]
+
+    event_mask = (side.isin(["long", "short"])) & (fill_probability >= threshold)
+    for positions in grouped_positions:
+        positions_array = np.asarray(positions, dtype=int)
+        event_positions = positions_array[event_mask.iloc[positions_array].to_numpy(dtype=bool)]
+        if len(event_positions) == 0:
+            continue
+        for position in positions_array:
+            deltas = position - event_positions
+            abs_deltas = np.abs(deltas)
+            nearest_distance = int(abs_deltas.min())
+            if nearest_distance > window:
+                continue
+            tied = event_positions[abs_deltas == nearest_distance]
+            previous_tied = tied[tied <= position]
+            if len(previous_tied):
+                nearest_event = int(previous_tied.max())
+            else:
+                nearest_event = int(tied.min())
+            original_label = frame.index[position]
+            distance.loc[original_label] = int(position - nearest_event)
+            event_side.loc[original_label] = str(side.iloc[nearest_event])
+            event_fill_out.loc[original_label] = float(fill_probability.iloc[nearest_event])
+            event_toxicity_out.loc[original_label] = float(adverse_probability.iloc[nearest_event])
+
+    distance_values = distance.to_numpy(dtype=int)
+    regimes = np.select(
+        [
+            distance_values == 0,
+            (distance_values < 0) & (np.abs(distance_values) <= window),
+            (distance_values > 0) & (distance_values <= window),
+        ],
+        ["event", "pre_event", "post_event"],
+        default="calm",
+    )
+    output["passive_fill_event_distance"] = distance.astype(int)
+    output["passive_fill_event_window_position"] = distance.astype(float) / float(window)
+    output["passive_fill_event_window_regime"] = regimes.astype(str)
+    output["passive_fill_event_side"] = event_side.astype(str)
+    output["passive_fill_event_fill_probability"] = event_fill_out.astype(float)
+    output["passive_fill_event_toxicity_probability"] = event_toxicity_out.astype(float)
+    return output
+
+
+def passive_fill_event_window_regime_summary(
+    frame: pd.DataFrame,
+    *,
+    regime_col: str = "passive_fill_event_window_regime",
+    event_side_col: str = "passive_fill_event_side",
+    fill_probability_col: str = "passive_fill_event_fill_probability",
+    toxicity_probability_col: str = "passive_fill_event_toxicity_probability",
+    edge_col: str = "execution_adjusted_edge_ticks",
+) -> pd.DataFrame:
+    """Summarize execution quality by passive-fill event-window regime.
+
+    The row-level event-window labels isolate buildup, executable fill rows, and
+    immediate aftermath around high-probability passive fills. This summary ranks
+    those neighborhoods by toxicity and realized execution drag so review packets
+    can spot where passive fills are likely available but economically fragile.
+    """
+    columns = [
+        "passive_fill_event_window_regime",
+        "rows",
+        "event_rows",
+        "row_share",
+        "mean_passive_fill_event_fill_probability",
+        "mean_passive_fill_event_toxicity_probability",
+        "mean_execution_adjusted_edge_ticks",
+        "negative_edge_share",
+        "dominant_passive_fill_event_side",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    required = {
+        regime_col,
+        event_side_col,
+        fill_probability_col,
+        toxicity_probability_col,
+        edge_col,
+    }
+    _require_columns(frame, required, "passive fill event window regime summary")
+    data = frame[
+        [regime_col, event_side_col, fill_probability_col, toxicity_probability_col, edge_col]
+    ].copy()
+    values = _finite_values(
+        data,
+        [fill_probability_col, toxicity_probability_col, edge_col],
+        "passive fill event window regime summary",
+    )
+    data[fill_probability_col] = values[fill_probability_col]
+    data[toxicity_probability_col] = values[toxicity_probability_col]
+    data[edge_col] = values[edge_col]
+
+    total_rows = float(len(data))
+    rows = []
+    for regime, group in data.groupby(regime_col, sort=True):
+        side_counts = group[event_side_col].astype(str).value_counts()
+        if "none" in side_counts.index and len(side_counts) > 1:
+            side_counts = side_counts.drop(index="none")
+        dominant_side = "none" if side_counts.empty else str(side_counts.idxmax())
+        rows.append(
+            {
+                "passive_fill_event_window_regime": str(regime),
+                "rows": int(len(group)),
+                "event_rows": int((group[regime_col].astype(str) == "event").sum()),
+                "row_share": float(len(group)) / total_rows if total_rows else 0.0,
+                "mean_passive_fill_event_fill_probability": float(group[fill_probability_col].mean()),
+                "mean_passive_fill_event_toxicity_probability": float(
+                    group[toxicity_probability_col].mean()
+                ),
+                "mean_execution_adjusted_edge_ticks": float(group[edge_col].mean()),
+                "negative_edge_share": float((group[edge_col] < 0.0).sum()) / float(len(group)),
+                "dominant_passive_fill_event_side": dominant_side,
+            }
+        )
+    return (
+        pd.DataFrame(rows)[columns]
+        .sort_values(
+            [
+                "mean_passive_fill_event_toxicity_probability",
+                "negative_edge_share",
+                "event_rows",
+                "mean_execution_adjusted_edge_ticks",
+                "rows",
+            ],
+            ascending=[False, False, False, True, False],
+        )
+        .reset_index(drop=True)
+    )
+
+
+
 def passive_fill_event_window_diagnostics(
     frame: pd.DataFrame,
     *,
