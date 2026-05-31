@@ -106,6 +106,7 @@ from lcri_lab.execution import (
     passive_fill_event_lifecycle_scorecard,
     passive_fill_event_lifecycle_summary,
     passive_fill_event_policy_stability,
+    passive_fill_event_policy_stability_scorecard,
     passive_fill_event_regime_summary,
     passive_fill_event_toxicity_scorecard,
     passive_fill_event_transition_policy_curve,
@@ -172,6 +173,7 @@ from lcri_lab.reporting import (
     verify_passive_fill_realization_horizon_sweep,
     verify_passive_fill_event_lifecycle_policy_curve,
     verify_passive_fill_event_policy_stability,
+    verify_passive_fill_event_policy_stability_scorecard,
     verify_passive_fill_event_transition_policy_curve,
     verify_passive_fill_threshold_policy_curve,
     verify_phase_shift_artifact_review,
@@ -624,6 +626,15 @@ def run_demo(
         heldout_passive_fill_event_transition_policy,
         path_col="regime_transition",
     )
+    passive_fill_event_lifecycle_policy_stability_scorecard = (
+        passive_fill_event_policy_stability_scorecard(passive_fill_event_lifecycle_policy_stability)
+    )
+    passive_fill_event_transition_policy_stability_scorecard = (
+        passive_fill_event_policy_stability_scorecard(
+            passive_fill_event_transition_policy_stability,
+            path_col="regime_transition",
+        )
+    )
     passive_fill_labeled = _add_passive_fill_realization_proxy(
         scored,
         horizon=passive_fill_horizon,
@@ -899,6 +910,8 @@ def run_demo(
         "passive_fill_event_transition_policy_curve.csv",
         "passive_fill_event_lifecycle_policy_stability.csv",
         "passive_fill_event_transition_policy_stability.csv",
+        "passive_fill_event_lifecycle_policy_stability_scorecard.json",
+        "passive_fill_event_transition_policy_stability_scorecard.json",
         "passive_fill_event_toxicity_scorecard.json",
         "passive_fill_event_lifecycle_toxicity_scorecard.json",
         "passive_fill_event_transition_toxicity_scorecard.json",
@@ -1181,6 +1194,14 @@ def run_demo(
     )
     passive_fill_event_transition_policy_stability.to_csv(
         output / "passive_fill_event_transition_policy_stability.csv", index=False
+    )
+    write_json(
+        output / "passive_fill_event_lifecycle_policy_stability_scorecard.json",
+        passive_fill_event_lifecycle_policy_stability_scorecard,
+    )
+    write_json(
+        output / "passive_fill_event_transition_policy_stability_scorecard.json",
+        passive_fill_event_transition_policy_stability_scorecard,
     )
     write_json(output / "passive_fill_event_toxicity_scorecard.json", passive_fill_event_toxicity)
     write_json(
@@ -2279,6 +2300,22 @@ def verify_report(report_dir: Path) -> None:
                 context_col="regime_transition",
             )
             if "passive_fill_event_transition_policy_stability.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_passive_fill_event_policy_stability_scorecard(
+                report_dir,
+                "passive_fill_event_lifecycle_policy_stability_scorecard.json",
+            )
+            if "passive_fill_event_lifecycle_policy_stability_scorecard.json" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_passive_fill_event_policy_stability_scorecard(
+                report_dir,
+                "passive_fill_event_transition_policy_stability_scorecard.json",
+            )
+            if "passive_fill_event_transition_policy_stability_scorecard.json" in manifest_artifacts
             else []
         ),
         *(

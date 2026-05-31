@@ -1273,6 +1273,133 @@ def verify_passive_fill_event_policy_stability(
     return errors
 
 
+def verify_passive_fill_event_policy_stability_scorecard(
+    output_dir: Path,
+    artifact: str = "passive_fill_event_policy_stability_scorecard.json",
+) -> list[str]:
+    """Return errors for candidate-weighted passive-fill policy stability gates."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing passive fill event policy stability scorecard: {artifact}"]
+    payload = json.loads(path.read_text())
+    required = {
+        "rows",
+        "policy_paths",
+        "total_train_candidate_events",
+        "total_heldout_candidate_events",
+        "candidate_event_retention",
+        "blocker_rows",
+        "review_rows",
+        "no_event_rows",
+        "missing_rows",
+        "blocker_train_candidate_share",
+        "review_train_candidate_share",
+        "no_event_train_candidate_share",
+        "missing_train_candidate_share",
+        "weighted_mean_post_minus_pre_realized_edge_delta",
+        "weighted_adverse_post_edge_share_delta",
+        "worst_policy_path",
+        "worst_threshold",
+        "worst_heldout_stability_label",
+        "policy_stability_decision",
+        "policy_stability_label",
+        "blocking_reasons",
+        "review_reasons",
+    }
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete passive fill event policy stability scorecard {artifact}: {missing}"]
+
+    count_columns = [
+        "rows",
+        "policy_paths",
+        "total_train_candidate_events",
+        "total_heldout_candidate_events",
+        "blocker_rows",
+        "review_rows",
+        "no_event_rows",
+        "missing_rows",
+    ]
+    share_columns = [
+        "blocker_train_candidate_share",
+        "review_train_candidate_share",
+        "no_event_train_candidate_share",
+        "missing_train_candidate_share",
+    ]
+    numeric_columns = [
+        *count_columns,
+        "candidate_event_retention",
+        *share_columns,
+        "weighted_mean_post_minus_pre_realized_edge_delta",
+        "weighted_adverse_post_edge_share_delta",
+        "worst_threshold",
+    ]
+    numeric = {key: float(payload[key]) for key in numeric_columns}
+    errors: list[str] = []
+    if not np.isfinite(list(numeric.values())).all():
+        errors.append(f"non-finite passive fill event policy stability scorecard values in {artifact}")
+    if any(numeric[key] < 0.0 for key in count_columns):
+        errors.append(f"negative passive fill event policy stability scorecard counts in {artifact}")
+    if any(not math.isclose(numeric[key], round(numeric[key]), abs_tol=1e-9) for key in count_columns):
+        errors.append(f"non-integer passive fill event policy stability scorecard counts in {artifact}")
+    if any(not 0.0 <= numeric[key] <= 1.0 for key in [*share_columns, "worst_threshold"]):
+        errors.append(f"bounded passive fill event policy stability scorecard shares violated in {artifact}")
+    if numeric["weighted_adverse_post_edge_share_delta"] < -1.0 or numeric[
+        "weighted_adverse_post_edge_share_delta"
+    ] > 1.0:
+        errors.append(f"bounded passive fill event policy stability scorecard deltas violated in {artifact}")
+
+    expected_retention = (
+        numeric["total_heldout_candidate_events"] / numeric["total_train_candidate_events"]
+        if numeric["total_train_candidate_events"] > 0.0
+        else 0.0
+    )
+    if not math.isclose(numeric["candidate_event_retention"], expected_retention, abs_tol=1e-9):
+        errors.append(f"inconsistent passive fill event policy stability scorecard retention in {artifact}")
+    if numeric["policy_paths"] > numeric["rows"] or (
+        numeric["blocker_rows"]
+        + numeric["review_rows"]
+        + numeric["no_event_rows"]
+        + numeric["missing_rows"]
+        > numeric["rows"]
+    ):
+        errors.append(f"impossible passive fill event policy stability scorecard row counts in {artifact}")
+
+    allowed_labels = {
+        "heldout_policy_blocker",
+        "heldout_policy_review",
+        "heldout_policy_no_events",
+        "heldout_policy_missing",
+        "heldout_policy_stable",
+        "none",
+    }
+    allowed_decisions = {"pass", "review", "block"}
+    expected_gate_labels = {
+        "pass": "passive_fill_policy_stability_pass",
+        "review": "passive_fill_policy_stability_review",
+        "block": "passive_fill_policy_stability_blocked",
+    }
+    unknown_labels: list[str] = []
+    if str(payload["worst_heldout_stability_label"]) not in allowed_labels:
+        unknown_labels.append(str(payload["worst_heldout_stability_label"]))
+    decision = str(payload["policy_stability_decision"])
+    if decision not in allowed_decisions:
+        unknown_labels.append(decision)
+    if unknown_labels:
+        errors.append(
+            f"unknown passive fill event policy stability scorecard labels in {artifact}: {unknown_labels}"
+        )
+    expected_label = expected_gate_labels.get(decision)
+    if expected_label is not None and str(payload["policy_stability_label"]) != expected_label:
+        errors.append(f"inconsistent passive fill event policy stability scorecard decision in {artifact}")
+    if str(payload["blocking_reasons"]) != "none" and decision != "block":
+        errors.append(f"inconsistent passive fill event policy stability scorecard decision in {artifact}")
+    if str(payload["review_reasons"]) != "none" and decision == "pass":
+        errors.append(f"inconsistent passive fill event policy stability scorecard decision in {artifact}")
+    if numeric["rows"] == 0.0 and str(payload["worst_policy_path"]) != "none":
+        errors.append(f"inconsistent passive fill event policy stability scorecard worst path in {artifact}")
+    return errors
+
 
 def verify_event_level_passive_fill_horizon_sweep(
     output_dir: Path, artifact: str = "event_level_passive_fill_horizon_sweep.csv"

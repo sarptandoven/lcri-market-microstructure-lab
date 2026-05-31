@@ -20,6 +20,7 @@ from lcri_lab.execution import (
     passive_fill_event_lifecycle_scorecard,
     passive_fill_event_lifecycle_summary,
     passive_fill_event_policy_stability,
+    passive_fill_event_policy_stability_scorecard,
     passive_fill_event_toxicity_scorecard,
     passive_fill_event_transition_policy_curve,
     passive_fill_event_transition_scorecard,
@@ -2288,9 +2289,95 @@ def test_passive_fill_event_policy_stability_flags_heldout_toxicity_regressions(
     assert stability["adverse_post_edge_share_delta"].tolist() == pytest.approx([0.55, 0.50, -0.10])
 
 
+def test_passive_fill_event_policy_stability_scorecard_blocks_candidate_weighted_regressions() -> None:
+    stability = pd.DataFrame(
+        {
+            "lifecycle_path": ["thin|event|stress", "calm|event|calm", "calm|event|calm"],
+            "threshold": [0.70, 0.70, 0.80],
+            "train_total_events": [8, 10, 10],
+            "heldout_total_events": [6, 9, 9],
+            "train_candidate_events": [4, 6, 3],
+            "heldout_candidate_events": [3, 3, 0],
+            "candidate_event_retention": [0.75, 0.50, 0.0],
+            "train_event_share": [0.50, 0.60, 0.30],
+            "heldout_event_share": [0.50, 1 / 3, 0.0],
+            "event_share_delta": [0.0, -0.2667, -0.30],
+            "train_mean_event_fill_probability": [0.84, 0.82, 0.90],
+            "heldout_mean_event_fill_probability": [0.83, 0.81, 0.0],
+            "mean_event_fill_probability_delta": [-0.01, -0.01, -0.90],
+            "train_mean_event_adverse_fill_probability": [0.30, 0.20, 0.15],
+            "heldout_mean_event_adverse_fill_probability": [0.50, 0.28, 0.0],
+            "mean_event_adverse_fill_probability_delta": [0.20, 0.08, -0.15],
+            "train_mean_post_minus_pre_realized_edge": [0.10, 0.30, 0.40],
+            "heldout_mean_post_minus_pre_realized_edge": [-0.35, -0.10, 0.0],
+            "mean_post_minus_pre_realized_edge_delta": [-0.45, -0.40, -0.40],
+            "train_adverse_post_edge_share": [0.25, 0.20, 0.10],
+            "heldout_adverse_post_edge_share": [0.80, 0.70, 0.0],
+            "adverse_post_edge_share_delta": [0.55, 0.50, -0.10],
+            "train_policy_label": [
+                "broad_lifecycle_policy",
+                "broad_lifecycle_policy",
+                "selective_lifecycle_policy",
+            ],
+            "heldout_policy_label": [
+                "lifecycle_policy_blocked",
+                "lifecycle_policy_review",
+                "no_lifecycle_policy_events",
+            ],
+            "heldout_stability_label": [
+                "heldout_policy_blocker",
+                "heldout_policy_review",
+                "heldout_policy_no_events",
+            ],
+        }
+    )
+
+    scorecard = passive_fill_event_policy_stability_scorecard(
+        stability,
+        max_blocker_candidate_share=0.20,
+        max_review_candidate_share=0.25,
+        min_weighted_edge_delta=-0.30,
+    )
+
+    assert scorecard["policy_stability_decision"] == "block"
+    assert scorecard["policy_stability_label"] == "passive_fill_policy_stability_blocked"
+    assert scorecard["total_train_candidate_events"] == 13
+    assert scorecard["candidate_event_retention"] == pytest.approx(6 / 13)
+    assert scorecard["blocker_train_candidate_share"] == pytest.approx(4 / 13)
+    assert scorecard["review_train_candidate_share"] == pytest.approx(6 / 13)
+    assert scorecard["weighted_mean_post_minus_pre_realized_edge_delta"] == pytest.approx(
+        (-0.45 * 4 - 0.40 * 6 - 0.40 * 3) / 13
+    )
+    assert scorecard["worst_policy_path"] == "thin|event|stress"
+    assert scorecard["worst_threshold"] == pytest.approx(0.70)
+
+
+def test_passive_fill_event_policy_stability_scorecard_passes_stable_policy() -> None:
+    stability = pd.DataFrame(
+        {
+            "lifecycle_path": ["calm|event|calm"],
+            "threshold": [0.70],
+            "train_candidate_events": [10],
+            "heldout_candidate_events": [9],
+            "candidate_event_retention": [0.90],
+            "mean_post_minus_pre_realized_edge_delta": [-0.02],
+            "adverse_post_edge_share_delta": [0.01],
+            "heldout_stability_label": ["heldout_policy_stable"],
+        }
+    )
+
+    scorecard = passive_fill_event_policy_stability_scorecard(stability)
+
+    assert scorecard["policy_stability_decision"] == "pass"
+    assert scorecard["policy_stability_label"] == "passive_fill_policy_stability_pass"
+    assert scorecard["blocking_reasons"] == "none"
+
+
 def test_passive_fill_event_policy_stability_rejects_missing_columns() -> None:
     with pytest.raises(ValueError, match="missing passive fill event policy stability train columns"):
         passive_fill_event_policy_stability(pd.DataFrame({"lifecycle_path": ["a"]}), pd.DataFrame())
+    with pytest.raises(ValueError, match="missing passive fill event policy stability scorecard columns"):
+        passive_fill_event_policy_stability_scorecard(pd.DataFrame({"lifecycle_path": ["a"]}))
 
 
 def test_passive_fill_threshold_policy_curve_scores_actionable_cutoffs() -> None:

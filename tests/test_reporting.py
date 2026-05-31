@@ -25,6 +25,7 @@ from lcri_lab.reporting import (
     verify_event_level_passive_fill_horizon_sweep,
     verify_execution_publishability_review_artifacts,
     verify_passive_fill_event_policy_stability,
+    verify_passive_fill_event_policy_stability_scorecard,
     verify_execution_adjusted_lcri_quantile_diagnostics,
     verify_figure_artifacts,
     verify_passive_fill_realization_horizon_sweep,
@@ -480,6 +481,83 @@ def test_verify_passive_fill_event_policy_stability_rejects_invalid_transition_r
     assert any("passive fill event policy stability candidates exceed totals" in error for error in errors)
     assert any("inconsistent passive fill event policy stability deltas" in error for error in errors)
     assert any("unknown passive fill event policy stability labels" in error for error in errors)
+
+
+def test_verify_passive_fill_event_policy_stability_scorecard_accepts_release_gate(tmp_path) -> None:
+    (tmp_path / "passive_fill_event_policy_stability_scorecard.json").write_text(
+        json.dumps(
+            {
+                "rows": 3,
+                "policy_paths": 2,
+                "total_train_candidate_events": 13,
+                "total_heldout_candidate_events": 6,
+                "candidate_event_retention": 6 / 13,
+                "blocker_rows": 1,
+                "review_rows": 1,
+                "no_event_rows": 1,
+                "missing_rows": 0,
+                "blocker_train_candidate_share": 4 / 13,
+                "review_train_candidate_share": 6 / 13,
+                "no_event_train_candidate_share": 3 / 13,
+                "missing_train_candidate_share": 0.0,
+                "weighted_mean_post_minus_pre_realized_edge_delta": -0.4153846153846154,
+                "weighted_adverse_post_edge_share_delta": 0.33076923076923076,
+                "worst_policy_path": "thin|event|stress",
+                "worst_threshold": 0.70,
+                "worst_heldout_stability_label": "heldout_policy_blocker",
+                "policy_stability_decision": "block",
+                "policy_stability_label": "passive_fill_policy_stability_blocked",
+                "blocking_reasons": "heldout_blocker_candidate_share;weighted_edge_delta_breach",
+                "review_reasons": "heldout_review_or_empty_candidate_share;weighted_adverse_delta_breach",
+            }
+        )
+    )
+
+    assert verify_passive_fill_event_policy_stability_scorecard(tmp_path) == []
+
+
+def test_verify_passive_fill_event_policy_stability_scorecard_rejects_inconsistent_gate(
+    tmp_path,
+) -> None:
+    (tmp_path / "passive_fill_event_transition_policy_stability_scorecard.json").write_text(
+        json.dumps(
+            {
+                "rows": 1,
+                "policy_paths": 1,
+                "total_train_candidate_events": 10,
+                "total_heldout_candidate_events": 15,
+                "candidate_event_retention": 0.50,
+                "blocker_rows": 2,
+                "review_rows": 0,
+                "no_event_rows": 0,
+                "missing_rows": 0,
+                "blocker_train_candidate_share": 1.20,
+                "review_train_candidate_share": 0.0,
+                "no_event_train_candidate_share": 0.0,
+                "missing_train_candidate_share": 0.0,
+                "weighted_mean_post_minus_pre_realized_edge_delta": -0.40,
+                "weighted_adverse_post_edge_share_delta": 1.30,
+                "worst_policy_path": "stress->thin",
+                "worst_threshold": 1.10,
+                "worst_heldout_stability_label": "heldout_policy_unknown",
+                "policy_stability_decision": "pass",
+                "policy_stability_label": "passive_fill_policy_stability_pass",
+                "blocking_reasons": "heldout_blocker_candidate_share",
+                "review_reasons": "none",
+            }
+        )
+    )
+
+    errors = verify_passive_fill_event_policy_stability_scorecard(
+        tmp_path,
+        artifact="passive_fill_event_transition_policy_stability_scorecard.json",
+    )
+
+    assert any("bounded passive fill event policy stability scorecard shares" in error for error in errors)
+    assert any("inconsistent passive fill event policy stability scorecard retention" in error for error in errors)
+    assert any("impossible passive fill event policy stability scorecard row counts" in error for error in errors)
+    assert any("unknown passive fill event policy stability scorecard labels" in error for error in errors)
+    assert any("inconsistent passive fill event policy stability scorecard decision" in error for error in errors)
 
 
 def test_verify_adverse_selection_phase_shift_summary_checks_schema(tmp_path) -> None:

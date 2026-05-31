@@ -4103,6 +4103,193 @@ def _passive_fill_event_policy_stability_label(policy_label: str) -> str:
     return "heldout_policy_stable"
 
 
+def _empty_passive_fill_event_policy_stability_scorecard() -> dict[str, float | int | str]:
+    return {
+        "rows": 0,
+        "policy_paths": 0,
+        "total_train_candidate_events": 0,
+        "total_heldout_candidate_events": 0,
+        "candidate_event_retention": 0.0,
+        "blocker_rows": 0,
+        "review_rows": 0,
+        "no_event_rows": 0,
+        "missing_rows": 0,
+        "blocker_train_candidate_share": 0.0,
+        "review_train_candidate_share": 0.0,
+        "no_event_train_candidate_share": 0.0,
+        "missing_train_candidate_share": 0.0,
+        "weighted_mean_post_minus_pre_realized_edge_delta": 0.0,
+        "weighted_adverse_post_edge_share_delta": 0.0,
+        "worst_policy_path": "none",
+        "worst_threshold": 0.0,
+        "worst_heldout_stability_label": "none",
+        "policy_stability_decision": "review",
+        "policy_stability_label": "insufficient_passive_fill_policy_stability_evidence",
+        "blocking_reasons": "none",
+        "review_reasons": "empty_stability_table",
+    }
+
+
+def passive_fill_event_policy_stability_scorecard(
+    stability: pd.DataFrame,
+    *,
+    path_col: str = "lifecycle_path",
+    threshold_col: str = "threshold",
+    max_blocker_candidate_share: float = 0.10,
+    max_review_candidate_share: float = 0.25,
+    min_weighted_edge_delta: float = -0.25,
+    max_weighted_adverse_delta: float = 0.20,
+) -> dict[str, float | int | str]:
+    """Reduce train/heldout passive-fill policy stability into a release gate.
+
+    ``passive_fill_event_policy_stability`` is row-level evidence. This scorecard
+    converts it into a candidate-weighted publishability decision so a policy that
+    only works in sample cannot pass merely because its toxic heldout rows are
+    numerically few but carry most of the train candidate capacity.
+    """
+    for name, value in {
+        "max_blocker_candidate_share": max_blocker_candidate_share,
+        "max_review_candidate_share": max_review_candidate_share,
+        "min_weighted_edge_delta": min_weighted_edge_delta,
+        "max_weighted_adverse_delta": max_weighted_adverse_delta,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= max_blocker_candidate_share <= 1.0:
+        raise ValueError("max_blocker_candidate_share must be in [0.0, 1.0]")
+    if not 0.0 <= max_review_candidate_share <= 1.0:
+        raise ValueError("max_review_candidate_share must be in [0.0, 1.0]")
+    if max_weighted_adverse_delta < 0.0:
+        raise ValueError("max_weighted_adverse_delta must be non-negative")
+
+    if stability.empty:
+        return _empty_passive_fill_event_policy_stability_scorecard()
+
+    required = {
+        path_col,
+        threshold_col,
+        "train_candidate_events",
+        "heldout_candidate_events",
+        "mean_post_minus_pre_realized_edge_delta",
+        "adverse_post_edge_share_delta",
+        "heldout_stability_label",
+    }
+    _require_columns(stability, required, "passive fill event policy stability scorecard")
+    values = _finite_values(
+        stability,
+        [
+            threshold_col,
+            "train_candidate_events",
+            "heldout_candidate_events",
+            "mean_post_minus_pre_realized_edge_delta",
+            "adverse_post_edge_share_delta",
+        ],
+        "passive fill event policy stability scorecard",
+    )
+    if (values[["train_candidate_events", "heldout_candidate_events"]] < 0.0).any().any():
+        raise ValueError("passive fill event policy stability scorecard counts must be non-negative")
+
+    data = values.copy()
+    data[path_col] = stability[path_col].astype(str)
+    data["heldout_stability_label"] = stability["heldout_stability_label"].astype(str)
+    total_train_candidates = float(data["train_candidate_events"].sum())
+    total_heldout_candidates = float(data["heldout_candidate_events"].sum())
+    weights = (
+        data["train_candidate_events"] / total_train_candidates
+        if total_train_candidates > 0.0
+        else pd.Series(0.0, index=data.index)
+    )
+
+    labels = data["heldout_stability_label"]
+    blocker = labels == "heldout_policy_blocker"
+    review = labels == "heldout_policy_review"
+    no_event = labels == "heldout_policy_no_events"
+    missing = labels == "heldout_policy_missing"
+
+    def candidate_share(mask: pd.Series) -> float:
+        if total_train_candidates <= 0.0:
+            return 0.0
+        return float(data.loc[mask, "train_candidate_events"].sum() / total_train_candidates)
+
+    blocker_share = candidate_share(blocker)
+    review_share = candidate_share(review)
+    no_event_share = candidate_share(no_event)
+    missing_share = candidate_share(missing)
+    weighted_edge_delta = float((data["mean_post_minus_pre_realized_edge_delta"] * weights).sum())
+    weighted_adverse_delta = float((data["adverse_post_edge_share_delta"] * weights).sum())
+
+    blocking_reasons: list[str] = []
+    review_reasons: list[str] = []
+    if blocker_share > max_blocker_candidate_share:
+        blocking_reasons.append("heldout_blocker_candidate_share")
+    if weighted_edge_delta < min_weighted_edge_delta:
+        blocking_reasons.append("weighted_edge_delta_breach")
+    if review_share + no_event_share + missing_share > max_review_candidate_share:
+        review_reasons.append("heldout_review_or_empty_candidate_share")
+    if weighted_adverse_delta > max_weighted_adverse_delta:
+        review_reasons.append("weighted_adverse_delta_breach")
+    if missing_share > 0.0:
+        review_reasons.append("missing_heldout_policy_paths")
+
+    if blocking_reasons:
+        decision = "block"
+        gate_label = "passive_fill_policy_stability_blocked"
+    elif review_reasons:
+        decision = "review"
+        gate_label = "passive_fill_policy_stability_review"
+    else:
+        decision = "pass"
+        gate_label = "passive_fill_policy_stability_pass"
+
+    priority = labels.map(
+        {
+            "heldout_policy_blocker": 4,
+            "heldout_policy_review": 3,
+            "heldout_policy_no_events": 2,
+            "heldout_policy_missing": 2,
+            "heldout_policy_stable": 1,
+        }
+    ).fillna(0)
+    worst = data.assign(_priority=priority).sort_values(
+        [
+            "_priority",
+            "train_candidate_events",
+            "adverse_post_edge_share_delta",
+            "mean_post_minus_pre_realized_edge_delta",
+            path_col,
+            threshold_col,
+        ],
+        ascending=[False, False, False, True, True, True],
+    ).iloc[0]
+
+    return {
+        "rows": int(len(data)),
+        "policy_paths": int(data[path_col].nunique()),
+        "total_train_candidate_events": int(total_train_candidates),
+        "total_heldout_candidate_events": int(total_heldout_candidates),
+        "candidate_event_retention": float(
+            total_heldout_candidates / total_train_candidates if total_train_candidates > 0.0 else 0.0
+        ),
+        "blocker_rows": int(blocker.sum()),
+        "review_rows": int(review.sum()),
+        "no_event_rows": int(no_event.sum()),
+        "missing_rows": int(missing.sum()),
+        "blocker_train_candidate_share": blocker_share,
+        "review_train_candidate_share": review_share,
+        "no_event_train_candidate_share": no_event_share,
+        "missing_train_candidate_share": missing_share,
+        "weighted_mean_post_minus_pre_realized_edge_delta": weighted_edge_delta,
+        "weighted_adverse_post_edge_share_delta": weighted_adverse_delta,
+        "worst_policy_path": str(worst[path_col]),
+        "worst_threshold": float(worst[threshold_col]),
+        "worst_heldout_stability_label": str(worst["heldout_stability_label"]),
+        "policy_stability_decision": decision,
+        "policy_stability_label": gate_label,
+        "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
+        "review_reasons": ";".join(review_reasons) if review_reasons else "none",
+    }
+
+
 
 def passive_fill_event_lifecycle_scorecard(
     lifecycle_summary: pd.DataFrame,
