@@ -170,6 +170,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_queue_position_calibration_drift.csv").exists()
     assert (tmp_path / "queue_position_calibration_stability.csv").exists()
     assert (tmp_path / "queue_position_calibration_stability_summary.json").exists()
+    assert (tmp_path / "queue_position_adverse_selection_policy_frontier.csv").exists()
+    assert (tmp_path / "heldout_queue_position_adverse_selection_policy_frontier.csv").exists()
+    assert (tmp_path / "queue_position_adverse_selection_policy_summary.json").exists()
+    assert (tmp_path / "heldout_queue_position_adverse_selection_policy_summary.json").exists()
     assert (tmp_path / "execution_adjusted_sample.csv").exists()
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
@@ -265,6 +269,32 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         (tmp_path / "queue_position_calibration_stability_summary.json").read_text()
     )
     assert "queue_calibration_stability_label" in queue_calibration_stability_summary
+    adverse_policy_columns = set(
+        pd.read_csv(tmp_path / "queue_position_adverse_selection_policy_frontier.csv", nrows=1).columns
+    )
+    assert {
+        "fill_threshold",
+        "adverse_threshold",
+        "candidate_rows",
+        "trade_share",
+        "mean_adverse_fill_probability",
+        "realized_fill_rate",
+        "mean_realized_edge_ticks",
+        "toxicity_filtered_share",
+        "policy_label",
+    }.issubset(adverse_policy_columns)
+    adverse_policy_summary = json.loads(
+        (tmp_path / "queue_position_adverse_selection_policy_summary.json").read_text()
+    )
+    assert adverse_policy_summary["policies"] > 0
+    assert "publishable_policies" in adverse_policy_summary
+    assert "best_policy_label" in adverse_policy_summary
+    assert "policy_summary_label" in adverse_policy_summary
+    heldout_adverse_policy_summary = json.loads(
+        (tmp_path / "heldout_queue_position_adverse_selection_policy_summary.json").read_text()
+    )
+    assert heldout_adverse_policy_summary["policies"] > 0
+    assert "policy_summary_label" in heldout_adverse_policy_summary
     heldout_release_gate = json.loads(
         (tmp_path / "heldout_execution_publishability_release_gate.json").read_text()
     )
@@ -609,6 +639,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## Queue-position capacity stability" in summary
     assert "## Queue-position edge decay" in summary
     assert "## Queue-position calibration stability summary" in summary
+    assert "## Queue-position adverse-selection policy summary" in summary
+    assert "## Heldout queue-position adverse-selection policy summary" in summary
 
     verify_report(tmp_path)
 

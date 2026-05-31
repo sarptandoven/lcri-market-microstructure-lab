@@ -34,6 +34,7 @@ from lcri_lab.execution import (
     passive_fill_realization_horizon_sweep,
     passive_fill_threshold_policy_curve,
     queue_position_adverse_selection_policy_frontier,
+    queue_position_adverse_selection_policy_summary,
     queue_position_capacity_frontier,
     queue_position_capacity_stability,
     queue_position_execution_readiness_scorecard,
@@ -631,6 +632,83 @@ def test_queue_position_adverse_selection_policy_frontier_rejects_bad_thresholds
         queue_position_adverse_selection_policy_frontier(pd.DataFrame(), fill_thresholds=())
     with pytest.raises(ValueError, match="adverse threshold values must be in"):
         queue_position_adverse_selection_policy_frontier(pd.DataFrame(), adverse_thresholds=(1.20,))
+
+
+def test_queue_position_adverse_selection_policy_summary_selects_best_publishable_policy() -> None:
+    frontier = pd.DataFrame(
+        {
+            "fill_threshold": [0.55, 0.65, 0.75],
+            "adverse_threshold": [0.35, 0.30, 0.25],
+            "candidate_rows": [40, 20, 8],
+            "trade_share": [0.40, 0.20, 0.08],
+            "long_rows": [25, 15, 8],
+            "short_rows": [15, 5, 0],
+            "mean_predicted_fill_probability": [0.70, 0.76, 0.82],
+            "mean_adverse_fill_probability": [0.32, 0.22, 0.18],
+            "realized_fill_rate": [0.72, 0.80, 0.88],
+            "mean_realized_edge_ticks": [0.20, 0.55, 0.90],
+            "positive_edge_rate": [0.58, 0.70, 0.90],
+            "mean_execution_adjusted_edge_ticks": [0.18, 0.48, 0.80],
+            "toxicity_filtered_rows": [10, 15, 22],
+            "toxicity_filtered_share": [0.10, 0.15, 0.22],
+            "policy_label": [
+                "edge_positive_fill_uncertain_policy",
+                "selective_toxicity_control_policy",
+                "high_quality_capacity_constrained_policy",
+            ],
+        }
+    )
+
+    summary = queue_position_adverse_selection_policy_summary(
+        frontier,
+        min_trade_share=0.10,
+        min_realized_fill_rate=0.75,
+        min_mean_realized_edge_ticks=0.25,
+        max_mean_adverse_fill_probability=0.30,
+    )
+
+    assert summary["policies"] == 3
+    assert summary["publishable_policies"] == 1
+    assert summary["best_fill_threshold"] == pytest.approx(0.65)
+    assert summary["best_adverse_threshold"] == pytest.approx(0.30)
+    assert summary["best_policy_label"] == "selective_toxicity_control_policy"
+    assert summary["dominant_side"] == "long"
+    assert summary["policy_summary_label"] == "publishable_toxicity_control_policy"
+
+
+def test_queue_position_adverse_selection_policy_summary_flags_no_viable_policy() -> None:
+    frontier = pd.DataFrame(
+        {
+            "fill_threshold": [0.55],
+            "adverse_threshold": [0.35],
+            "candidate_rows": [5],
+            "trade_share": [0.05],
+            "long_rows": [3],
+            "short_rows": [2],
+            "mean_predicted_fill_probability": [0.65],
+            "mean_adverse_fill_probability": [0.45],
+            "realized_fill_rate": [0.40],
+            "mean_realized_edge_ticks": [-0.10],
+            "positive_edge_rate": [0.40],
+            "mean_execution_adjusted_edge_ticks": [-0.20],
+            "toxicity_filtered_rows": [12],
+            "toxicity_filtered_share": [0.60],
+            "policy_label": ["execution_policy_rejected"],
+        }
+    )
+
+    summary = queue_position_adverse_selection_policy_summary(frontier)
+
+    assert summary["publishable_policies"] == 0
+    assert summary["best_policy_label"] == "none"
+    assert summary["policy_summary_label"] == "no_publishable_toxicity_control_policy"
+
+
+def test_queue_position_adverse_selection_policy_summary_rejects_invalid_frontier() -> None:
+    with pytest.raises(ValueError, match="min_trade_share"):
+        queue_position_adverse_selection_policy_summary(pd.DataFrame(), min_trade_share=1.5)
+    with pytest.raises(ValueError, match="missing queue position adverse-selection policy summary columns"):
+        queue_position_adverse_selection_policy_summary(pd.DataFrame({"fill_threshold": [0.5]}))
 
 
 def test_queue_position_fill_surface_crosses_queue_depth_with_realized_fills() -> None:

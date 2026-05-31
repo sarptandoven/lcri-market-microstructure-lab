@@ -116,6 +116,8 @@ from lcri_lab.execution import (
     passive_fill_event_window_diagnostics,
     passive_fill_realization_horizon_sweep,
     passive_fill_threshold_policy_curve,
+    queue_position_adverse_selection_policy_frontier,
+    queue_position_adverse_selection_policy_summary,
     queue_position_calibration_drift,
     queue_position_calibration_stability,
     queue_position_calibration_stability_summary,
@@ -765,6 +767,28 @@ def run_demo(
         queue_calibration_stability,
         regime_col="pressure_memory_decay_state",
     )
+    queue_adverse_policy_frontier = queue_position_adverse_selection_policy_frontier(
+        passive_fill_labeled
+    )
+    heldout_queue_adverse_policy_frontier = queue_position_adverse_selection_policy_frontier(
+        heldout_passive_fill_labeled
+    )
+    queue_adverse_policy_summary = queue_position_adverse_selection_policy_summary(
+        queue_adverse_policy_frontier,
+        min_trade_share=0.05,
+        min_realized_fill_rate=0.60,
+        min_mean_realized_edge_ticks=0.0,
+        max_mean_adverse_fill_probability=0.40,
+        max_toxicity_filtered_share=0.75,
+    )
+    heldout_queue_adverse_policy_summary = queue_position_adverse_selection_policy_summary(
+        heldout_queue_adverse_policy_frontier,
+        min_trade_share=0.05,
+        min_realized_fill_rate=0.60,
+        min_mean_realized_edge_ticks=0.0,
+        max_mean_adverse_fill_probability=0.40,
+        max_toxicity_filtered_share=0.75,
+    )
     queue_execution_quality_gate = queue_position_execution_quality_gate(
         queue_fill_surface,
         queue_edge_decay,
@@ -986,6 +1010,10 @@ def run_demo(
         "heldout_queue_position_calibration_drift.csv",
         "queue_position_calibration_stability.csv",
         "queue_position_calibration_stability_summary.json",
+        "queue_position_adverse_selection_policy_frontier.csv",
+        "heldout_queue_position_adverse_selection_policy_frontier.csv",
+        "queue_position_adverse_selection_policy_summary.json",
+        "heldout_queue_position_adverse_selection_policy_summary.json",
         "execution_adjusted_sample.csv",
         "research_summary.md",
         "artifact_coverage_matrix.csv",
@@ -1361,6 +1389,20 @@ def run_demo(
         output / "queue_position_calibration_stability_summary.json",
         queue_calibration_stability_summary,
     )
+    queue_adverse_policy_frontier.to_csv(
+        output / "queue_position_adverse_selection_policy_frontier.csv", index=False
+    )
+    heldout_queue_adverse_policy_frontier.to_csv(
+        output / "heldout_queue_position_adverse_selection_policy_frontier.csv", index=False
+    )
+    write_json(
+        output / "queue_position_adverse_selection_policy_summary.json",
+        queue_adverse_policy_summary,
+    )
+    write_json(
+        output / "heldout_queue_position_adverse_selection_policy_summary.json",
+        heldout_queue_adverse_policy_summary,
+    )
     execution_lcri_side_attribution.to_csv(
         output / "execution_adjusted_lcri_side_attribution.csv", index=False
     )
@@ -1531,6 +1573,8 @@ def run_demo(
         queue_calibration_drift=queue_calibration_drift,
         heldout_queue_calibration_drift=heldout_queue_calibration_drift,
         queue_calibration_stability_summary=queue_calibration_stability_summary,
+        queue_adverse_policy_summary=queue_adverse_policy_summary,
+        heldout_queue_adverse_policy_summary=heldout_queue_adverse_policy_summary,
     )
     coverage_matrix = artifact_coverage_matrix(artifact_paths)
     coverage_matrix.to_csv(output / "artifact_coverage_matrix.csv", index=False)
@@ -1767,6 +1811,8 @@ def _append_execution_adjusted_summary(
     queue_calibration_drift: pd.DataFrame,
     heldout_queue_calibration_drift: pd.DataFrame,
     queue_calibration_stability_summary: dict[str, float | int | str],
+    queue_adverse_policy_summary: dict[str, float | int | str],
+    heldout_queue_adverse_policy_summary: dict[str, float | int | str],
 ) -> None:
     regime_lines = _passive_fill_regime_summary_lines(passive_fill_event_regimes)
     heldout_regime_lines = _passive_fill_regime_summary_lines(heldout_passive_fill_event_regimes)
@@ -1821,6 +1867,12 @@ def _append_execution_adjusted_summary(
     )
     queue_calibration_stability_lines = _queue_position_calibration_stability_summary_lines(
         queue_calibration_stability_summary
+    )
+    queue_adverse_policy_lines = _queue_position_adverse_policy_summary_lines(
+        queue_adverse_policy_summary
+    )
+    heldout_queue_adverse_policy_lines = _queue_position_adverse_policy_summary_lines(
+        heldout_queue_adverse_policy_summary
     )
     lines = [
         "",
@@ -1935,6 +1987,14 @@ def _append_execution_adjusted_summary(
         "## Queue-position calibration stability summary",
         "",
         *queue_calibration_stability_lines,
+        "",
+        "## Queue-position adverse-selection policy summary",
+        "",
+        *queue_adverse_policy_lines,
+        "",
+        "## Heldout queue-position adverse-selection policy summary",
+        "",
+        *heldout_queue_adverse_policy_lines,
         "",
     ]
     path.write_text(path.read_text() + "\n".join(lines))
@@ -2195,6 +2255,30 @@ def _queue_position_calibration_stability_summary_lines(
         "worst_queue_share_bin",
         "worst_fill_probability_bin",
         "worst_calibration_stability_label",
+    ]
+    return [f"- {key}: {summary.get(key, 'n/a')}" for key in keys]
+
+
+def _queue_position_adverse_policy_summary_lines(
+    summary: dict[str, float | int | str],
+) -> list[str]:
+    if not summary or int(summary.get("policies", 0)) == 0:
+        return ["- no queue-position adverse-selection policy grid"]
+    keys = [
+        "policy_summary_label",
+        "policies",
+        "publishable_policies",
+        "best_policy_label",
+        "best_fill_threshold",
+        "best_adverse_threshold",
+        "best_candidate_rows",
+        "best_trade_share",
+        "best_realized_fill_rate",
+        "best_mean_adverse_fill_probability",
+        "best_mean_realized_edge_ticks",
+        "best_mean_execution_adjusted_edge_ticks",
+        "best_toxicity_filtered_share",
+        "dominant_side",
     ]
     return [f"- {key}: {summary.get(key, 'n/a')}" for key in keys]
 

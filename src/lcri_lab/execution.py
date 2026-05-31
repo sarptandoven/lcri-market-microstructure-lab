@@ -1846,6 +1846,163 @@ def queue_position_adverse_selection_policy_frontier(
     return pd.DataFrame(rows)[list(_empty_queue_position_adverse_selection_policy_frontier().columns)]
 
 
+def queue_position_adverse_selection_policy_summary(
+    frontier: pd.DataFrame,
+    *,
+    min_trade_share: float = 0.10,
+    min_realized_fill_rate: float = 0.70,
+    min_mean_realized_edge_ticks: float = 0.0,
+    max_mean_adverse_fill_probability: float = 0.30,
+    max_toxicity_filtered_share: float = 1.0,
+) -> dict[str, float | int | str]:
+    """Select a publishable passive policy from fill/toxicity threshold frontiers.
+
+    ``queue_position_adverse_selection_policy_frontier`` intentionally emits the
+    whole threshold grid. This reducer turns that grid into a release-facing policy
+    decision by requiring minimum executable capacity, realized fill quality, edge,
+    and adverse-selection controls, then selecting the highest-edge policy that
+    survives. It prevents demos from cherry-picking a fill-only threshold while
+    hiding that the quote set is either too small or toxicity-filtered away.
+    """
+    for name, value in {
+        "min_trade_share": min_trade_share,
+        "min_realized_fill_rate": min_realized_fill_rate,
+        "min_mean_realized_edge_ticks": min_mean_realized_edge_ticks,
+        "max_mean_adverse_fill_probability": max_mean_adverse_fill_probability,
+        "max_toxicity_filtered_share": max_toxicity_filtered_share,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    for name, value in {
+        "min_trade_share": min_trade_share,
+        "min_realized_fill_rate": min_realized_fill_rate,
+        "max_mean_adverse_fill_probability": max_mean_adverse_fill_probability,
+        "max_toxicity_filtered_share": max_toxicity_filtered_share,
+    }.items():
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be in [0.0, 1.0]")
+
+    empty: dict[str, float | int | str] = {
+        "policies": 0,
+        "publishable_policies": 0,
+        "best_fill_threshold": 0.0,
+        "best_adverse_threshold": 0.0,
+        "best_candidate_rows": 0,
+        "best_trade_share": 0.0,
+        "best_realized_fill_rate": 0.0,
+        "best_mean_predicted_fill_probability": 0.0,
+        "best_mean_adverse_fill_probability": 0.0,
+        "best_mean_realized_edge_ticks": 0.0,
+        "best_positive_edge_rate": 0.0,
+        "best_mean_execution_adjusted_edge_ticks": 0.0,
+        "best_toxicity_filtered_share": 0.0,
+        "dominant_side": "none",
+        "best_policy_label": "none",
+        "policy_summary_label": "no_policy_frontier_data",
+    }
+    if frontier.empty:
+        return empty
+
+    required = {
+        "fill_threshold",
+        "adverse_threshold",
+        "candidate_rows",
+        "trade_share",
+        "long_rows",
+        "short_rows",
+        "mean_predicted_fill_probability",
+        "mean_adverse_fill_probability",
+        "realized_fill_rate",
+        "mean_realized_edge_ticks",
+        "positive_edge_rate",
+        "mean_execution_adjusted_edge_ticks",
+        "toxicity_filtered_share",
+        "policy_label",
+    }
+    _require_columns(frontier, required, "queue position adverse-selection policy summary")
+    numeric_columns = list(required - {"policy_label"})
+    values = _finite_values(frontier, numeric_columns, "queue position adverse-selection policy summary")
+    if not values[["candidate_rows", "long_rows", "short_rows"]].ge(0.0).all().all():
+        raise ValueError("queue position adverse-selection policy summary counts must be non-negative")
+    probability_columns = [
+        "fill_threshold",
+        "adverse_threshold",
+        "trade_share",
+        "mean_predicted_fill_probability",
+        "mean_adverse_fill_probability",
+        "realized_fill_rate",
+        "positive_edge_rate",
+        "toxicity_filtered_share",
+    ]
+    if not values[probability_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("queue position adverse-selection policy summary probabilities must be in [0, 1]")
+    if (values["long_rows"] + values["short_rows"] > values["candidate_rows"]).any():
+        raise ValueError("queue position adverse-selection policy summary side counts exceed candidates")
+
+    data = values.copy()
+    data["policy_label"] = frontier["policy_label"].astype(str)
+    viable = data[
+        (data["candidate_rows"] > 0.0)
+        & (data["trade_share"] >= min_trade_share)
+        & (data["realized_fill_rate"] >= min_realized_fill_rate)
+        & (data["mean_realized_edge_ticks"] >= min_mean_realized_edge_ticks)
+        & (data["mean_adverse_fill_probability"] <= max_mean_adverse_fill_probability)
+        & (data["toxicity_filtered_share"] <= max_toxicity_filtered_share)
+    ]
+    result = empty.copy()
+    result.update(
+        {
+            "policies": int(len(data)),
+            "publishable_policies": int(len(viable)),
+        }
+    )
+    if viable.empty:
+        result["policy_summary_label"] = "no_publishable_toxicity_control_policy"
+        return result
+
+    best = viable.sort_values(
+        [
+            "mean_realized_edge_ticks",
+            "realized_fill_rate",
+            "trade_share",
+            "mean_adverse_fill_probability",
+            "toxicity_filtered_share",
+        ],
+        ascending=[False, False, False, True, True],
+    ).iloc[0]
+    dominant_side = (
+        "long"
+        if float(best["long_rows"]) > float(best["short_rows"])
+        else "short"
+        if float(best["short_rows"]) > float(best["long_rows"])
+        else "balanced"
+    )
+    result.update(
+        {
+            "best_fill_threshold": float(best["fill_threshold"]),
+            "best_adverse_threshold": float(best["adverse_threshold"]),
+            "best_candidate_rows": int(best["candidate_rows"]),
+            "best_trade_share": float(best["trade_share"]),
+            "best_realized_fill_rate": float(best["realized_fill_rate"]),
+            "best_mean_predicted_fill_probability": float(best["mean_predicted_fill_probability"]),
+            "best_mean_adverse_fill_probability": float(best["mean_adverse_fill_probability"]),
+            "best_mean_realized_edge_ticks": float(best["mean_realized_edge_ticks"]),
+            "best_positive_edge_rate": float(best["positive_edge_rate"]),
+            "best_mean_execution_adjusted_edge_ticks": float(best["mean_execution_adjusted_edge_ticks"]),
+            "best_toxicity_filtered_share": float(best["toxicity_filtered_share"]),
+            "dominant_side": dominant_side,
+            "best_policy_label": str(best["policy_label"]),
+            "policy_summary_label": _queue_position_policy_summary_label(
+                trade_share=float(best["trade_share"]),
+                realized_fill_rate=float(best["realized_fill_rate"]),
+                mean_realized_edge=float(best["mean_realized_edge_ticks"]),
+                mean_adverse_fill_probability=float(best["mean_adverse_fill_probability"]),
+            ),
+        }
+    )
+    return result
+
+
 def queue_position_fill_surface(
     frame: pd.DataFrame,
     *,
@@ -5723,6 +5880,24 @@ def _queue_position_policy_frontier_label(
     if realized_fill_rate >= 0.70:
         return "high_quality_capacity_constrained_policy"
     return "edge_positive_fill_uncertain_policy"
+
+
+def _queue_position_policy_summary_label(
+    *,
+    trade_share: float,
+    realized_fill_rate: float,
+    mean_realized_edge: float,
+    mean_adverse_fill_probability: float,
+) -> str:
+    if trade_share <= 0.0:
+        return "no_publishable_toxicity_control_policy"
+    if mean_realized_edge <= 0.0:
+        return "rejected_toxicity_control_policy"
+    if trade_share >= 0.30 and realized_fill_rate >= 0.70 and mean_adverse_fill_probability <= 0.25:
+        return "broad_toxicity_control_policy"
+    if realized_fill_rate >= 0.70 and mean_adverse_fill_probability <= 0.30:
+        return "publishable_toxicity_control_policy"
+    return "fragile_toxicity_control_policy"
 
 
 def _passive_fill_threshold_policy_label(

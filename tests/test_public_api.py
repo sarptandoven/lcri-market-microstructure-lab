@@ -104,7 +104,9 @@ def test_public_api_exports_queue_position_toxicity_surface() -> None:
 
 def test_public_api_exports_queue_position_adverse_selection_policy_frontier() -> None:
     assert callable(lcri_lab.queue_position_adverse_selection_policy_frontier)
+    assert callable(lcri_lab.queue_position_adverse_selection_policy_summary)
     assert "queue_position_adverse_selection_policy_frontier" in lcri_lab.__all__
+    assert "queue_position_adverse_selection_policy_summary" in lcri_lab.__all__
 
 
 def test_public_api_exports_queue_position_calibration_stability() -> None:
