@@ -91,10 +91,12 @@ from lcri_lab.alpha import (
 )
 from lcri_lab.execution import (
     add_execution_adjusted_edge,
+    add_passive_fill_event_window_regimes,
     add_passive_fill_probabilities,
     add_queue_position_features,
     add_queue_position_realized_fill_proxy,
     execution_adjusted_edge_summary,
+    execution_adjusted_lcri_event_window_attribution,
     execution_adjusted_lcri_quantile_diagnostics,
     execution_adjusted_lcri_regime_attribution,
     execution_adjusted_lcri_side_attribution,
@@ -823,6 +825,10 @@ def run_demo(
     heldout_execution_lcri_quantile_diagnostics = execution_adjusted_lcri_quantile_diagnostics(
         heldout_scored
     )
+    execution_lcri_event_window_attribution = execution_adjusted_lcri_event_window_attribution(scored)
+    heldout_execution_lcri_event_window_attribution = execution_adjusted_lcri_event_window_attribution(
+        heldout_scored
+    )
     baseline_regime_basis = baseline_regime_basis_comparison(
         scored,
         train_window=max(200, rows // 2),
@@ -959,6 +965,8 @@ def run_demo(
         "heldout_execution_adjusted_lcri_regime_attribution.csv",
         "execution_adjusted_lcri_quantile_diagnostics.csv",
         "heldout_execution_adjusted_lcri_quantile_diagnostics.csv",
+        "execution_adjusted_lcri_event_window_attribution.csv",
+        "heldout_execution_adjusted_lcri_event_window_attribution.csv",
         "execution_publishability_review_packet.csv",
         "heldout_execution_publishability_review_packet.csv",
         "execution_publishability_release_gate.json",
@@ -1432,6 +1440,12 @@ def run_demo(
     heldout_execution_lcri_quantile_diagnostics.to_csv(
         output / "heldout_execution_adjusted_lcri_quantile_diagnostics.csv", index=False
     )
+    execution_lcri_event_window_attribution.to_csv(
+        output / "execution_adjusted_lcri_event_window_attribution.csv", index=False
+    )
+    heldout_execution_lcri_event_window_attribution.to_csv(
+        output / "heldout_execution_adjusted_lcri_event_window_attribution.csv", index=False
+    )
     scored[
         [
             "lcri",
@@ -1776,7 +1790,8 @@ def _add_execution_adjusted_stack(frame: pd.DataFrame, *, tick_size: float) -> p
     gated = add_publishability_gate(labeled)
     queued = add_queue_position_features(gated)
     fills = add_passive_fill_probabilities(queued)
-    return add_execution_adjusted_edge(fills)
+    execution_adjusted = add_execution_adjusted_edge(fills)
+    return add_passive_fill_event_window_regimes(execution_adjusted)
 
 
 def _add_passive_fill_realization_proxy(frame: pd.DataFrame, *, horizon: int = 1) -> pd.DataFrame:

@@ -10,6 +10,7 @@ from lcri_lab.execution import (
     add_queue_position_features,
     add_queue_position_realized_fill_proxy,
     execution_adjusted_edge_summary,
+    execution_adjusted_lcri_event_window_attribution,
     execution_adjusted_lcri_quantile_diagnostics,
     execution_adjusted_lcri_regime_attribution,
     passive_fill_calibration_curve,
@@ -2975,3 +2976,50 @@ def test_passive_fill_threshold_policy_curve_scores_actionable_cutoffs() -> None
 def test_passive_fill_threshold_policy_curve_rejects_invalid_thresholds() -> None:
     with pytest.raises(ValueError, match="threshold values must be in"):
         passive_fill_threshold_policy_curve(pd.DataFrame(), thresholds=(1.25,))
+
+
+def test_execution_adjusted_lcri_event_window_attribution_flags_high_lcri_event_fragility() -> None:
+    frame = pd.DataFrame(
+        {
+            "passive_fill_event_window_regime": [
+                "calm",
+                "calm",
+                "event",
+                "event",
+                "post_event",
+                "post_event",
+            ],
+            "lcri": [0.2, 0.5, 2.0, -2.5, 1.8, -3.0],
+            "execution_adjusted_lcri_score": [0.2, 0.4, 0.2, -0.3, 1.4, -2.4],
+            "execution_adjusted_edge_ticks": [0.2, 0.3, -0.4, -0.6, 0.6, 0.8],
+            "best_execution_side": ["long", "short", "long", "short", "long", "short"],
+            "bid_fill_probability": [0.50, 0.40, 0.92, 0.20, 0.70, 0.10],
+            "ask_fill_probability": [0.30, 0.55, 0.10, 0.95, 0.20, 0.75],
+            "bid_adverse_fill_probability": [0.10, 0.20, 0.65, 0.10, 0.20, 0.10],
+            "ask_adverse_fill_probability": [0.20, 0.15, 0.10, 0.70, 0.10, 0.20],
+        }
+    )
+
+    output = execution_adjusted_lcri_event_window_attribution(frame, bins=2)
+
+    assert set(output["passive_fill_event_window_regime"]) == {"calm", "event", "post_event"}
+    event = output[output["passive_fill_event_window_regime"] == "event"].iloc[0]
+    post_event = output[output["passive_fill_event_window_regime"] == "post_event"].iloc[0]
+    calm = output[output["passive_fill_event_window_regime"] == "calm"].iloc[0]
+
+    assert event["bucket"] == "high_abs_lcri"
+    assert event["rows"] == 2
+    assert event["signal_survival_ratio"] == pytest.approx(1.0 / 9.0)
+    assert event["mean_selected_fill_probability"] == pytest.approx(0.935)
+    assert event["mean_selected_adverse_fill_probability"] == pytest.approx(0.675)
+    assert event["negative_edge_share"] == pytest.approx(1.0)
+    assert event["event_window_execution_label"] == "high_lcri_event_toxicity"
+    assert post_event["event_window_execution_label"] == "event_window_edge_survives"
+    assert calm["event_window_execution_label"] == "low_lcri_reference"
+
+
+def test_execution_adjusted_lcri_event_window_attribution_rejects_missing_regime() -> None:
+    with pytest.raises(
+        ValueError, match="missing execution-adjusted LCRI event-window attribution columns"
+    ):
+        execution_adjusted_lcri_event_window_attribution(pd.DataFrame({"lcri": [1.0]}))

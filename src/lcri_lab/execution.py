@@ -7154,3 +7154,198 @@ def execution_adjusted_lcri_quantile_diagnostics(
             }
         )
     return pd.DataFrame(rows)[list(_empty_execution_adjusted_lcri_quantile_diagnostics().columns)]
+
+
+def _empty_execution_adjusted_lcri_event_window_attribution() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "passive_fill_event_window_regime",
+            "bucket",
+            "rows",
+            "row_share",
+            "mean_abs_lcri",
+            "mean_abs_execution_adjusted_lcri_score",
+            "signal_survival_ratio",
+            "tradable_share",
+            "mean_selected_fill_probability",
+            "mean_selected_adverse_fill_probability",
+            "fill_minus_adverse_probability_spread",
+            "mean_execution_adjusted_edge_ticks",
+            "negative_edge_share",
+            "edge_drag_vs_raw_abs_lcri",
+            "event_window_execution_label",
+        ]
+    )
+
+
+def _is_high_lcri_bucket(bucket: str) -> bool:
+    if bucket == "high_abs_lcri":
+        return True
+    if bucket.startswith("abs_lcri_q"):
+        try:
+            quantile_index = int(bucket.removeprefix("abs_lcri_q"))
+        except ValueError:
+            return False
+        return quantile_index >= 3
+    return False
+
+
+def _event_window_execution_label(
+    *,
+    bucket: str,
+    regime: str,
+    signal_survival_ratio: float,
+    negative_edge_share: float,
+    mean_selected_adverse_fill_probability: float,
+    mean_execution_adjusted_edge_ticks: float,
+) -> str:
+    is_high_lcri = _is_high_lcri_bucket(bucket)
+    is_event_window = regime in {"pre_event", "event", "post_event"}
+    if not is_high_lcri:
+        return "low_lcri_reference"
+    if (
+        is_event_window
+        and negative_edge_share >= 0.50
+        and (signal_survival_ratio < 0.35 or mean_selected_adverse_fill_probability >= 0.50)
+    ):
+        return "high_lcri_event_toxicity"
+    if mean_execution_adjusted_edge_ticks < 0.0:
+        return "execution_edge_negative"
+    return "event_window_edge_survives" if is_event_window else "non_event_edge_survives"
+
+
+def execution_adjusted_lcri_event_window_attribution(
+    frame: pd.DataFrame,
+    *,
+    bins: int = 3,
+    event_window_col: str = "passive_fill_event_window_regime",
+    signal_col: str = "lcri",
+    execution_signal_col: str = "execution_adjusted_lcri_score",
+) -> pd.DataFrame:
+    """Attribute execution-adjusted LCRI survival inside passive-fill event windows.
+
+    Large residual imbalance is only publishable if it remains economically
+    tradable near queue-position fill events. This diagnostic cross-tabulates raw
+    absolute LCRI strength with row-level passive-fill event-window regimes so
+    reviews can separate genuine high-LCRI opportunities from event-neighborhoods
+    where passive fills are available but adverse selection erases the edge.
+    """
+    if not isinstance(bins, int) or isinstance(bins, bool) or bins < 1:
+        raise ValueError("bins must be a positive integer")
+    if frame.empty:
+        return _empty_execution_adjusted_lcri_event_window_attribution()
+
+    required = {
+        event_window_col,
+        signal_col,
+        execution_signal_col,
+        "execution_adjusted_edge_ticks",
+        "best_execution_side",
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+    }
+    _require_columns(frame, required, "execution-adjusted LCRI event-window attribution")
+    values = _finite_values(
+        frame,
+        [
+            signal_col,
+            execution_signal_col,
+            "execution_adjusted_edge_ticks",
+            "bid_fill_probability",
+            "ask_fill_probability",
+            "bid_adverse_fill_probability",
+            "ask_adverse_fill_probability",
+        ],
+        "execution-adjusted LCRI event-window attribution",
+    )
+
+    attribution = pd.DataFrame(index=frame.index)
+    attribution["passive_fill_event_window_regime"] = frame[event_window_col].astype(str)
+    attribution["abs_lcri"] = values[signal_col].abs()
+    attribution["abs_execution_adjusted_lcri_score"] = values[execution_signal_col].abs()
+    attribution["execution_adjusted_edge_ticks"] = values["execution_adjusted_edge_ticks"]
+    best_side = frame["best_execution_side"].astype(str)
+    attribution["tradable"] = best_side != "abstain"
+    attribution["selected_fill_probability"] = np.select(
+        [best_side == "long", best_side == "short"],
+        [values["bid_fill_probability"], values["ask_fill_probability"]],
+        default=0.0,
+    )
+    attribution["selected_adverse_fill_probability"] = np.select(
+        [best_side == "long", best_side == "short"],
+        [values["bid_adverse_fill_probability"], values["ask_adverse_fill_probability"]],
+        default=0.0,
+    )
+
+    actual_bins = min(bins, len(attribution))
+    ranks = attribution["abs_lcri"].rank(method="first")
+    attribution["bucket_id"] = pd.qcut(ranks, q=actual_bins, labels=False, duplicates="drop")
+    actual_bins = int(attribution["bucket_id"].max()) + 1
+    if actual_bins == 1:
+        labels = ["all_abs_lcri"]
+    elif actual_bins == 2:
+        labels = ["low_abs_lcri", "high_abs_lcri"]
+    elif actual_bins == 3:
+        labels = ["low_abs_lcri", "mid_abs_lcri", "high_abs_lcri"]
+    else:
+        labels = [f"abs_lcri_q{index + 1:02d}" for index in range(actual_bins)]
+    attribution["bucket"] = attribution["bucket_id"].map(lambda bucket_id: labels[int(bucket_id)])
+
+    total_rows = float(len(attribution))
+    rows: list[dict[str, float | int | str]] = []
+    for (regime, bucket), group in attribution.groupby(
+        ["passive_fill_event_window_regime", "bucket"], sort=True
+    ):
+        mean_abs_lcri = float(group["abs_lcri"].mean())
+        mean_abs_execution_signal = float(group["abs_execution_adjusted_lcri_score"].mean())
+        mean_selected_fill_probability = float(group["selected_fill_probability"].mean())
+        mean_selected_adverse_fill_probability = float(
+            group["selected_adverse_fill_probability"].mean()
+        )
+        signal_survival_ratio = (
+            mean_abs_execution_signal / mean_abs_lcri if mean_abs_lcri > 0.0 else 0.0
+        )
+        mean_execution_adjusted_edge_ticks = float(group["execution_adjusted_edge_ticks"].mean())
+        negative_edge_share = float((group["execution_adjusted_edge_ticks"] < 0.0).mean())
+        rows.append(
+            {
+                "passive_fill_event_window_regime": str(regime),
+                "bucket": str(bucket),
+                "rows": int(len(group)),
+                "row_share": float(len(group)) / total_rows if total_rows else 0.0,
+                "mean_abs_lcri": mean_abs_lcri,
+                "mean_abs_execution_adjusted_lcri_score": mean_abs_execution_signal,
+                "signal_survival_ratio": signal_survival_ratio,
+                "tradable_share": float(group["tradable"].mean()),
+                "mean_selected_fill_probability": mean_selected_fill_probability,
+                "mean_selected_adverse_fill_probability": mean_selected_adverse_fill_probability,
+                "fill_minus_adverse_probability_spread": float(
+                    mean_selected_fill_probability - mean_selected_adverse_fill_probability
+                ),
+                "mean_execution_adjusted_edge_ticks": mean_execution_adjusted_edge_ticks,
+                "negative_edge_share": negative_edge_share,
+                "edge_drag_vs_raw_abs_lcri": float(
+                    mean_abs_lcri - mean_execution_adjusted_edge_ticks
+                ),
+                "event_window_execution_label": _event_window_execution_label(
+                    bucket=str(bucket),
+                    regime=str(regime),
+                    signal_survival_ratio=signal_survival_ratio,
+                    negative_edge_share=negative_edge_share,
+                    mean_selected_adverse_fill_probability=mean_selected_adverse_fill_probability,
+                    mean_execution_adjusted_edge_ticks=mean_execution_adjusted_edge_ticks,
+                ),
+            }
+        )
+    columns = list(_empty_execution_adjusted_lcri_event_window_attribution().columns)
+    return pd.DataFrame(rows)[columns].sort_values(
+        [
+            "event_window_execution_label",
+            "passive_fill_event_window_regime",
+            "bucket",
+        ],
+        ascending=[True, True, True],
+        ignore_index=True,
+    )

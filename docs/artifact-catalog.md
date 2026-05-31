@@ -137,6 +137,10 @@ surfaces without opening every file:
   realized-edge profile around high-probability passive fills, exposing whether
   adverse selection appears before, on, or after the fill event rather than only
   inside aggregate pre/post sums.
+- `execution_adjusted_lcri_event_window_attribution.csv`: passive-fill event-window
+  x raw-LCRI-strength attribution table that reports signal survival, selected-side
+  fill/adverse-fill probabilities, edge drag, and toxicity labels for execution
+  review. Heldout runs emit the same schema with a `heldout_` prefix.
 - `passive_fill_event_regime_summary.csv`: regime aggregation of passive-fill
   event-window drift, adverse-post-event share, and worst drift.
 - `passive_fill_event_transition_summary.csv`: transition-path aggregation of
