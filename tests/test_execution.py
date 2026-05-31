@@ -33,6 +33,7 @@ from lcri_lab.execution import (
     queue_position_execution_quality_gate,
     queue_position_regime_capacity_concentration,
     queue_position_regime_capacity_frontier,
+    queue_position_calibration_drift,
     queue_position_edge_decay,
     queue_position_fill_calibration_surface,
     queue_position_fill_surface,
@@ -876,6 +877,50 @@ def test_queue_position_capacity_stability_rejects_bad_frontiers() -> None:
         queue_position_capacity_stability({"capacity_label": "x"}, {})
 
 
+def test_queue_position_calibration_drift_flags_regime_instability() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["open", "stress", "open", "stress", "open"],
+            "best_execution_side": ["long", "long", "short", "short", "long"],
+            "queue_share_bin": [1, 1, 2, 2, 2],
+            "fill_probability_bin": [1, 1, 1, 1, 2],
+            "rows": [40, 20, 30, 30, 10],
+            "mean_queue_share": [0.20, 0.25, 0.60, 0.65, 0.80],
+            "mean_predicted_fill_probability": [0.70, 0.68, 0.50, 0.52, 0.30],
+            "realized_fill_rate": [0.66, 0.32, 0.45, 0.40, 0.25],
+            "calibration_error": [-0.04, -0.36, -0.05, -0.12, -0.05],
+            "absolute_calibration_error": [0.04, 0.36, 0.05, 0.12, 0.05],
+            "brier_score": [0.10, 0.30, 0.08, 0.12, 0.10],
+            "mean_execution_adjusted_edge_ticks": [0.50, -0.20, 0.30, 0.20, 0.10],
+        }
+    )
+
+    drift = queue_position_calibration_drift(surface)
+
+    rows = drift.set_index(["best_execution_side", "queue_share_bin", "fill_probability_bin"])
+    long_front = rows.loc[("long", 1, 1)]
+    assert long_front["regimes"] == 2
+    assert long_front["rows"] == 60
+    assert long_front["fill_rate_range"] == pytest.approx(0.34)
+    assert long_front["calibration_error_range"] == pytest.approx(0.32)
+    assert long_front["weighted_mean_absolute_calibration_error"] == pytest.approx(
+        ((40 * 0.04) + (20 * 0.36)) / 60
+    )
+    assert long_front["worst_regime"] == "stress"
+    assert long_front["drift_label"] == "calibration_unstable"
+
+    short_mid = rows.loc[("short", 2, 1)]
+    assert short_mid["drift_label"] == "calibration_watch"
+    assert ("long", 2, 2) not in rows.index
+
+
+def test_queue_position_calibration_drift_rejects_bad_surface() -> None:
+    with pytest.raises(ValueError, match="min_regimes"):
+        queue_position_calibration_drift(pd.DataFrame(), min_regimes=1)
+    with pytest.raises(ValueError, match="missing queue position calibration drift columns"):
+        queue_position_calibration_drift(pd.DataFrame({"regime": ["open"]}))
+
+
 def test_queue_position_edge_decay_quantifies_deep_queue_degradation() -> None:
     surface = pd.DataFrame(
         {
@@ -994,6 +1039,56 @@ def test_queue_position_execution_quality_gate_labels_publishable_surface() -> N
 
     assert gate["blocked_regimes"] == 0
     assert gate["quality_gate_label"] == "queue_execution_publishable"
+
+
+def test_queue_position_execution_quality_gate_blocks_calibration_drift() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["open", "stress"],
+            "rows": [80, 80],
+            "absolute_calibration_error": [0.04, 0.05],
+            "brier_score": [0.03, 0.04],
+        }
+    )
+    decay = pd.DataFrame(
+        {
+            "regime": ["open", "stress"],
+            "rows": [80, 80],
+            "edge_decay_ticks": [0.30, 0.25],
+            "calibration_error_widening": [0.01, 0.02],
+            "monotonic_edge_decay": [True, True],
+        }
+    )
+    drift = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "short"],
+            "queue_share_bin": [1, 2],
+            "fill_probability_bin": [1, 1],
+            "regimes": [2, 2],
+            "rows": [100, 60],
+            "fill_rate_range": [0.32, 0.08],
+            "calibration_error_range": [0.22, 0.04],
+            "weighted_mean_absolute_calibration_error": [0.11, 0.05],
+            "worst_regime": ["stress", "open"],
+            "drift_label": ["calibration_unstable", "calibration_stable"],
+        }
+    )
+
+    gate = queue_position_execution_quality_gate(
+        surface,
+        decay,
+        drift=drift,
+        max_drift_fill_rate_range=0.25,
+        max_drift_calibration_error_range=0.15,
+    )
+
+    assert gate["drift_rows"] == 160
+    assert gate["unstable_drift_bins"] == 1
+    assert gate["watch_drift_bins"] == 0
+    assert gate["worst_drift_regime"] == "stress"
+    assert gate["max_drift_fill_rate_range"] == pytest.approx(0.32)
+    assert gate["max_drift_calibration_error_range"] == pytest.approx(0.22)
+    assert gate["quality_gate_label"] == "queue_execution_blocked"
 
 
 def test_passive_fill_calibration_curve_scores_realized_side_fills_by_regime() -> None:

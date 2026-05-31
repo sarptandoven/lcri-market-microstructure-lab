@@ -146,6 +146,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_passive_fill_threshold_policy_curve.csv").exists()
     assert (tmp_path / "queue_position_fill_surface.csv").exists()
     assert (tmp_path / "heldout_queue_position_fill_surface.csv").exists()
+    assert (tmp_path / "queue_position_fill_calibration_surface.csv").exists()
+    assert (tmp_path / "heldout_queue_position_fill_calibration_surface.csv").exists()
     assert (tmp_path / "queue_position_fraction_sweep.csv").exists()
     assert (tmp_path / "heldout_queue_position_fraction_sweep.csv").exists()
     assert (tmp_path / "queue_position_regime_fraction_sweep.csv").exists()
@@ -159,6 +161,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "queue_position_capacity_stability.json").exists()
     assert (tmp_path / "queue_position_edge_decay.csv").exists()
     assert (tmp_path / "heldout_queue_position_edge_decay.csv").exists()
+    assert (tmp_path / "queue_position_calibration_drift.csv").exists()
+    assert (tmp_path / "heldout_queue_position_calibration_drift.csv").exists()
     assert (tmp_path / "execution_adjusted_sample.csv").exists()
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
@@ -211,6 +215,13 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "weighted_conflict_share" in release_gate
     assert "quality_gate_label" in release_gate
     assert "capacity_stability_label" in release_gate
+    queue_drift_columns = set(pd.read_csv(tmp_path / "queue_position_calibration_drift.csv", nrows=1).columns)
+    assert {
+        "fill_rate_range",
+        "calibration_error_range",
+        "weighted_mean_absolute_calibration_error",
+        "drift_label",
+    }.issubset(queue_drift_columns)
     heldout_release_gate = json.loads(
         (tmp_path / "heldout_execution_publishability_release_gate.json").read_text()
     )

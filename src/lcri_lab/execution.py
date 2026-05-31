@@ -1593,6 +1593,126 @@ def queue_position_fill_calibration_surface(
     return output
 
 
+def queue_position_calibration_drift(
+    surface: pd.DataFrame,
+    *,
+    regime_col: str = "regime",
+    min_regimes: int = 2,
+    min_rows: int = 1,
+) -> pd.DataFrame:
+    """Audit queue-position fill calibration drift across regimes.
+
+    The side-aware calibration surface is useful only if a bin's reliability is
+    stable across regimes. This reducer holds execution side, queue bin, and
+    predicted-fill bin fixed, then measures the cross-regime range in realized
+    fill rates and absolute calibration error. It highlights bins where passive
+    queue placement looks calibrated in aggregate but fractures in stress/open
+    regimes, making the execution-adjusted LCRI evidence easier to review.
+    """
+    if not isinstance(min_regimes, int) or isinstance(min_regimes, bool):
+        raise ValueError("min_regimes must be an integer")
+    if min_regimes < 2:
+        raise ValueError("min_regimes must be at least 2")
+    if not isinstance(min_rows, int) or isinstance(min_rows, bool):
+        raise ValueError("min_rows must be an integer")
+    if min_rows < 1:
+        raise ValueError("min_rows must be at least 1")
+    if not regime_col:
+        raise ValueError("regime_col must be non-empty")
+
+    columns = list(_empty_queue_position_calibration_drift().columns)
+    if surface.empty:
+        return _empty_queue_position_calibration_drift()
+
+    required = {
+        regime_col,
+        "best_execution_side",
+        "queue_share_bin",
+        "fill_probability_bin",
+        "rows",
+        "realized_fill_rate",
+        "absolute_calibration_error",
+    }
+    _require_columns(surface, required, "queue position calibration drift")
+    values = _finite_values(
+        surface,
+        [
+            "queue_share_bin",
+            "fill_probability_bin",
+            "rows",
+            "realized_fill_rate",
+            "absolute_calibration_error",
+        ],
+        "queue position calibration drift",
+    )
+    if not values["rows"].ge(0.0).all():
+        raise ValueError("queue position calibration drift rows must be non-negative")
+    if not values["realized_fill_rate"].between(0.0, 1.0).all():
+        raise ValueError("queue position calibration drift fill rates must be in [0, 1]")
+    if not values["absolute_calibration_error"].between(0.0, 1.0).all():
+        raise ValueError("queue position calibration drift errors must be in [0, 1]")
+
+    working = surface.copy()
+    working[regime_col] = working[regime_col].astype(str)
+    working["best_execution_side"] = working["best_execution_side"].astype(str)
+    for column in [
+        "queue_share_bin",
+        "fill_probability_bin",
+        "rows",
+        "realized_fill_rate",
+        "absolute_calibration_error",
+    ]:
+        working[column] = values[column]
+    working = working[working["rows"] >= float(min_rows)]
+    if working.empty:
+        return _empty_queue_position_calibration_drift()
+
+    rows: list[dict[str, float | int | str]] = []
+    group_cols = ["best_execution_side", "queue_share_bin", "fill_probability_bin"]
+    for (execution_side, queue_bin, fill_bin), group in working.groupby(group_cols, sort=True):
+        regimes = int(group[regime_col].nunique())
+        if regimes < min_regimes:
+            continue
+        total_rows = int(group["rows"].sum())
+        if total_rows <= 0:
+            continue
+        worst = group.sort_values(
+            ["absolute_calibration_error", "rows", regime_col], ascending=[False, False, True]
+        ).iloc[0]
+        fill_range = float(group["realized_fill_rate"].max() - group["realized_fill_rate"].min())
+        calibration_range = float(
+            group["absolute_calibration_error"].max() - group["absolute_calibration_error"].min()
+        )
+        weighted_error = float(
+            np.average(group["absolute_calibration_error"], weights=group["rows"])
+        )
+        rows.append(
+            {
+                "best_execution_side": str(execution_side),
+                "queue_share_bin": int(queue_bin),
+                "fill_probability_bin": int(fill_bin),
+                "regimes": regimes,
+                "rows": total_rows,
+                "min_realized_fill_rate": float(group["realized_fill_rate"].min()),
+                "max_realized_fill_rate": float(group["realized_fill_rate"].max()),
+                "fill_rate_range": fill_range,
+                "min_absolute_calibration_error": float(group["absolute_calibration_error"].min()),
+                "max_absolute_calibration_error": float(group["absolute_calibration_error"].max()),
+                "calibration_error_range": calibration_range,
+                "weighted_mean_absolute_calibration_error": weighted_error,
+                "worst_regime": str(worst[regime_col]),
+                "drift_label": _queue_calibration_drift_label(
+                    fill_rate_range=fill_range,
+                    calibration_error_range=calibration_range,
+                    weighted_error=weighted_error,
+                ),
+            }
+        )
+    if not rows:
+        return _empty_queue_position_calibration_drift()
+    return pd.DataFrame(rows, columns=columns)
+
+
 def queue_position_edge_decay(surface: pd.DataFrame, *, min_rows: int = 1) -> pd.DataFrame:
     """Summarize how passive execution edge decays as queue position gets deeper.
 
@@ -1741,27 +1861,34 @@ def queue_position_execution_quality_gate(
     surface: pd.DataFrame,
     decay: pd.DataFrame,
     *,
+    drift: pd.DataFrame | None = None,
     max_expected_calibration_error: float = 0.15,
     max_expected_brier_score: float = 0.15,
     max_calibration_widening: float = 0.10,
+    max_drift_fill_rate_range: float = 0.25,
+    max_drift_calibration_error_range: float = 0.15,
 ) -> dict[str, float | int | str]:
     """Gate queue-position fill surfaces before treating passive edge as publishable.
 
     The surface-level calibration check asks whether predicted passive fills are
     empirically reliable across queue-depth buckets. The decay check asks whether
     edge degrades monotonically as quote placement moves deeper into the visible
-    queue. Combining both prevents a superficially attractive LCRI signal from
-    passing review when its execution evidence is driven by miscalibrated or
-    non-monotone queue-depth regimes.
+    queue. When supplied, the drift table additionally blocks bins whose realized
+    fill reliability fractures across regimes at a fixed side/queue/fill bin.
+    Combining these prevents a superficially attractive LCRI signal from passing
+    review when its execution evidence is driven by miscalibrated, regime-fragile,
+    or non-monotone queue-depth regimes.
     """
     for name, value in {
         "max_expected_calibration_error": max_expected_calibration_error,
         "max_expected_brier_score": max_expected_brier_score,
         "max_calibration_widening": max_calibration_widening,
+        "max_drift_fill_rate_range": max_drift_fill_rate_range,
+        "max_drift_calibration_error_range": max_drift_calibration_error_range,
     }.items():
         if not math.isfinite(value) or value < 0.0:
             raise ValueError(f"{name} must be a finite non-negative value")
-    if surface.empty and decay.empty:
+    if surface.empty and decay.empty and (drift is None or drift.empty):
         return _empty_queue_position_execution_quality_gate()
 
     surface_required = {"regime", "rows", "absolute_calibration_error", "brier_score"}
@@ -1842,8 +1969,80 @@ def queue_position_execution_quality_gate(
             ].astype(str)
         )
 
-    blocked_regimes = high_error_regimes | decay_block_regimes
+    drift_metrics: dict[str, float | int | str] = {}
+    drift_block_regimes: set[str] = set()
+    drift_watch_bins = 0
+    drift_unstable_bins = 0
+    if drift is not None:
+        drift_required = {
+            "rows",
+            "fill_rate_range",
+            "calibration_error_range",
+            "weighted_mean_absolute_calibration_error",
+            "worst_regime",
+            "drift_label",
+        }
+        _require_columns(drift, drift_required, "queue execution quality drift")
+        drift_values = _finite_values(
+            drift,
+            [
+                "rows",
+                "fill_rate_range",
+                "calibration_error_range",
+                "weighted_mean_absolute_calibration_error",
+            ],
+            "queue execution quality drift",
+        )
+        if (drift_values["rows"] < 0.0).any():
+            raise ValueError("queue execution quality drift rows must be non-negative")
+        if (drift_values.drop(columns=["rows"]) < 0.0).any().any():
+            raise ValueError("queue execution quality drift metrics must be non-negative")
+        if drift.empty:
+            drift_metrics = {
+                "drift_rows": 0,
+                "drift_bins": 0,
+                "unstable_drift_bins": 0,
+                "watch_drift_bins": 0,
+                "worst_drift_regime": "none",
+                "max_drift_fill_rate_range": 0.0,
+                "max_drift_calibration_error_range": 0.0,
+                "weighted_drift_absolute_calibration_error": 0.0,
+            }
+        else:
+            drift_labels = drift["drift_label"].astype(str)
+            drift_block_mask = (
+                (drift_labels == "calibration_unstable")
+                | (drift_values["fill_rate_range"] > max_drift_fill_rate_range)
+                | (drift_values["calibration_error_range"] > max_drift_calibration_error_range)
+            )
+            drift_watch_bins = int((drift_labels == "calibration_watch").sum())
+            drift_unstable_bins = int(drift_block_mask.sum())
+            drift_block_regimes = set(drift.loc[drift_block_mask, "worst_regime"].astype(str))
+            worst_drift_idx = drift_values["calibration_error_range"].idxmax()
+            drift_rows = int(drift_values["rows"].sum())
+            drift_weights = drift_values["rows"] / drift_rows if drift_rows > 0 else drift_values["rows"]
+            drift_metrics = {
+                "drift_rows": drift_rows,
+                "drift_bins": int(len(drift)),
+                "unstable_drift_bins": drift_unstable_bins,
+                "watch_drift_bins": drift_watch_bins,
+                "worst_drift_regime": str(drift.loc[worst_drift_idx, "worst_regime"]),
+                "max_drift_fill_rate_range": float(drift_values["fill_rate_range"].max()),
+                "max_drift_calibration_error_range": float(
+                    drift_values["calibration_error_range"].max()
+                ),
+                "weighted_drift_absolute_calibration_error": float(
+                    (
+                        drift_values["weighted_mean_absolute_calibration_error"]
+                        * drift_weights
+                    ).sum()
+                ),
+            }
+
+    blocked_regimes = high_error_regimes | decay_block_regimes | drift_block_regimes
     eligible_regimes = set(surface_data["regime"]) | set(decay_data["regime"])
+    if drift is not None and not drift.empty:
+        eligible_regimes |= set(drift["worst_regime"].astype(str))
     label = _queue_execution_quality_label(
         blocked_regimes=len(blocked_regimes),
         eligible_regimes=len(eligible_regimes),
@@ -1855,7 +2054,7 @@ def queue_position_execution_quality_gate(
         max_expected_brier_score=max_expected_brier_score,
     )
 
-    return {
+    gate = {
         "surface_rows": surface_rows,
         "decay_rows": decay_rows,
         "surface_regimes": int(surface_data["regime"].nunique()),
@@ -1874,6 +2073,8 @@ def queue_position_execution_quality_gate(
         "non_monotonic_decay_regimes": non_monotonic,
         "quality_gate_label": label,
     }
+    gate.update(drift_metrics)
+    return gate
 
 
 def _weighted_queue_quality_surface_row(group: pd.DataFrame) -> pd.Series:
@@ -3647,6 +3848,37 @@ def _empty_queue_position_fill_calibration_surface() -> pd.DataFrame:
             "mean_execution_adjusted_edge_ticks",
         ]
     )
+
+
+def _empty_queue_position_calibration_drift() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "best_execution_side",
+            "queue_share_bin",
+            "fill_probability_bin",
+            "regimes",
+            "rows",
+            "min_realized_fill_rate",
+            "max_realized_fill_rate",
+            "fill_rate_range",
+            "min_absolute_calibration_error",
+            "max_absolute_calibration_error",
+            "calibration_error_range",
+            "weighted_mean_absolute_calibration_error",
+            "worst_regime",
+            "drift_label",
+        ]
+    )
+
+
+def _queue_calibration_drift_label(
+    *, fill_rate_range: float, calibration_error_range: float, weighted_error: float
+) -> str:
+    if calibration_error_range > 0.15 or fill_rate_range > 0.25 or weighted_error > 0.20:
+        return "calibration_unstable"
+    if calibration_error_range > 0.05 or fill_rate_range > 0.10 or weighted_error > 0.10:
+        return "calibration_watch"
+    return "calibration_stable"
 
 
 def _empty_queue_position_edge_decay() -> pd.DataFrame:

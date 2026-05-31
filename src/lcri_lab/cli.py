@@ -108,10 +108,12 @@ from lcri_lab.execution import (
     passive_fill_event_window_diagnostics,
     passive_fill_realization_horizon_sweep,
     passive_fill_threshold_policy_curve,
+    queue_position_calibration_drift,
     queue_position_capacity_frontier,
     queue_position_capacity_stability,
     queue_position_edge_decay,
     queue_position_execution_quality_gate,
+    queue_position_fill_calibration_surface,
     queue_position_fill_surface,
     queue_position_fraction_sweep,
     queue_position_regime_capacity_concentration,
@@ -648,6 +650,14 @@ def run_demo(
         heldout_passive_fill_labeled,
         regime_col="pressure_memory_decay_state",
     )
+    queue_fill_calibration_surface = queue_position_fill_calibration_surface(
+        passive_fill_labeled,
+        regime_col="pressure_memory_decay_state",
+    )
+    heldout_queue_fill_calibration_surface = queue_position_fill_calibration_surface(
+        heldout_passive_fill_labeled,
+        regime_col="pressure_memory_decay_state",
+    )
     queue_fraction_sweep = queue_position_fraction_sweep(scored)
     heldout_queue_fraction_sweep = queue_position_fraction_sweep(heldout_scored)
     queue_regime_fraction_sweep = queue_position_regime_fraction_sweep(
@@ -694,13 +704,23 @@ def run_demo(
     )
     queue_edge_decay = queue_position_edge_decay(queue_fill_surface)
     heldout_queue_edge_decay = queue_position_edge_decay(heldout_queue_fill_surface)
+    queue_calibration_drift = queue_position_calibration_drift(
+        queue_fill_calibration_surface,
+        regime_col="pressure_memory_decay_state",
+    )
+    heldout_queue_calibration_drift = queue_position_calibration_drift(
+        heldout_queue_fill_calibration_surface,
+        regime_col="pressure_memory_decay_state",
+    )
     queue_execution_quality_gate = queue_position_execution_quality_gate(
         queue_fill_surface,
         queue_edge_decay,
+        drift=queue_calibration_drift,
     )
     heldout_queue_execution_quality_gate = queue_position_execution_quality_gate(
         heldout_queue_fill_surface,
         heldout_queue_edge_decay,
+        drift=heldout_queue_calibration_drift,
     )
     execution_publishability_gate = execution_publishability_release_gate(
         execution_publishability_packet,
@@ -864,6 +884,8 @@ def run_demo(
         "heldout_passive_fill_threshold_policy_curve.csv",
         "queue_position_fill_surface.csv",
         "heldout_queue_position_fill_surface.csv",
+        "queue_position_fill_calibration_surface.csv",
+        "heldout_queue_position_fill_calibration_surface.csv",
         "queue_position_fraction_sweep.csv",
         "heldout_queue_position_fraction_sweep.csv",
         "queue_position_regime_fraction_sweep.csv",
@@ -877,6 +899,8 @@ def run_demo(
         "queue_position_capacity_stability.json",
         "queue_position_edge_decay.csv",
         "heldout_queue_position_edge_decay.csv",
+        "queue_position_calibration_drift.csv",
+        "heldout_queue_position_calibration_drift.csv",
         "execution_adjusted_sample.csv",
         "research_summary.md",
         "artifact_coverage_matrix.csv",
@@ -1178,6 +1202,12 @@ def run_demo(
     heldout_queue_fill_surface.to_csv(
         output / "heldout_queue_position_fill_surface.csv", index=False
     )
+    queue_fill_calibration_surface.to_csv(
+        output / "queue_position_fill_calibration_surface.csv", index=False
+    )
+    heldout_queue_fill_calibration_surface.to_csv(
+        output / "heldout_queue_position_fill_calibration_surface.csv", index=False
+    )
     queue_fraction_sweep.to_csv(output / "queue_position_fraction_sweep.csv", index=False)
     heldout_queue_fraction_sweep.to_csv(
         output / "heldout_queue_position_fraction_sweep.csv", index=False
@@ -1209,6 +1239,10 @@ def run_demo(
     write_json(output / "queue_position_capacity_stability.json", queue_capacity_stability)
     queue_edge_decay.to_csv(output / "queue_position_edge_decay.csv", index=False)
     heldout_queue_edge_decay.to_csv(output / "heldout_queue_position_edge_decay.csv", index=False)
+    queue_calibration_drift.to_csv(output / "queue_position_calibration_drift.csv", index=False)
+    heldout_queue_calibration_drift.to_csv(
+        output / "heldout_queue_position_calibration_drift.csv", index=False
+    )
     execution_lcri_side_attribution.to_csv(
         output / "execution_adjusted_lcri_side_attribution.csv", index=False
     )
@@ -1362,6 +1396,8 @@ def run_demo(
         queue_capacity_stability=queue_capacity_stability,
         queue_edge_decay=queue_edge_decay,
         heldout_queue_edge_decay=heldout_queue_edge_decay,
+        queue_calibration_drift=queue_calibration_drift,
+        heldout_queue_calibration_drift=heldout_queue_calibration_drift,
     )
     coverage_matrix = artifact_coverage_matrix(artifact_paths)
     coverage_matrix.to_csv(output / "artifact_coverage_matrix.csv", index=False)
@@ -1587,6 +1623,8 @@ def _append_execution_adjusted_summary(
     queue_capacity_stability: dict[str, float | int | str | bool],
     queue_edge_decay: pd.DataFrame,
     heldout_queue_edge_decay: pd.DataFrame,
+    queue_calibration_drift: pd.DataFrame,
+    heldout_queue_calibration_drift: pd.DataFrame,
 ) -> None:
     regime_lines = _passive_fill_regime_summary_lines(passive_fill_event_regimes)
     heldout_regime_lines = _passive_fill_regime_summary_lines(heldout_passive_fill_event_regimes)
@@ -1635,6 +1673,10 @@ def _append_execution_adjusted_summary(
     )
     queue_decay_lines = _queue_position_edge_decay_lines(queue_edge_decay)
     heldout_queue_decay_lines = _queue_position_edge_decay_lines(heldout_queue_edge_decay)
+    queue_drift_lines = _queue_position_calibration_drift_lines(queue_calibration_drift)
+    heldout_queue_drift_lines = _queue_position_calibration_drift_lines(
+        heldout_queue_calibration_drift
+    )
     lines = [
         "",
         "## Execution-adjusted edge summary",
@@ -1736,6 +1778,14 @@ def _append_execution_adjusted_summary(
         "## Heldout queue-position edge decay",
         "",
         *heldout_queue_decay_lines,
+        "",
+        "## Queue-position calibration drift",
+        "",
+        *queue_drift_lines,
+        "",
+        "## Heldout queue-position calibration drift",
+        "",
+        *heldout_queue_drift_lines,
         "",
     ]
     path.write_text(path.read_text() + "\n".join(lines))
@@ -1953,6 +2003,25 @@ def _queue_position_edge_decay_lines(decay: pd.DataFrame) -> list[str]:
             f"fill_decay={row['fill_rate_decay']:.3f}, "
             f"edge_decay={row['edge_decay_ticks']:.3f}, "
             f"label={row['queue_decay_label']}"
+        )
+    return rows
+
+
+def _queue_position_calibration_drift_lines(drift: pd.DataFrame) -> list[str]:
+    if drift.empty:
+        return ["- no cross-regime queue calibration drift bins"]
+    sorted_drift = drift.sort_values(
+        ["calibration_error_range", "fill_rate_range", "rows"], ascending=False
+    )
+    rows = []
+    for row in sorted_drift.head(5).to_dict("records"):
+        rows.append(
+            "- "
+            f"{row['best_execution_side']} queue_bin={int(row['queue_share_bin'])}, "
+            f"fill_bin={int(row['fill_probability_bin'])}: regimes={int(row['regimes'])}, "
+            f"rows={int(row['rows'])}, fill_range={row['fill_rate_range']:.3f}, "
+            f"calibration_range={row['calibration_error_range']:.3f}, "
+            f"worst_regime={row['worst_regime']}, label={row['drift_label']}"
         )
     return rows
 
