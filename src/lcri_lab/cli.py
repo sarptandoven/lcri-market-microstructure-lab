@@ -799,22 +799,24 @@ def run_demo(
         heldout_queue_edge_decay,
         drift=heldout_queue_calibration_drift,
     )
+    execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(scored)
+    heldout_execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(heldout_scored)
+    execution_lcri_regime_attribution = execution_adjusted_lcri_regime_attribution(scored)
+    heldout_execution_lcri_regime_attribution = execution_adjusted_lcri_regime_attribution(heldout_scored)
     execution_publishability_gate = execution_publishability_release_gate(
         execution_publishability_packet,
         quality_gate=queue_execution_quality_gate,
         capacity_stability=queue_capacity_stability,
         regime_capacity_stability=queue_regime_capacity_stability_summary,
+        lcri_regime_attribution=execution_lcri_regime_attribution,
     )
     heldout_execution_publishability_gate = execution_publishability_release_gate(
         heldout_execution_publishability_packet,
         quality_gate=heldout_queue_execution_quality_gate,
         capacity_stability=queue_capacity_stability,
         regime_capacity_stability=queue_regime_capacity_stability_summary,
+        lcri_regime_attribution=heldout_execution_lcri_regime_attribution,
     )
-    execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(scored)
-    heldout_execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(heldout_scored)
-    execution_lcri_regime_attribution = execution_adjusted_lcri_regime_attribution(scored)
-    heldout_execution_lcri_regime_attribution = execution_adjusted_lcri_regime_attribution(heldout_scored)
     execution_lcri_quantile_diagnostics = execution_adjusted_lcri_quantile_diagnostics(scored)
     heldout_execution_lcri_quantile_diagnostics = execution_adjusted_lcri_quantile_diagnostics(
         heldout_scored

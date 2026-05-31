@@ -11,6 +11,8 @@ from lcri_lab.baseline import (
     baseline_nonlinear_publishability_summary,
     baseline_regime_basis_comparison,
     baseline_regime_publishability_summary,
+    baseline_regime_tail_lift_diagnostics,
+    baseline_regime_tail_lift_summary,
     baseline_rolling_basis_comparison,
     baseline_rolling_basis_summary,
     baseline_stress_tail_publishability_summary,
@@ -233,6 +235,83 @@ def test_baseline_tail_lift_diagnostics_rejects_unknown_feature() -> None:
 
     with pytest.raises(ValueError, match="unknown design feature"):
         baseline_tail_lift_diagnostics(features, feature="not_a_feature")
+
+
+def test_baseline_regime_tail_lift_diagnostics_exposes_fragile_stress_pockets() -> None:
+    books = simulate_order_books(SimulationConfig(rows=900, seed=41))
+    features = compute_features(books)
+    spread = features["spread_ticks"].to_numpy(dtype=float)
+    void_vol = features["liquidity_void_ratio"].to_numpy(dtype=float) * features[
+        "volatility"
+    ].to_numpy(dtype=float)
+    features["raw_imbalance"] = 0.07 * spread**2 + 0.42 * void_vol
+
+    diagnostics = baseline_regime_tail_lift_diagnostics(
+        features,
+        feature="liquidity_void_x_volatility",
+        train_fraction=0.55,
+        tail_quantile=0.25,
+        ridge=1e-8,
+        min_regime_tail_lift=0.20,
+    )
+    high_tail = diagnostics[diagnostics["tail_bucket"] == "high_tail"]
+
+    assert diagnostics.columns.tolist() == [
+        "regime",
+        "tail_bucket",
+        "feature",
+        "test_rows",
+        "feature_min",
+        "feature_max",
+        "core_rmse",
+        "nonlinear_rmse",
+        "nonlinear_rmse_lift_vs_core",
+        "core_residual_mean",
+        "nonlinear_residual_mean",
+        "review_note",
+    ]
+    assert set(diagnostics["tail_bucket"]) == {"low_tail", "body", "high_tail"}
+    assert set(diagnostics["regime"]) == set(features.iloc[int(len(features) * 0.55) :]["regime"])
+    assert (high_tail["nonlinear_rmse_lift_vs_core"] > 0.20).all()
+    assert (high_tail["review_note"] == "regime_tail_lift_supported").all()
+
+
+def test_baseline_regime_tail_lift_summary_gates_weakest_tail_by_regime() -> None:
+    diagnostics = pd.DataFrame(
+        {
+            "regime": ["stable", "stable", "thin", "thin"],
+            "tail_bucket": ["low_tail", "high_tail", "low_tail", "high_tail"],
+            "feature": ["spread_stress_squared"] * 4,
+            "test_rows": [25, 26, 27, 28],
+            "nonlinear_rmse_lift_vs_core": [0.22, 0.31, -0.03, 0.18],
+            "core_residual_mean": [0.04, -0.03, 0.02, -0.01],
+            "nonlinear_residual_mean": [0.01, -0.01, 0.01, 0.00],
+        }
+    )
+
+    summary = baseline_regime_tail_lift_summary(diagnostics, min_regime_tail_lift=0.15)
+    by_regime = summary.set_index("regime")
+
+    assert summary.columns.tolist() == [
+        "feature",
+        "regime",
+        "tail_buckets",
+        "test_rows",
+        "min_regime_tail_lift",
+        "median_regime_tail_lift",
+        "worst_tail_bucket",
+        "supported_tail_buckets",
+        "unsupported_tail_buckets",
+        "max_core_residual_abs_mean",
+        "max_nonlinear_residual_abs_mean",
+        "publishable",
+        "review_note",
+    ]
+    assert by_regime.loc["stable", "publishable"] is True
+    assert by_regime.loc["stable", "review_note"] == "regime_stress_tail_supported"
+    assert by_regime.loc["thin", "publishable"] is False
+    assert by_regime.loc["thin", "worst_tail_bucket"] == "low_tail"
+    assert by_regime.loc["thin", "review_note"] == "regime_stress_tail_fragile"
 
 
 def test_baseline_stress_tail_publishability_summary_gates_all_stress_tails() -> None:

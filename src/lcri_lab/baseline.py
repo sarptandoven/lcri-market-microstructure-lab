@@ -987,6 +987,219 @@ def baseline_tail_lift_diagnostics(
     return pd.DataFrame(rows, columns=columns)
 
 
+def baseline_regime_tail_lift_diagnostics(
+    frame: pd.DataFrame,
+    *,
+    feature: str,
+    regime_col: str = "regime",
+    train_fraction: float = 0.60,
+    tail_quantile: float = 0.20,
+    ridge: float = 1e-3,
+    min_regime_tail_lift: float = 0.0,
+) -> pd.DataFrame:
+    """Audit nonlinear baseline lift inside each liquidity regime/stress-tail pocket.
+
+    Aggregate nonlinear lift can still fail where reviewers care most: stressed
+    tails within thin or volatile regimes. This chronological holdout diagnostic
+    compares core versus full nonlinear residualization after crossing the selected
+    stress feature's tail buckets with the test-set liquidity regime labels.
+    """
+    columns = [
+        "regime",
+        "tail_bucket",
+        "feature",
+        "test_rows",
+        "feature_min",
+        "feature_max",
+        "core_rmse",
+        "nonlinear_rmse",
+        "nonlinear_rmse_lift_vs_core",
+        "core_residual_mean",
+        "nonlinear_residual_mean",
+        "review_note",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    if not isinstance(regime_col, str) or not regime_col:
+        raise ValueError("regime_col must be a non-empty string")
+    if not math.isfinite(train_fraction) or not 0.0 < train_fraction < 1.0:
+        raise ValueError("train_fraction must be finite and in (0, 1)")
+    if not math.isfinite(tail_quantile) or not 0.0 < tail_quantile < 0.5:
+        raise ValueError("tail_quantile must be finite and in (0, 0.5)")
+    if not math.isfinite(ridge) or ridge < 0.0:
+        raise ValueError("ridge must be a finite non-negative value")
+    if not math.isfinite(min_regime_tail_lift):
+        raise ValueError("min_regime_tail_lift must be finite")
+    missing_required = sorted({"raw_imbalance", regime_col} - set(frame.columns))
+    if missing_required:
+        raise ValueError(f"missing regime tail lift diagnostics columns: {missing_required}")
+
+    feature_names = design_feature_names()
+    if feature not in feature_names:
+        raise ValueError(f"unknown design feature: {feature}")
+    y = frame["raw_imbalance"].to_numpy(dtype=float)
+    if not np.isfinite(y).all():
+        raise ValueError("raw_imbalance values must be finite")
+    train_rows = int(len(frame) * train_fraction)
+    if train_rows < 1 or train_rows >= len(frame):
+        raise ValueError("train_fraction leaves no train or test rows")
+
+    x = _design_matrix(frame)
+    feature_values = x[train_rows:, feature_names.index(feature)]
+    regimes = frame[regime_col].iloc[train_rows:].astype(str).to_numpy()
+    if not np.isfinite(feature_values).all():
+        raise ValueError("regime tail feature values must be finite")
+
+    def fit_test_residual(indexes: list[int]) -> np.ndarray:
+        x_basis = x[:, indexes]
+        x_train = x_basis[:train_rows]
+        x_test = x_basis[train_rows:]
+        mean = x_train.mean(axis=0)
+        scale = x_train.std(axis=0)
+        scale[scale == 0.0] = 1.0
+        train_design = np.column_stack([np.ones(train_rows), (x_train - mean) / scale])
+        test_design = np.column_stack([np.ones(len(x_test)), (x_test - mean) / scale])
+        penalty = np.sqrt(ridge) * np.eye(train_design.shape[1])
+        penalty[0, 0] = 0.0
+        coefficients = np.linalg.lstsq(
+            np.vstack([train_design, penalty]),
+            np.concatenate([y[:train_rows], np.zeros(train_design.shape[1])]),
+            rcond=None,
+        )[0]
+        return y[train_rows:] - test_design @ coefficients
+
+    core_residual = fit_test_residual(list(range(len(feature_columns()))))
+    nonlinear_residual = fit_test_residual(list(range(len(feature_names))))
+    low_cutoff = float(np.quantile(feature_values, tail_quantile))
+    high_cutoff = float(np.quantile(feature_values, 1.0 - tail_quantile))
+    bucket_masks = [
+        ("low_tail", feature_values <= low_cutoff),
+        ("body", (feature_values > low_cutoff) & (feature_values < high_cutoff)),
+        ("high_tail", feature_values >= high_cutoff),
+    ]
+
+    rows: list[dict[str, float | int | str]] = []
+    for regime in sorted(set(regimes)):
+        regime_mask = regimes == regime
+        for bucket, bucket_mask in bucket_masks:
+            mask = regime_mask & bucket_mask
+            if not mask.any():
+                continue
+            bucket_core = core_residual[mask]
+            bucket_nonlinear = nonlinear_residual[mask]
+            core_rmse = float(np.sqrt(np.mean(bucket_core**2)))
+            nonlinear_rmse = float(np.sqrt(np.mean(bucket_nonlinear**2)))
+            lift = 0.0 if core_rmse <= 0.0 else (core_rmse - nonlinear_rmse) / core_rmse
+            note = (
+                "regime_tail_lift_supported"
+                if lift >= min_regime_tail_lift
+                else "regime_tail_lift_fragile"
+            )
+            rows.append(
+                {
+                    "regime": regime,
+                    "tail_bucket": bucket,
+                    "feature": feature,
+                    "test_rows": int(mask.sum()),
+                    "feature_min": float(feature_values[mask].min()),
+                    "feature_max": float(feature_values[mask].max()),
+                    "core_rmse": core_rmse,
+                    "nonlinear_rmse": nonlinear_rmse,
+                    "nonlinear_rmse_lift_vs_core": float(lift),
+                    "core_residual_mean": float(bucket_core.mean()),
+                    "nonlinear_residual_mean": float(bucket_nonlinear.mean()),
+                    "review_note": note,
+                }
+            )
+    return pd.DataFrame(rows, columns=columns)
+
+
+def baseline_regime_tail_lift_summary(
+    diagnostics: pd.DataFrame,
+    *,
+    min_regime_tail_lift: float = 0.0,
+) -> pd.DataFrame:
+    """Gate nonlinear baseline claims on the weakest stress tail inside each regime."""
+    columns = [
+        "feature",
+        "regime",
+        "tail_buckets",
+        "test_rows",
+        "min_regime_tail_lift",
+        "median_regime_tail_lift",
+        "worst_tail_bucket",
+        "supported_tail_buckets",
+        "unsupported_tail_buckets",
+        "max_core_residual_abs_mean",
+        "max_nonlinear_residual_abs_mean",
+        "publishable",
+        "review_note",
+    ]
+    if diagnostics.empty:
+        return pd.DataFrame(columns=columns)
+    if not math.isfinite(min_regime_tail_lift):
+        raise ValueError("min_regime_tail_lift must be finite")
+    required = {
+        "feature",
+        "regime",
+        "tail_bucket",
+        "test_rows",
+        "nonlinear_rmse_lift_vs_core",
+        "core_residual_mean",
+        "nonlinear_residual_mean",
+    }
+    missing = sorted(required - set(diagnostics.columns))
+    if missing:
+        raise ValueError(f"missing regime tail lift summary columns: {missing}")
+
+    numeric_columns = [
+        "test_rows",
+        "nonlinear_rmse_lift_vs_core",
+        "core_residual_mean",
+        "nonlinear_residual_mean",
+    ]
+    numeric = diagnostics[numeric_columns].astype(float)
+    if not np.isfinite(numeric.to_numpy()).all():
+        raise ValueError("regime tail lift summary metrics must be finite")
+    if (numeric["test_rows"] < 0.0).any():
+        raise ValueError("regime tail lift summary test rows must be non-negative")
+
+    rows: list[dict[str, bool | float | int | str]] = []
+    for (feature, regime), group in diagnostics.groupby(["feature", "regime"], sort=False):
+        lifts = group["nonlinear_rmse_lift_vs_core"].astype(float)
+        worst_index = lifts.idxmin()
+        supported = lifts >= min_regime_tail_lift
+        publishable = bool(supported.all())
+        rows.append(
+            {
+                "feature": str(feature),
+                "regime": str(regime),
+                "tail_buckets": int(group["tail_bucket"].astype(str).nunique()),
+                "test_rows": int(group["test_rows"].astype(float).sum()),
+                "min_regime_tail_lift": float(lifts.min()),
+                "median_regime_tail_lift": float(lifts.median()),
+                "worst_tail_bucket": str(group.loc[worst_index, "tail_bucket"]),
+                "supported_tail_buckets": int(supported.sum()),
+                "unsupported_tail_buckets": int((~supported).sum()),
+                "max_core_residual_abs_mean": float(
+                    group["core_residual_mean"].astype(float).abs().max()
+                ),
+                "max_nonlinear_residual_abs_mean": float(
+                    group["nonlinear_residual_mean"].astype(float).abs().max()
+                ),
+                "publishable": publishable,
+                "review_note": (
+                    "regime_stress_tail_supported"
+                    if publishable
+                    else "regime_stress_tail_fragile"
+                ),
+            }
+        )
+    output = pd.DataFrame(rows, columns=columns)
+    output["publishable"] = output["publishable"].astype(object)
+    return output
+
+
 def baseline_stress_tail_publishability_summary(
     diagnostics: pd.DataFrame,
     *,

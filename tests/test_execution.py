@@ -2670,6 +2670,48 @@ def test_execution_publishability_release_gate_blocks_regime_capacity_loss() -> 
     assert "regime_capacity_not_replicated" in gate["blocking_reasons"]
 
 
+def test_execution_publishability_release_gate_blocks_lcri_regime_survival_loss() -> None:
+    review_packet = pd.DataFrame(
+        {
+            "publishable_side": ["long"],
+            "best_execution_side": ["long"],
+            "rows": [100],
+            "conflict_rows": [0],
+            "review_priority": [0],
+        }
+    )
+    quality_gate = {"quality_gate_label": "queue_execution_publishable"}
+    capacity_stability = {"capacity_stability_label": "capacity_stable"}
+    lcri_regime_attribution = pd.DataFrame(
+        {
+            "regime": ["open", "stress", "stress", "open"],
+            "lcri_side": ["long", "long", "short", "neutral"],
+            "rows": [50, 30, 20, 10],
+            "execution_survival_share": [0.72, 0.20, 0.55, 0.0],
+            "execution_conflict_share": [0.10, 0.80, 0.25, 0.0],
+        }
+    )
+
+    gate = execution_publishability_release_gate(
+        review_packet,
+        quality_gate=quality_gate,
+        capacity_stability=capacity_stability,
+        lcri_regime_attribution=lcri_regime_attribution,
+        min_lcri_regime_survival_share=0.50,
+        max_lcri_regime_conflict_share=0.40,
+    )
+
+    assert gate["decision"] == "block"
+    assert gate["passes"] is False
+    assert gate["lcri_regime_survival_label"] == "lcri_regime_execution_not_preserved"
+    assert gate["weak_lcri_regime_sides"] == 1
+    assert gate["worst_lcri_regime"] == "stress"
+    assert gate["worst_lcri_side"] == "long"
+    assert gate["min_lcri_execution_survival_share"] == pytest.approx(0.20)
+    assert gate["max_lcri_execution_conflict_share"] == pytest.approx(0.80)
+    assert "lcri_regime_execution_not_preserved" in gate["blocking_reasons"]
+
+
 def test_execution_publishability_release_gate_passes_clean_execution_evidence() -> None:
     review_packet = pd.DataFrame(
         {

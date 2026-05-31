@@ -805,6 +805,12 @@ def verify_execution_publishability_release_gate(
         "lost_capacity_regimes",
         "stable_regime_share",
         "worst_capacity_regime",
+        "lcri_regime_survival_label",
+        "weak_lcri_regime_sides",
+        "worst_lcri_regime",
+        "worst_lcri_side",
+        "min_lcri_execution_survival_share",
+        "max_lcri_execution_conflict_share",
         "blocking_reasons",
         "review_reasons",
         "decision",
@@ -824,6 +830,9 @@ def verify_execution_publishability_release_gate(
         "high_priority_conflict_share",
         "lost_capacity_regimes",
         "stable_regime_share",
+        "weak_lcri_regime_sides",
+        "min_lcri_execution_survival_share",
+        "max_lcri_execution_conflict_share",
     ]
     numeric = {key: float(gate[key]) for key in numeric_keys}
     if not all(math.isfinite(value) for value in numeric.values()):
@@ -836,6 +845,10 @@ def verify_execution_publishability_release_gate(
         errors.append(f"bounded execution release high-priority conflict share violated in {artifact}")
     if not 0.0 <= numeric["stable_regime_share"] <= 1.0:
         errors.append(f"bounded execution release regime stability share violated in {artifact}")
+    if not 0.0 <= numeric["min_lcri_execution_survival_share"] <= 1.0:
+        errors.append(f"bounded execution release LCRI survival share violated in {artifact}")
+    if not 0.0 <= numeric["max_lcri_execution_conflict_share"] <= 1.0:
+        errors.append(f"bounded execution release LCRI conflict share violated in {artifact}")
     if numeric["conflict_rows"] > numeric["total_rows"]:
         errors.append(f"execution release conflict rows exceed total rows in {artifact}")
     if numeric["high_priority_conflict_rows"] > numeric["total_rows"]:
@@ -861,6 +874,12 @@ def verify_execution_publishability_release_gate(
         errors.append(f"blank execution release regime capacity stability label in {artifact}")
     if not str(gate["worst_capacity_regime"]):
         errors.append(f"blank execution release worst capacity regime in {artifact}")
+    if not str(gate["lcri_regime_survival_label"]):
+        errors.append(f"blank execution release LCRI regime survival label in {artifact}")
+    if not str(gate["worst_lcri_regime"]):
+        errors.append(f"blank execution release worst LCRI regime in {artifact}")
+    if not str(gate["worst_lcri_side"]):
+        errors.append(f"blank execution release worst LCRI side in {artifact}")
     return errors
 
 

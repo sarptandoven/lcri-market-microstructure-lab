@@ -6319,8 +6319,11 @@ def execution_publishability_release_gate(
     quality_gate: dict[str, float | int | str] | None = None,
     capacity_stability: dict[str, float | int | str | bool] | None = None,
     regime_capacity_stability: dict[str, float | int | str] | None = None,
+    lcri_regime_attribution: pd.DataFrame | None = None,
     max_conflict_share: float = 0.25,
     max_high_priority_conflict_share: float = 0.10,
+    min_lcri_regime_survival_share: float = 0.50,
+    max_lcri_regime_conflict_share: float = 0.40,
 ) -> dict[str, float | int | str | bool]:
     """Reduce execution-aware artifacts into an owner-facing release gate.
 
@@ -6333,6 +6336,8 @@ def execution_publishability_release_gate(
     for name, value in {
         "max_conflict_share": max_conflict_share,
         "max_high_priority_conflict_share": max_high_priority_conflict_share,
+        "min_lcri_regime_survival_share": min_lcri_regime_survival_share,
+        "max_lcri_regime_conflict_share": max_lcri_regime_conflict_share,
     }.items():
         if not math.isfinite(value) or not 0.0 <= value <= 1.0:
             raise ValueError(f"{name} must be finite and in [0.0, 1.0]")
@@ -6381,6 +6386,58 @@ def execution_publishability_release_gate(
     stable_regime_share = float(regime_capacity.get("stable_regime_share", 0.0))
     worst_capacity_regime = str(regime_capacity.get("worst_regime", "none"))
 
+    lcri_regime_label = "lcri_regime_execution_not_evaluated"
+    weak_lcri_regime_sides = 0
+    worst_lcri_regime = "none"
+    worst_lcri_side = "none"
+    min_lcri_survival = 0.0
+    max_lcri_conflict = 0.0
+    if lcri_regime_attribution is not None and not lcri_regime_attribution.empty:
+        required_lcri_regime_columns = {
+            "regime",
+            "lcri_side",
+            "rows",
+            "execution_survival_share",
+            "execution_conflict_share",
+        }
+        _require_columns(
+            lcri_regime_attribution,
+            required_lcri_regime_columns,
+            "execution publishability LCRI regime survival",
+        )
+        lcri_values = _finite_values(
+            lcri_regime_attribution,
+            ["rows", "execution_survival_share", "execution_conflict_share"],
+            "execution publishability LCRI regime survival",
+        )
+        if (lcri_values[["rows", "execution_survival_share", "execution_conflict_share"]] < 0.0).any().any():
+            raise ValueError("execution publishability LCRI regime survival metrics must be non-negative")
+        if (lcri_values[["execution_survival_share", "execution_conflict_share"]] > 1.0).any().any():
+            raise ValueError("execution publishability LCRI regime shares must be in [0, 1]")
+        lcri_sides = lcri_regime_attribution["lcri_side"].astype(str)
+        lcri_signal = lcri_regime_attribution.loc[lcri_sides != "neutral"].copy()
+        if not lcri_signal.empty:
+            signal_values = lcri_values.loc[lcri_signal.index]
+            weak_mask = (
+                (signal_values["execution_survival_share"] < min_lcri_regime_survival_share)
+                | (signal_values["execution_conflict_share"] > max_lcri_regime_conflict_share)
+            )
+            weak_lcri_regime_sides = int(weak_mask.sum())
+            min_lcri_survival = float(signal_values["execution_survival_share"].min())
+            max_lcri_conflict = float(signal_values["execution_conflict_share"].max())
+            weakness_score = (
+                (min_lcri_regime_survival_share - signal_values["execution_survival_share"])
+                + (signal_values["execution_conflict_share"] - max_lcri_regime_conflict_share)
+            )
+            worst_index = weakness_score.idxmax()
+            worst_lcri_regime = str(lcri_regime_attribution.loc[worst_index, "regime"])
+            worst_lcri_side = str(lcri_regime_attribution.loc[worst_index, "lcri_side"])
+            lcri_regime_label = (
+                "lcri_regime_execution_not_preserved"
+                if weak_lcri_regime_sides
+                else "lcri_regime_execution_preserved"
+            )
+
     blocking_reasons: list[str] = []
     review_reasons: list[str] = []
     if total_rows == 0:
@@ -6401,6 +6458,8 @@ def execution_publishability_release_gate(
         blocking_reasons.append(regime_capacity_label)
     elif regime_capacity_label in {"regime_capacity_fragile", "regime_capacity_mixed"}:
         review_reasons.append(regime_capacity_label)
+    if lcri_regime_label == "lcri_regime_execution_not_preserved":
+        blocking_reasons.append(lcri_regime_label)
 
     if blocking_reasons:
         decision = "block"
@@ -6427,6 +6486,12 @@ def execution_publishability_release_gate(
         "lost_capacity_regimes": lost_capacity_regimes,
         "stable_regime_share": stable_regime_share,
         "worst_capacity_regime": worst_capacity_regime,
+        "lcri_regime_survival_label": lcri_regime_label,
+        "weak_lcri_regime_sides": weak_lcri_regime_sides,
+        "worst_lcri_regime": worst_lcri_regime,
+        "worst_lcri_side": worst_lcri_side,
+        "min_lcri_execution_survival_share": min_lcri_survival,
+        "max_lcri_execution_conflict_share": max_lcri_conflict,
         "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
         "review_reasons": ";".join(review_reasons) if review_reasons else "none",
         "decision": decision,
