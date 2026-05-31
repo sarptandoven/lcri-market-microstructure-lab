@@ -127,9 +127,13 @@ surfaces without opening every file:
   conflict priority.
 - `execution_publishability_release_gate.json` (when emitted by downstream
   report scripts): owner-facing gate that combines the review packet with queue
-  execution quality and capacity-stability labels into `pass`/`review`/`block`,
-  preventing demo sign-off when passive alpha depends on fragile queue capacity or
-  high-priority execution conflicts.
+  execution quality, latency sensitivity, and capacity-stability labels into
+  `pass`/`review`/`block`, preventing demo sign-off when passive alpha depends on
+  fragile queue capacity, stale queue-state decisions, or high-priority execution
+  conflicts.
+- `queue_position_latency_sensitivity.csv`: decision-latency stress curve that
+  keeps the selected side and predicted fill odds fixed at decision time, then
+  scores realized fills after later book snapshots to expose stale-queue fragility.
 - `passive_fill_event_windows.csv`: high passive-fill-probability event windows
   with side-specific pre/post realized edge drift plus modal pre/post memory-decay
   regime transitions.

@@ -55,6 +55,7 @@ from lcri_lab.execution import (
     queue_position_fill_surface,
     queue_position_toxicity_surface,
     queue_position_fraction_sweep,
+    queue_position_latency_sensitivity,
     queue_position_regime_fraction_sweep,
 )
 
@@ -2610,6 +2611,37 @@ def test_execution_publishability_review_packet_surfaces_queue_gate_conflicts() 
     assert packet.loc[1, "conflict_share"] == pytest.approx(1.0)
 
 
+def test_queue_position_latency_sensitivity_audits_stale_execution_decisions() -> None:
+    frame = pd.DataFrame(
+        {
+            "symbol": ["A", "A", "A", "B", "B"],
+            "best_execution_side": ["long", "long", "short", "short", "long"],
+            "bid_fill_probability": [0.80, 0.60, 0.30, 0.20, 0.90],
+            "ask_fill_probability": [0.20, 0.40, 0.70, 0.75, 0.10],
+            "bid_realized_fill": [1.0, 0.0, 1.0, 0.0, 1.0],
+            "ask_realized_fill": [0.0, 1.0, 1.0, 1.0, 0.0],
+            "execution_adjusted_edge_ticks": [0.20, 0.10, 0.30, 0.40, 0.50],
+        }
+    )
+
+    curve = queue_position_latency_sensitivity(frame, latencies=[0, 1], group_cols="symbol")
+
+    assert curve["latency_steps"].tolist() == [0, 1]
+    assert curve["candidates"].tolist() == [5, 3]
+    assert curve["long_candidates"].tolist() == [3, 2]
+    assert curve["short_candidates"].tolist() == [2, 1]
+    assert curve["mean_decision_fill_probability"].tolist() == pytest.approx([0.75, (0.80 + 0.60 + 0.75) / 3.0])
+    assert curve["realized_fill_rate"].tolist() == pytest.approx([0.80, 1.0 / 3.0])
+    assert curve["realized_fill_gap_vs_immediate"].tolist() == pytest.approx([0.0, -0.80 + (1.0 / 3.0)])
+    assert curve["mean_execution_adjusted_edge_ticks"].tolist() == pytest.approx([0.30, (0.20 + 0.10 + 0.40) / 3.0])
+    assert curve["latency_label"].tolist() == ["anchor_latency", "latency_fragile"]
+
+
+def test_queue_position_latency_sensitivity_rejects_negative_latency() -> None:
+    with pytest.raises(ValueError, match="latencies must be non-negative integers"):
+        queue_position_latency_sensitivity(pd.DataFrame(), latencies=[0, -1])
+
+
 def test_execution_publishability_review_packet_handles_empty_frames() -> None:
     packet = execution_publishability_review_packet(pd.DataFrame())
 
@@ -2752,6 +2784,45 @@ def test_execution_publishability_release_gate_blocks_lcri_regime_survival_loss(
     assert gate["min_lcri_execution_survival_share"] == pytest.approx(0.20)
     assert gate["max_lcri_execution_conflict_share"] == pytest.approx(0.80)
     assert "lcri_regime_execution_not_preserved" in gate["blocking_reasons"]
+
+
+def test_execution_publishability_release_gate_blocks_latency_fragile_queue_evidence() -> None:
+    review_packet = pd.DataFrame(
+        {
+            "publishable_side": ["long"],
+            "best_execution_side": ["long"],
+            "rows": [100],
+            "conflict_rows": [0],
+            "review_priority": [0],
+        }
+    )
+    quality_gate = {"quality_gate_label": "queue_execution_publishable"}
+    capacity_stability = {"capacity_stability_label": "capacity_stable"}
+    latency_sensitivity = pd.DataFrame(
+        {
+            "latency_steps": [0, 1, 2],
+            "candidates": [100, 80, 35],
+            "realized_fill_gap_vs_immediate": [0.0, -0.04, -0.22],
+            "latency_label": ["anchor_latency", "latency_robust", "latency_fragile"],
+        }
+    )
+
+    gate = execution_publishability_release_gate(
+        review_packet,
+        quality_gate=quality_gate,
+        capacity_stability=capacity_stability,
+        latency_sensitivity=latency_sensitivity,
+        max_latency_fill_decay=0.10,
+        min_latency_candidate_retention_share=0.50,
+    )
+
+    assert gate["decision"] == "block"
+    assert gate["passes"] is False
+    assert gate["latency_sensitivity_label"] == "queue_latency_fragile"
+    assert gate["worst_latency_steps"] == 2
+    assert gate["worst_latency_fill_gap"] == pytest.approx(-0.22)
+    assert gate["min_latency_candidate_retention_share"] == pytest.approx(0.35)
+    assert "queue_latency_fragile" in gate["blocking_reasons"]
 
 
 def test_execution_publishability_release_gate_passes_clean_execution_evidence() -> None:

@@ -6438,10 +6438,13 @@ def execution_publishability_release_gate(
     capacity_stability: dict[str, float | int | str | bool] | None = None,
     regime_capacity_stability: dict[str, float | int | str] | None = None,
     lcri_regime_attribution: pd.DataFrame | None = None,
+    latency_sensitivity: pd.DataFrame | None = None,
     max_conflict_share: float = 0.25,
     max_high_priority_conflict_share: float = 0.10,
     min_lcri_regime_survival_share: float = 0.50,
     max_lcri_regime_conflict_share: float = 0.40,
+    max_latency_fill_decay: float = 0.10,
+    min_latency_candidate_retention_share: float = 0.50,
 ) -> dict[str, float | int | str | bool]:
     """Reduce execution-aware artifacts into an owner-facing release gate.
 
@@ -6456,6 +6459,8 @@ def execution_publishability_release_gate(
         "max_high_priority_conflict_share": max_high_priority_conflict_share,
         "min_lcri_regime_survival_share": min_lcri_regime_survival_share,
         "max_lcri_regime_conflict_share": max_lcri_regime_conflict_share,
+        "max_latency_fill_decay": max_latency_fill_decay,
+        "min_latency_candidate_retention_share": min_latency_candidate_retention_share,
     }.items():
         if not math.isfinite(value) or not 0.0 <= value <= 1.0:
             raise ValueError(f"{name} must be finite and in [0.0, 1.0]")
@@ -6556,6 +6561,45 @@ def execution_publishability_release_gate(
                 else "lcri_regime_execution_preserved"
             )
 
+    latency_label = "queue_latency_not_evaluated"
+    worst_latency_steps = 0
+    worst_latency_fill_gap = 0.0
+    min_latency_retention = 0.0
+    if latency_sensitivity is not None and not latency_sensitivity.empty:
+        required_latency_columns = {
+            "latency_steps",
+            "candidates",
+            "realized_fill_gap_vs_immediate",
+        }
+        _require_columns(
+            latency_sensitivity,
+            required_latency_columns,
+            "execution publishability latency sensitivity",
+        )
+        latency_values = _finite_values(
+            latency_sensitivity,
+            ["latency_steps", "candidates", "realized_fill_gap_vs_immediate"],
+            "execution publishability latency sensitivity",
+        )
+        if (latency_values[["latency_steps", "candidates"]] < 0.0).any().any():
+            raise ValueError("execution publishability latency sensitivity counts must be non-negative")
+        anchor_rows = latency_values[latency_values["latency_steps"] == 0.0]
+        anchor_candidates = float(anchor_rows["candidates"].max()) if not anchor_rows.empty else 0.0
+        delayed = latency_values[latency_values["latency_steps"] > 0.0]
+        if delayed.empty or anchor_candidates <= 0.0:
+            latency_label = "queue_latency_insufficient_evidence"
+        else:
+            worst_index = delayed["realized_fill_gap_vs_immediate"].idxmin()
+            worst_latency_steps = int(latency_values.loc[worst_index, "latency_steps"])
+            worst_latency_fill_gap = float(latency_values.loc[worst_index, "realized_fill_gap_vs_immediate"])
+            min_latency_retention = float((delayed["candidates"] / anchor_candidates).min())
+            latency_label = (
+                "queue_latency_fragile"
+                if worst_latency_fill_gap < -max_latency_fill_decay
+                or min_latency_retention < min_latency_candidate_retention_share
+                else "queue_latency_robust"
+            )
+
     blocking_reasons: list[str] = []
     review_reasons: list[str] = []
     if total_rows == 0:
@@ -6578,6 +6622,10 @@ def execution_publishability_release_gate(
         review_reasons.append(regime_capacity_label)
     if lcri_regime_label == "lcri_regime_execution_not_preserved":
         blocking_reasons.append(lcri_regime_label)
+    if latency_label == "queue_latency_fragile":
+        blocking_reasons.append(latency_label)
+    elif latency_label == "queue_latency_insufficient_evidence":
+        review_reasons.append(latency_label)
 
     if blocking_reasons:
         decision = "block"
@@ -6610,12 +6658,141 @@ def execution_publishability_release_gate(
         "worst_lcri_side": worst_lcri_side,
         "min_lcri_execution_survival_share": min_lcri_survival,
         "max_lcri_execution_conflict_share": max_lcri_conflict,
+        "latency_sensitivity_label": latency_label,
+        "worst_latency_steps": worst_latency_steps,
+        "worst_latency_fill_gap": worst_latency_fill_gap,
+        "min_latency_candidate_retention_share": min_latency_retention,
         "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
         "review_reasons": ";".join(review_reasons) if review_reasons else "none",
         "decision": decision,
         "passes": passes,
         "release_gate_label": label,
     }
+
+
+def queue_position_latency_sensitivity(
+    frame: pd.DataFrame,
+    *,
+    latencies: list[int] | tuple[int, ...] = (0, 1, 2, 5),
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    side_col: str = "best_execution_side",
+    bid_realized_col: str = "bid_realized_fill",
+    ask_realized_col: str = "ask_realized_fill",
+    edge_col: str = "execution_adjusted_edge_ticks",
+    max_realized_fill_decay: float = 0.10,
+) -> pd.DataFrame:
+    """Audit how queue-aware passive fill evidence decays under decision latency.
+
+    Passive execution claims are fragile when quote decisions are computed on stale
+    queue state. This diagnostic keeps the decision-side and predicted fill odds at
+    row ``t`` fixed, then scores realized fills after ``latency`` snapshot steps
+    within each symbol/session group. The resulting curve distinguishes genuinely
+    executable queue signals from effects that disappear when a child order joins a
+    few book updates later.
+    """
+    columns = [
+        "latency_steps",
+        "candidates",
+        "long_candidates",
+        "short_candidates",
+        "mean_decision_fill_probability",
+        "realized_fill_rate",
+        "realized_fill_gap_vs_immediate",
+        "mean_execution_adjusted_edge_ticks",
+        "latency_label",
+    ]
+    if not latencies:
+        raise ValueError("latencies must be a non-empty sequence")
+    if any(not isinstance(latency, int) or isinstance(latency, bool) or latency < 0 for latency in latencies):
+        raise ValueError("latencies must be non-negative integers")
+    if len(set(latencies)) != len(latencies):
+        raise ValueError("latencies must be unique")
+    if not math.isfinite(max_realized_fill_decay) or max_realized_fill_decay < 0.0:
+        raise ValueError("max_realized_fill_decay must be finite and non-negative")
+
+    required = {
+        side_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        bid_realized_col,
+        ask_realized_col,
+        edge_col,
+    }
+    _require_columns(frame, required, "queue position latency sensitivity")
+    grouping_columns = _normalize_group_columns(frame, group_cols, "queue position latency sensitivity group")
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    values = _finite_values(
+        frame,
+        ["bid_fill_probability", "ask_fill_probability", bid_realized_col, ask_realized_col, edge_col],
+        "queue position latency sensitivity",
+    )
+    sides = frame[side_col].astype(str)
+    tradable = sides.isin({"long", "short"})
+    decision_fill_probability = pd.Series(
+        np.select(
+            [sides == "long", sides == "short"],
+            [values["bid_fill_probability"], values["ask_fill_probability"]],
+            default=np.nan,
+        ),
+        index=frame.index,
+    )
+
+    def latency_realized(column: str, latency: int) -> pd.Series:
+        if latency == 0:
+            return values[column]
+        if not grouping_columns:
+            return values[column].shift(-latency)
+        keys = [frame[group_col] for group_col in grouping_columns]
+        return values[column].groupby(keys, sort=False, dropna=False).shift(-latency)
+
+    rows: list[dict[str, float | int | str]] = []
+    anchor_fill_rate: float | None = None
+    for latency in sorted(latencies):
+        bid_realized = latency_realized(bid_realized_col, latency)
+        ask_realized = latency_realized(ask_realized_col, latency)
+        selected_realized = pd.Series(
+            np.select(
+                [sides == "long", sides == "short"],
+                [bid_realized, ask_realized],
+                default=np.nan,
+            ),
+            index=frame.index,
+        )
+        mask = tradable & selected_realized.notna()
+        candidates = int(mask.sum())
+        if candidates == 0:
+            fill_rate = 0.0
+            mean_probability = 0.0
+            mean_edge = 0.0
+        else:
+            fill_rate = float(selected_realized[mask].mean())
+            mean_probability = float(decision_fill_probability[mask].mean())
+            mean_edge = float(values.loc[mask, edge_col].mean())
+        if anchor_fill_rate is None:
+            anchor_fill_rate = fill_rate
+        gap = fill_rate - anchor_fill_rate
+        if latency == 0:
+            label = "anchor_latency"
+        elif gap < -max_realized_fill_decay:
+            label = "latency_fragile"
+        else:
+            label = "latency_robust"
+        rows.append(
+            {
+                "latency_steps": int(latency),
+                "candidates": candidates,
+                "long_candidates": int(((sides == "long") & mask).sum()),
+                "short_candidates": int(((sides == "short") & mask).sum()),
+                "mean_decision_fill_probability": mean_probability,
+                "realized_fill_rate": fill_rate,
+                "realized_fill_gap_vs_immediate": float(gap),
+                "mean_execution_adjusted_edge_ticks": mean_edge,
+                "latency_label": label,
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
 
 
 def execution_publishability_review_packet(frame: pd.DataFrame) -> pd.DataFrame:
