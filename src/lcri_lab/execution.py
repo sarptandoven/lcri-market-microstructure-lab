@@ -2595,6 +2595,212 @@ def queue_position_calibration_stability_summary(
     }
 
 
+def queue_position_calibration_reliability_scorecard(
+    residual_summary: pd.DataFrame,
+    drift: pd.DataFrame,
+    *,
+    stability_summary: dict[str, float | int | str] | None = None,
+    regime_col: str = "regime",
+    max_weighted_abs_error: float = 0.20,
+    max_unstable_drift_share: float = 0.25,
+) -> dict[str, float | int | str]:
+    """Combine queue-fill residual, drift, and holdout stability into a release scorecard.
+
+    Queue-position fill probabilities should not be treated as publishable simply
+    because their aggregate calibration looks acceptable. This scorecard focuses
+    review on the fragile execution modes that matter for passive LCRI: systematic
+    underfills that already drag execution edge, queue/probability cells that drift
+    across regimes, and calibration cells that degrade or disappear in holdout.
+    """
+    if not regime_col:
+        raise ValueError("regime_col must be non-empty")
+    if not math.isfinite(max_weighted_abs_error) or max_weighted_abs_error < 0.0:
+        raise ValueError("max_weighted_abs_error must be a finite non-negative value")
+    if not math.isfinite(max_unstable_drift_share) or not 0.0 <= max_unstable_drift_share <= 1.0:
+        raise ValueError("max_unstable_drift_share must be in [0, 1]")
+
+    empty: dict[str, float | int | str] = {
+        "residual_slices": 0,
+        "underfilled_execution_drag_slices": 0,
+        "residual_watch_slices": 0,
+        "max_weighted_absolute_calibration_error": 0.0,
+        "worst_residual_regime": "none",
+        "worst_residual_best_execution_side": "none",
+        "worst_residual_label": "none",
+        "drift_bins": 0,
+        "unstable_drift_bins": 0,
+        "watch_drift_bins": 0,
+        "unstable_drift_share": 0.0,
+        "max_fill_rate_range": 0.0,
+        "max_calibration_error_range": 0.0,
+        "worst_drift_regime": "none",
+        "worst_drift_best_execution_side": "none",
+        "worst_drift_label": "none",
+        "stability_cells": 0,
+        "degraded_stability_cells": 0,
+        "lost_stability_cells": 0,
+        "stability_label": "no_queue_calibration_stability_data",
+        "queue_calibration_reliability_label": "no_queue_calibration_reliability_data",
+    }
+    if residual_summary.empty and drift.empty and not stability_summary:
+        return empty
+
+    result = dict(empty)
+    if not residual_summary.empty:
+        residual_required = {
+            regime_col,
+            "best_execution_side",
+            "rows",
+            "underfilled_bins",
+            "weighted_calibration_error",
+            "weighted_absolute_calibration_error",
+            "weighted_mean_execution_adjusted_edge_ticks",
+            "residual_label",
+        }
+        _require_columns(
+            residual_summary,
+            residual_required,
+            "queue position calibration reliability residual",
+        )
+        residual_values = _finite_values(
+            residual_summary,
+            [
+                "rows",
+                "underfilled_bins",
+                "weighted_calibration_error",
+                "weighted_absolute_calibration_error",
+                "weighted_mean_execution_adjusted_edge_ticks",
+            ],
+            "queue position calibration reliability residual",
+        )
+        if not residual_values[["rows", "underfilled_bins"]].ge(0.0).all().all():
+            raise ValueError("queue position calibration reliability residual counts must be non-negative")
+        if not residual_values["weighted_absolute_calibration_error"].between(0.0, 1.0).all():
+            raise ValueError("queue position calibration reliability residual errors must be in [0, 1]")
+        labels = residual_summary["residual_label"].astype(str)
+        worst = pd.DataFrame(
+            {
+                regime_col: residual_summary[regime_col].astype(str),
+                "best_execution_side": residual_summary["best_execution_side"].astype(str),
+                "label": labels,
+                "weighted_abs_error": residual_values["weighted_absolute_calibration_error"],
+                "underfill_drag": (labels == "underfilled_execution_drag").astype(int),
+                "rows": residual_values["rows"],
+            }
+        ).sort_values(
+            ["underfill_drag", "weighted_abs_error", "rows", regime_col, "best_execution_side"],
+            ascending=[False, False, False, True, True],
+        ).iloc[0]
+        result.update(
+            {
+                "residual_slices": int(len(residual_summary)),
+                "underfilled_execution_drag_slices": int((labels == "underfilled_execution_drag").sum()),
+                "residual_watch_slices": int(labels.isin(["calibration_residual_watch", "underfilled_but_edge_positive"]).sum()),
+                "max_weighted_absolute_calibration_error": float(
+                    residual_values["weighted_absolute_calibration_error"].max()
+                ),
+                "worst_residual_regime": str(worst[regime_col]),
+                "worst_residual_best_execution_side": str(worst["best_execution_side"]),
+                "worst_residual_label": str(worst["label"]),
+            }
+        )
+
+    if not drift.empty:
+        drift_required = {
+            "best_execution_side",
+            "rows",
+            "fill_rate_range",
+            "calibration_error_range",
+            "weighted_mean_absolute_calibration_error",
+            "worst_regime",
+            "drift_label",
+        }
+        _require_columns(drift, drift_required, "queue position calibration reliability drift")
+        drift_values = _finite_values(
+            drift,
+            [
+                "rows",
+                "fill_rate_range",
+                "calibration_error_range",
+                "weighted_mean_absolute_calibration_error",
+            ],
+            "queue position calibration reliability drift",
+        )
+        if not drift_values["rows"].ge(0.0).all():
+            raise ValueError("queue position calibration reliability drift rows must be non-negative")
+        for column in ["fill_rate_range", "calibration_error_range", "weighted_mean_absolute_calibration_error"]:
+            if not drift_values[column].between(0.0, 1.0).all():
+                raise ValueError(f"queue position calibration reliability drift {column} must be in [0, 1]")
+        drift_labels = drift["drift_label"].astype(str)
+        worst_drift = pd.DataFrame(
+            {
+                "best_execution_side": drift["best_execution_side"].astype(str),
+                "worst_regime": drift["worst_regime"].astype(str),
+                "label": drift_labels,
+                "unstable": (drift_labels == "calibration_unstable").astype(int),
+                "weighted_abs_error": drift_values["weighted_mean_absolute_calibration_error"],
+                "fill_range": drift_values["fill_rate_range"],
+                "calibration_range": drift_values["calibration_error_range"],
+                "rows": drift_values["rows"],
+            }
+        ).sort_values(
+            ["unstable", "weighted_abs_error", "fill_range", "calibration_range", "rows", "worst_regime"],
+            ascending=[False, False, False, False, False, True],
+        ).iloc[0]
+        drift_bins = int(len(drift))
+        unstable_bins = int((drift_labels == "calibration_unstable").sum())
+        result.update(
+            {
+                "drift_bins": drift_bins,
+                "unstable_drift_bins": unstable_bins,
+                "watch_drift_bins": int((drift_labels == "calibration_watch").sum()),
+                "unstable_drift_share": float(unstable_bins / drift_bins) if drift_bins else 0.0,
+                "max_fill_rate_range": float(drift_values["fill_rate_range"].max()),
+                "max_calibration_error_range": float(drift_values["calibration_error_range"].max()),
+                "worst_drift_regime": str(worst_drift["worst_regime"]),
+                "worst_drift_best_execution_side": str(worst_drift["best_execution_side"]),
+                "worst_drift_label": str(worst_drift["label"]),
+            }
+        )
+
+    stability_summary = stability_summary or {}
+    stability_label = str(
+        stability_summary.get("queue_calibration_stability_label", "no_queue_calibration_stability_data")
+    )
+    result.update(
+        {
+            "stability_cells": int(stability_summary.get("cells", 0) or 0),
+            "degraded_stability_cells": int(stability_summary.get("degraded_cells", 0) or 0),
+            "lost_stability_cells": int(stability_summary.get("lost_cells", 0) or 0),
+            "stability_label": stability_label,
+        }
+    )
+
+    underfilled_drag_slices = int(result["underfilled_execution_drag_slices"])
+    lost_stability_cells = int(result["lost_stability_cells"])
+    max_abs_error = float(result["max_weighted_absolute_calibration_error"])
+    unstable_drift_share = float(result["unstable_drift_share"])
+    degraded_stability_cells = int(result["degraded_stability_cells"])
+    evidence_items = int(result["residual_slices"]) + int(result["drift_bins"]) + int(result["stability_cells"])
+
+    if underfilled_drag_slices > 0:
+        reliability_label = "queue_calibration_underfill_block"
+    elif lost_stability_cells > 0 or stability_label == "queue_calibration_cells_lost":
+        reliability_label = "queue_calibration_stability_block"
+    elif max_abs_error > max_weighted_abs_error:
+        reliability_label = "queue_calibration_residual_review"
+    elif unstable_drift_share > max_unstable_drift_share:
+        reliability_label = "queue_calibration_drift_review"
+    elif degraded_stability_cells > 0 or stability_label == "queue_calibration_degraded":
+        reliability_label = "queue_calibration_stability_review"
+    elif evidence_items > 0:
+        reliability_label = "queue_calibration_release_ready"
+    else:
+        reliability_label = "no_queue_calibration_reliability_data"
+    result["queue_calibration_reliability_label"] = reliability_label
+    return result
+
+
 def queue_position_edge_decay(surface: pd.DataFrame, *, min_rows: int = 1) -> pd.DataFrame:
     """Summarize how passive execution edge decays as queue position gets deeper.
 

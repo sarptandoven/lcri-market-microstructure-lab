@@ -44,6 +44,7 @@ from lcri_lab.execution import (
     queue_position_regime_capacity_stability_summary,
     queue_position_calibration_drift,
     queue_position_calibration_residual_summary,
+    queue_position_calibration_reliability_scorecard,
     queue_position_calibration_stability,
     queue_position_calibration_stability_summary,
     queue_position_edge_decay,
@@ -1632,6 +1633,120 @@ def test_queue_position_calibration_stability_summary_flags_degraded_holdout_cel
     assert summary["degraded_cell_share"] == pytest.approx(1 / 3)
     assert summary["worst_regime"] == "thin"
     assert summary["queue_calibration_stability_label"] == "queue_calibration_degraded"
+
+
+def test_queue_position_calibration_reliability_scorecard_blocks_fragile_fill_model() -> None:
+    residual = pd.DataFrame(
+        {
+            "regime": ["thin", "calm"],
+            "best_execution_side": ["long", "short"],
+            "bins": [2, 1],
+            "rows": [40, 20],
+            "underfilled_bins": [1, 0],
+            "overfilled_bins": [0, 0],
+            "weighted_calibration_error": [-0.32, 0.04],
+            "weighted_absolute_calibration_error": [0.32, 0.04],
+            "weighted_mean_execution_adjusted_edge_ticks": [-0.15, 0.20],
+            "residual_label": ["underfilled_execution_drag", "calibration_residual_controlled"],
+        }
+    )
+    drift = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "short"],
+            "queue_share_bin": [2, 1],
+            "fill_probability_bin": [1, 2],
+            "regimes": [3, 2],
+            "rows": [80, 20],
+            "fill_rate_range": [0.31, 0.04],
+            "calibration_error_range": [0.20, 0.02],
+            "weighted_mean_absolute_calibration_error": [0.22, 0.03],
+            "worst_regime": ["thin", "calm"],
+            "drift_label": ["calibration_unstable", "calibration_stable"],
+        }
+    )
+    stability_summary = {
+        "cells": 4,
+        "common_cells": 3,
+        "replicated_cells": 2,
+        "degraded_cells": 1,
+        "lost_cells": 0,
+        "gained_cells": 1,
+        "degraded_cell_share": 0.25,
+        "mean_absolute_calibration_error_gap": 0.12,
+        "worst_regime": "thin",
+        "worst_best_execution_side": "long",
+        "worst_queue_share_bin": 2,
+        "worst_fill_probability_bin": 1,
+        "worst_calibration_stability_label": "calibration_degraded",
+        "queue_calibration_stability_label": "queue_calibration_degraded",
+    }
+
+    scorecard = queue_position_calibration_reliability_scorecard(
+        residual,
+        drift,
+        stability_summary=stability_summary,
+        max_weighted_abs_error=0.20,
+        max_unstable_drift_share=0.25,
+    )
+
+    assert scorecard["residual_slices"] == 2
+    assert scorecard["underfilled_execution_drag_slices"] == 1
+    assert scorecard["unstable_drift_bins"] == 1
+    assert scorecard["unstable_drift_share"] == pytest.approx(0.50)
+    assert scorecard["degraded_stability_cells"] == 1
+    assert scorecard["worst_residual_regime"] == "thin"
+    assert scorecard["worst_drift_label"] == "calibration_unstable"
+    assert scorecard["queue_calibration_reliability_label"] == "queue_calibration_underfill_block"
+
+
+def test_queue_position_calibration_reliability_scorecard_passes_clean_evidence() -> None:
+    residual = pd.DataFrame(
+        {
+            "regime": ["calm"],
+            "best_execution_side": ["long"],
+            "bins": [2],
+            "rows": [50],
+            "underfilled_bins": [0],
+            "overfilled_bins": [0],
+            "weighted_calibration_error": [0.01],
+            "weighted_absolute_calibration_error": [0.04],
+            "weighted_mean_execution_adjusted_edge_ticks": [0.30],
+            "residual_label": ["calibration_residual_controlled"],
+        }
+    )
+    drift = pd.DataFrame(
+        {
+            "best_execution_side": ["long"],
+            "queue_share_bin": [1],
+            "fill_probability_bin": [1],
+            "regimes": [2],
+            "rows": [50],
+            "fill_rate_range": [0.03],
+            "calibration_error_range": [0.02],
+            "weighted_mean_absolute_calibration_error": [0.04],
+            "worst_regime": ["calm"],
+            "drift_label": ["calibration_stable"],
+        }
+    )
+
+    scorecard = queue_position_calibration_reliability_scorecard(
+        residual,
+        drift,
+        stability_summary={"queue_calibration_stability_label": "queue_calibration_replicated"},
+    )
+
+    assert scorecard["queue_calibration_reliability_label"] == "queue_calibration_release_ready"
+    assert scorecard["max_weighted_absolute_calibration_error"] == pytest.approx(0.04)
+    assert scorecard["max_fill_rate_range"] == pytest.approx(0.03)
+
+
+def test_queue_position_calibration_reliability_scorecard_rejects_bad_inputs() -> None:
+    with pytest.raises(ValueError, match="max_weighted_abs_error"):
+        queue_position_calibration_reliability_scorecard(
+            pd.DataFrame(), pd.DataFrame(), max_weighted_abs_error=-0.1
+        )
+    with pytest.raises(ValueError, match="missing queue position calibration reliability residual columns"):
+        queue_position_calibration_reliability_scorecard(pd.DataFrame({"regime": ["thin"]}), pd.DataFrame())
 
 
 def test_queue_position_calibration_stability_rejects_bad_surface() -> None:
