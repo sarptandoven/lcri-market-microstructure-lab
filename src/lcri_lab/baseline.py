@@ -1292,6 +1292,102 @@ def baseline_stress_tail_publishability_summary(
     return output
 
 
+def baseline_nonlinear_coefficient_stability_summary(
+    stability: pd.DataFrame,
+    *,
+    min_sign_consistency: float = 0.80,
+    max_coefficient_cv: float = 1.0,
+    min_stable_share: float = 0.75,
+) -> dict[str, bool | float | int | str]:
+    """Gate nonlinear baseline publishability on rolling coefficient stability.
+
+    RMSE lift alone can hide a nonlinear neutralizer whose stress coefficients are
+    economically incoherent across chronological windows. This summary converts
+    ``baseline_nonlinear_coefficient_stability`` rows into a compact release gate:
+    terms must keep a dominant sign, avoid excessive coefficient dispersion, and
+    do so for enough nonlinear features to make the basis interpretable.
+    """
+    required = {
+        "feature",
+        "coefficient_cv",
+        "sign_consistency",
+        "stability_label",
+    }
+    missing = sorted(required - set(stability.columns))
+    if missing:
+        raise ValueError(f"missing nonlinear coefficient stability columns: {missing}")
+    for name, value in {
+        "min_sign_consistency": min_sign_consistency,
+        "max_coefficient_cv": max_coefficient_cv,
+        "min_stable_share": min_stable_share,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= min_sign_consistency <= 1.0:
+        raise ValueError("min_sign_consistency must be in [0, 1]")
+    if max_coefficient_cv < 0.0:
+        raise ValueError("max_coefficient_cv must be non-negative")
+    if not 0.0 <= min_stable_share <= 1.0:
+        raise ValueError("min_stable_share must be in [0, 1]")
+
+    columns = ["coefficient_cv", "sign_consistency"]
+    numeric = stability[columns].astype(float)
+    if not np.isfinite(numeric.to_numpy()).all():
+        raise ValueError("nonlinear coefficient stability metrics must be finite")
+    if (numeric < 0.0).any().any():
+        raise ValueError("nonlinear coefficient stability metrics must be non-negative")
+    if not numeric["sign_consistency"].between(0.0, 1.0).all():
+        raise ValueError("sign_consistency must be in [0, 1]")
+
+    features = int(len(stability))
+    if features == 0:
+        return {
+            "features": 0,
+            "stable_features": 0,
+            "unstable_features": 0,
+            "stable_feature_share": 0.0,
+            "min_sign_consistency": 0.0,
+            "max_coefficient_cv": 0.0,
+            "weakest_feature": "none",
+            "stability_label": "nonlinear_coefficient_instability",
+            "publishable": False,
+            "review_note": "nonlinear_coefficients_fragile",
+        }
+
+    stable_mask = (
+        (numeric["sign_consistency"] >= min_sign_consistency)
+        & (numeric["coefficient_cv"] <= max_coefficient_cv)
+        & (stability["stability_label"].astype(str) != "sign_unstable")
+    )
+    stable_features = int(stable_mask.sum())
+    stable_feature_share = stable_features / features
+    weakest_index = numeric.sort_values(
+        ["sign_consistency", "coefficient_cv"], ascending=[True, False]
+    ).index[0]
+    publishable = stable_feature_share >= min_stable_share
+
+    return {
+        "features": features,
+        "stable_features": stable_features,
+        "unstable_features": int(features - stable_features),
+        "stable_feature_share": float(stable_feature_share),
+        "min_sign_consistency": float(numeric["sign_consistency"].min()),
+        "max_coefficient_cv": float(numeric["coefficient_cv"].max()),
+        "weakest_feature": str(stability.loc[weakest_index, "feature"]),
+        "stability_label": (
+            "nonlinear_coefficients_stable"
+            if publishable
+            else "nonlinear_coefficient_instability"
+        ),
+        "publishable": bool(publishable),
+        "review_note": (
+            "nonlinear_coefficients_reliable"
+            if publishable
+            else "nonlinear_coefficients_fragile"
+        ),
+    }
+
+
 def baseline_nonlinear_coefficient_stability(
     frame: pd.DataFrame,
     *,

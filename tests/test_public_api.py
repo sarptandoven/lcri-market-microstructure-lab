@@ -62,6 +62,13 @@ def test_public_api_exports_baseline_nonlinear_publishability_summary() -> None:
     assert "baseline_nonlinear_publishability_summary" in lcri_lab.__all__
 
 
+def test_public_api_exports_baseline_nonlinear_coefficient_stability_summary() -> None:
+    assert callable(lcri_lab.baseline_nonlinear_coefficient_stability)
+    assert callable(lcri_lab.baseline_nonlinear_coefficient_stability_summary)
+    assert "baseline_nonlinear_coefficient_stability" in lcri_lab.__all__
+    assert "baseline_nonlinear_coefficient_stability_summary" in lcri_lab.__all__
+
+
 def test_public_api_exports_baseline_regime_publishability_summary() -> None:
     assert callable(lcri_lab.baseline_regime_publishability_summary)
     assert "baseline_regime_publishability_summary" in lcri_lab.__all__

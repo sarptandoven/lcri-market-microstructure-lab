@@ -8,6 +8,7 @@ from lcri_lab.baseline import (
     baseline_component_attribution,
     baseline_liquidity_stress_curve,
     baseline_nonlinear_coefficient_stability,
+    baseline_nonlinear_coefficient_stability_summary,
     baseline_nonlinear_publishability_summary,
     baseline_regime_basis_comparison,
     baseline_regime_publishability_summary,
@@ -151,6 +152,80 @@ def test_baseline_nonlinear_coefficient_stability_rejects_invalid_windows() -> N
         baseline_nonlinear_coefficient_stability(features, train_window=0)
     with pytest.raises(ValueError, match="at least one coefficient stability window"):
         baseline_nonlinear_coefficient_stability(features, train_window=200)
+
+
+def test_baseline_nonlinear_coefficient_stability_summary_gates_fragile_terms() -> None:
+    stability = pd.DataFrame(
+        {
+            "feature": [
+                "spread_stress_squared",
+                "volatility_stress_squared",
+                "liquidity_void_x_volatility",
+                "replenishment_inverse",
+            ],
+            "component": ["nonlinear_liquidity"] * 4,
+            "windows": [5, 5, 5, 5],
+            "mean_coefficient": [0.40, -0.30, 0.10, 0.02],
+            "std_coefficient": [0.05, 0.04, 0.20, 0.01],
+            "mean_abs_coefficient": [0.40, 0.30, 0.10, 0.02],
+            "coefficient_cv": [0.125, 0.133, 2.0, 0.50],
+            "sign_consistency": [1.0, 0.90, 0.60, 0.75],
+            "stability_label": [
+                "sign_stable_dominant",
+                "sign_stable",
+                "sign_unstable",
+                "inactive",
+            ],
+        }
+    )
+
+    summary = baseline_nonlinear_coefficient_stability_summary(
+        stability,
+        min_sign_consistency=0.80,
+        max_coefficient_cv=1.0,
+        min_stable_share=0.75,
+    )
+
+    assert summary == {
+        "features": 4,
+        "stable_features": 2,
+        "unstable_features": 2,
+        "stable_feature_share": pytest.approx(0.50),
+        "min_sign_consistency": pytest.approx(0.60),
+        "max_coefficient_cv": pytest.approx(2.0),
+        "weakest_feature": "liquidity_void_x_volatility",
+        "stability_label": "nonlinear_coefficient_instability",
+        "publishable": False,
+        "review_note": "nonlinear_coefficients_fragile",
+    }
+
+
+def test_baseline_nonlinear_coefficient_stability_summary_accepts_robust_terms() -> None:
+    stability = pd.DataFrame(
+        {
+            "feature": ["spread_stress_squared", "volatility_stress_squared"],
+            "component": ["nonlinear_liquidity", "nonlinear_liquidity"],
+            "windows": [4, 4],
+            "mean_coefficient": [0.40, -0.30],
+            "std_coefficient": [0.04, 0.05],
+            "mean_abs_coefficient": [0.40, 0.30],
+            "coefficient_cv": [0.10, 0.17],
+            "sign_consistency": [1.0, 0.95],
+            "stability_label": ["sign_stable_dominant", "sign_stable_dominant"],
+        }
+    )
+
+    summary = baseline_nonlinear_coefficient_stability_summary(stability)
+
+    assert summary["stable_features"] == 2
+    assert summary["stability_label"] == "nonlinear_coefficients_stable"
+    assert summary["publishable"] is True
+    assert summary["review_note"] == "nonlinear_coefficients_reliable"
+
+
+def test_baseline_nonlinear_coefficient_stability_summary_rejects_malformed_input() -> None:
+    with pytest.raises(ValueError, match="missing nonlinear coefficient stability columns"):
+        baseline_nonlinear_coefficient_stability_summary(pd.DataFrame({"feature": ["x"]}))
 
 
 def test_baseline_liquidity_stress_curve_is_centered_and_monotone_for_convex_spread() -> None:
