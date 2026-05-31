@@ -90,6 +90,7 @@ from lcri_lab.execution import (
     add_queue_position_features,
     add_queue_position_realized_fill_proxy,
     execution_adjusted_edge_summary,
+    execution_adjusted_lcri_quantile_diagnostics,
     execution_adjusted_lcri_side_attribution,
     execution_publishability_release_gate,
     execution_publishability_review_packet,
@@ -157,6 +158,7 @@ from lcri_lab.reporting import (
     verify_generalization_stability_confidence_summary,
     verify_hidden_resiliency_asymmetry_summary,
     verify_adverse_selection_phase_shift_summary,
+    verify_execution_adjusted_lcri_quantile_diagnostics,
     verify_execution_adjusted_lcri_side_attribution,
     verify_execution_publishability_review_artifacts,
     verify_execution_publishability_release_gate,
@@ -734,6 +736,10 @@ def run_demo(
     )
     execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(scored)
     heldout_execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(heldout_scored)
+    execution_lcri_quantile_diagnostics = execution_adjusted_lcri_quantile_diagnostics(scored)
+    heldout_execution_lcri_quantile_diagnostics = execution_adjusted_lcri_quantile_diagnostics(
+        heldout_scored
+    )
     baseline_regime_basis = baseline_regime_basis_comparison(
         scored,
         train_window=max(200, rows // 2),
@@ -848,6 +854,8 @@ def run_demo(
         "heldout_execution_adjusted_edge_summary.json",
         "execution_adjusted_lcri_side_attribution.csv",
         "heldout_execution_adjusted_lcri_side_attribution.csv",
+        "execution_adjusted_lcri_quantile_diagnostics.csv",
+        "heldout_execution_adjusted_lcri_quantile_diagnostics.csv",
         "execution_publishability_review_packet.csv",
         "heldout_execution_publishability_review_packet.csv",
         "execution_publishability_release_gate.json",
@@ -1249,6 +1257,12 @@ def run_demo(
     heldout_execution_lcri_side_attribution.to_csv(
         output / "heldout_execution_adjusted_lcri_side_attribution.csv", index=False
     )
+    execution_lcri_quantile_diagnostics.to_csv(
+        output / "execution_adjusted_lcri_quantile_diagnostics.csv", index=False
+    )
+    heldout_execution_lcri_quantile_diagnostics.to_csv(
+        output / "heldout_execution_adjusted_lcri_quantile_diagnostics.csv", index=False
+    )
     scored[
         [
             "lcri",
@@ -1544,6 +1558,14 @@ def run_demo(
     print(f"lcri fracture reversal gate: {output / 'lcri_fracture_reversal_gate.json'}")
     print(f"transition robustness: {output / 'transition_robustness.json'}")
     print(f"heldout transition robustness: {output / 'heldout_transition_robustness.json'}")
+    print(
+        "execution-adjusted LCRI quantile diagnostics: "
+        f"{output / 'execution_adjusted_lcri_quantile_diagnostics.csv'}"
+    )
+    print(
+        "heldout execution-adjusted LCRI quantile diagnostics: "
+        f"{output / 'heldout_execution_adjusted_lcri_quantile_diagnostics.csv'}"
+    )
     print(f"execution publishability release gate: {output / 'execution_publishability_release_gate.json'}")
     print(
         "heldout execution publishability release gate: "
@@ -2117,6 +2139,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_execution_adjusted_lcri_side_attribution.csv"
             )
             if "heldout_execution_adjusted_lcri_side_attribution.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_execution_adjusted_lcri_quantile_diagnostics(report_dir)
+            if "execution_adjusted_lcri_quantile_diagnostics.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_execution_adjusted_lcri_quantile_diagnostics(
+                report_dir, "heldout_execution_adjusted_lcri_quantile_diagnostics.csv"
+            )
+            if "heldout_execution_adjusted_lcri_quantile_diagnostics.csv" in manifest_artifacts
             else []
         ),
         *(

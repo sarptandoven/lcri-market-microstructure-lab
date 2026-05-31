@@ -618,6 +618,62 @@ def verify_execution_adjusted_lcri_side_attribution(
     return errors
 
 
+def verify_execution_adjusted_lcri_quantile_diagnostics(
+    output_dir: Path, artifact: str = "execution_adjusted_lcri_quantile_diagnostics.csv"
+) -> list[str]:
+    """Return errors for execution-adjusted LCRI quantile survival artifacts."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing execution-adjusted LCRI quantile diagnostics: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "bucket",
+        "rows",
+        "mean_abs_lcri",
+        "mean_abs_execution_adjusted_lcri_score",
+        "signal_survival_ratio",
+        "tradable_share",
+        "mean_selected_fill_probability",
+        "mean_selected_adverse_fill_probability",
+        "fill_minus_adverse_probability_spread",
+        "mean_execution_adjusted_edge_ticks",
+        "edge_drag_vs_raw_abs_lcri",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete execution-adjusted LCRI quantile diagnostics {artifact}: {missing}"]
+
+    numeric_columns = list(required - {"bucket"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite execution-adjusted LCRI quantile values in {artifact}")
+    if not numeric["rows"].ge(1.0).all():
+        errors.append(f"non-positive execution-adjusted LCRI quantile rows in {artifact}")
+    nonnegative_columns = [
+        "mean_abs_lcri",
+        "mean_abs_execution_adjusted_lcri_score",
+        "signal_survival_ratio",
+    ]
+    if not numeric[nonnegative_columns].ge(0.0).all().all():
+        errors.append(f"negative execution-adjusted LCRI quantile magnitudes in {artifact}")
+    probability_columns = [
+        "tradable_share",
+        "signal_survival_ratio",
+        "mean_selected_fill_probability",
+        "mean_selected_adverse_fill_probability",
+    ]
+    if not numeric[probability_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        errors.append(f"bounded execution-adjusted LCRI quantile probabilities violated in {artifact}")
+    if frame["bucket"].astype(str).str.len().eq(0).any():
+        errors.append(f"blank execution-adjusted LCRI quantile buckets in {artifact}")
+    if frame["bucket"].astype(str).duplicated().any():
+        errors.append(f"duplicate execution-adjusted LCRI quantile buckets in {artifact}")
+    if (numeric["mean_abs_execution_adjusted_lcri_score"] - numeric["mean_abs_lcri"] > 1e-9).any():
+        errors.append(f"execution-adjusted LCRI quantile survival exceeds raw signal in {artifact}")
+    return errors
+
+
 def verify_execution_publishability_release_gate(
     output_dir: Path, artifact: str = "execution_publishability_release_gate.json"
 ) -> list[str]:

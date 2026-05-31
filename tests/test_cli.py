@@ -480,6 +480,27 @@ def test_verify_report_checks_execution_adjusted_lcri_side_attribution(tmp_path:
         verify_report(tmp_path)
 
 
+def test_verify_report_checks_execution_adjusted_lcri_quantile_diagnostics(tmp_path: Path) -> None:
+    (tmp_path / "execution_adjusted_lcri_quantile_diagnostics.csv").write_text(
+        "bucket,rows,mean_abs_lcri,mean_abs_execution_adjusted_lcri_score,"
+        "signal_survival_ratio,tradable_share,mean_execution_adjusted_edge_ticks,"
+        "edge_drag_vs_raw_abs_lcri,mean_selected_fill_probability,"
+        "mean_selected_adverse_fill_probability,fill_minus_adverse_probability_spread\n"
+        "high_abs_lcri,0,1.0,1.2,1.2,1.4,0.2,0.8,1.2,-0.1,1.3\n"
+    )
+    (tmp_path / "artifact_manifest.json").write_text(
+        json.dumps(
+            {
+                "artifacts": ["execution_adjusted_lcri_quantile_diagnostics.csv"],
+                "artifact_metadata": {},
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="execution-adjusted LCRI quantile"):
+        verify_report(tmp_path)
+
+
 def test_verify_report_checks_passive_fill_threshold_policy_curve(tmp_path: Path) -> None:
     (tmp_path / "passive_fill_threshold_policy_curve.csv").write_text(
         "threshold,candidate_rows,trade_share,long_rows,short_rows,"

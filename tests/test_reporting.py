@@ -23,6 +23,7 @@ from lcri_lab.reporting import (
     verify_adverse_selection_phase_shift_summary,
     verify_event_level_passive_fill_horizon_sweep,
     verify_execution_publishability_review_artifacts,
+    verify_execution_adjusted_lcri_quantile_diagnostics,
     verify_figure_artifacts,
     verify_passive_fill_realization_horizon_sweep,
     verify_generalization_fragility_consistency,
@@ -196,6 +197,50 @@ def test_verify_hidden_resiliency_asymmetry_summary_checks_schema(tmp_path) -> N
     assert verify_hidden_resiliency_asymmetry_summary(tmp_path) == []
     write_json(tmp_path / "hidden_resiliency_asymmetry_summary.json", {"interpretation": "x"})
     assert "incomplete hidden resiliency" in verify_hidden_resiliency_asymmetry_summary(tmp_path)[0]
+
+
+def test_verify_execution_adjusted_lcri_quantile_diagnostics_checks_schema(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {
+                "bucket": "low_abs_lcri",
+                "rows": 4,
+                "mean_abs_lcri": 0.8,
+                "mean_abs_execution_adjusted_lcri_score": 0.4,
+                "signal_survival_ratio": 0.5,
+                "tradable_share": 0.75,
+                "mean_selected_fill_probability": 0.70,
+                "mean_selected_adverse_fill_probability": 0.10,
+                "fill_minus_adverse_probability_spread": 0.60,
+                "mean_execution_adjusted_edge_ticks": 0.2,
+                "edge_drag_vs_raw_abs_lcri": 0.6,
+            }
+        ]
+    ).to_csv(tmp_path / "execution_adjusted_lcri_quantile_diagnostics.csv", index=False)
+
+    assert verify_execution_adjusted_lcri_quantile_diagnostics(tmp_path) == []
+
+    pd.DataFrame(
+        [
+            {
+                "bucket": "low_abs_lcri",
+                "rows": 0,
+                "mean_abs_lcri": 0.8,
+                "mean_abs_execution_adjusted_lcri_score": 0.4,
+                "signal_survival_ratio": 1.5,
+                "tradable_share": 1.2,
+                "mean_selected_fill_probability": 1.1,
+                "mean_selected_adverse_fill_probability": -0.1,
+                "fill_minus_adverse_probability_spread": 1.2,
+                "mean_execution_adjusted_edge_ticks": 0.2,
+                "edge_drag_vs_raw_abs_lcri": 0.6,
+            }
+        ]
+    ).to_csv(tmp_path / "execution_adjusted_lcri_quantile_diagnostics.csv", index=False)
+
+    errors = verify_execution_adjusted_lcri_quantile_diagnostics(tmp_path)
+    assert any("bounded execution-adjusted LCRI quantile probabilities" in error for error in errors)
+    assert any("non-positive execution-adjusted LCRI quantile rows" in error for error in errors)
 
 
 def test_verify_passive_fill_realization_horizon_sweep_checks_schema_and_bounds(tmp_path) -> None:

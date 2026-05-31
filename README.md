@@ -127,6 +127,8 @@ reports/
   heldout_transition_lift.csv
   passive_fill_event_lead_lag_profile.csv
   heldout_passive_fill_event_lead_lag_profile.csv
+  execution_adjusted_lcri_quantile_diagnostics.csv
+  heldout_execution_adjusted_lcri_quantile_diagnostics.csv
   transition_robustness.json
   heldout_transition_robustness.json
   research_summary.md
@@ -134,6 +136,8 @@ reports/
   artifact_metadata_summary.json
   sample_snapshots.csv
 ```
+
+The execution-adjusted LCRI quantile diagnostics bucket rows by raw `abs(lcri)` and report how much signal survives passive-execution constraints, including the selected-side fill probability, selected-side adverse-fill probability, and fill-minus-adverse spread for each bucket.
 
 ## Python usage
 

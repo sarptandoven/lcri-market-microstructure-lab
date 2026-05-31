@@ -4759,6 +4759,9 @@ def _empty_execution_adjusted_lcri_quantile_diagnostics() -> pd.DataFrame:
             "mean_abs_execution_adjusted_lcri_score",
             "signal_survival_ratio",
             "tradable_share",
+            "mean_selected_fill_probability",
+            "mean_selected_adverse_fill_probability",
+            "fill_minus_adverse_probability_spread",
             "mean_execution_adjusted_edge_ticks",
             "edge_drag_vs_raw_abs_lcri",
         ]
@@ -4790,11 +4793,23 @@ def execution_adjusted_lcri_quantile_diagnostics(
         execution_signal_col,
         "execution_adjusted_edge_ticks",
         "best_execution_side",
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
     }
     _require_columns(frame, required, "execution-adjusted LCRI quantile diagnostics")
     values = _finite_values(
         frame,
-        [signal_col, execution_signal_col, "execution_adjusted_edge_ticks"],
+        [
+            signal_col,
+            execution_signal_col,
+            "execution_adjusted_edge_ticks",
+            "bid_fill_probability",
+            "ask_fill_probability",
+            "bid_adverse_fill_probability",
+            "ask_adverse_fill_probability",
+        ],
         "execution-adjusted LCRI quantile diagnostics",
     )
 
@@ -4802,7 +4817,18 @@ def execution_adjusted_lcri_quantile_diagnostics(
     diagnostics_frame["abs_lcri"] = values[signal_col].abs()
     diagnostics_frame["abs_execution_adjusted_lcri_score"] = values[execution_signal_col].abs()
     diagnostics_frame["execution_adjusted_edge_ticks"] = values["execution_adjusted_edge_ticks"]
-    diagnostics_frame["tradable"] = frame["best_execution_side"].astype(str) != "abstain"
+    best_side = frame["best_execution_side"].astype(str)
+    diagnostics_frame["tradable"] = best_side != "abstain"
+    diagnostics_frame["selected_fill_probability"] = np.select(
+        [best_side == "long", best_side == "short"],
+        [values["bid_fill_probability"], values["ask_fill_probability"]],
+        default=0.0,
+    )
+    diagnostics_frame["selected_adverse_fill_probability"] = np.select(
+        [best_side == "long", best_side == "short"],
+        [values["bid_adverse_fill_probability"], values["ask_adverse_fill_probability"]],
+        default=0.0,
+    )
 
     actual_bins = min(bins, len(diagnostics_frame))
     ranks = diagnostics_frame["abs_lcri"].rank(method="first")
@@ -4820,6 +4846,10 @@ def execution_adjusted_lcri_quantile_diagnostics(
     for bucket_id, group in diagnostics_frame.groupby("bucket_id", sort=True):
         mean_abs_lcri = float(group["abs_lcri"].mean())
         mean_abs_execution_signal = float(group["abs_execution_adjusted_lcri_score"].mean())
+        mean_selected_fill_probability = float(group["selected_fill_probability"].mean())
+        mean_selected_adverse_fill_probability = float(
+            group["selected_adverse_fill_probability"].mean()
+        )
         rows.append(
             {
                 "bucket": labels[int(bucket_id)],
@@ -4830,6 +4860,11 @@ def execution_adjusted_lcri_quantile_diagnostics(
                     mean_abs_execution_signal / mean_abs_lcri if mean_abs_lcri > 0.0 else 0.0
                 ),
                 "tradable_share": float(group["tradable"].mean()),
+                "mean_selected_fill_probability": mean_selected_fill_probability,
+                "mean_selected_adverse_fill_probability": mean_selected_adverse_fill_probability,
+                "fill_minus_adverse_probability_spread": float(
+                    mean_selected_fill_probability - mean_selected_adverse_fill_probability
+                ),
                 "mean_execution_adjusted_edge_ticks": float(
                     group["execution_adjusted_edge_ticks"].mean()
                 ),

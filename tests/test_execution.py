@@ -419,6 +419,10 @@ def test_execution_adjusted_lcri_quantile_diagnostics_measures_signal_survival()
             "execution_adjusted_lcri_score": [-3.0, 0.0, -1.0, 0.0, 2.0, 3.0],
             "execution_adjusted_edge_ticks": [1.2, -0.2, 0.3, -0.1, 0.5, 1.4],
             "best_execution_side": ["short", "abstain", "short", "abstain", "long", "long"],
+            "bid_fill_probability": [0.20, 0.30, 0.40, 0.50, 0.70, 0.90],
+            "ask_fill_probability": [0.80, 0.20, 0.60, 0.30, 0.50, 0.40],
+            "bid_adverse_fill_probability": [0.10, 0.20, 0.30, 0.40, 0.10, 0.20],
+            "ask_adverse_fill_probability": [0.20, 0.30, 0.10, 0.50, 0.40, 0.30],
         }
     )
 
@@ -431,6 +435,9 @@ def test_execution_adjusted_lcri_quantile_diagnostics_measures_signal_survival()
         "mean_abs_execution_adjusted_lcri_score",
         "signal_survival_ratio",
         "tradable_share",
+        "mean_selected_fill_probability",
+        "mean_selected_adverse_fill_probability",
+        "fill_minus_adverse_probability_spread",
         "mean_execution_adjusted_edge_ticks",
         "edge_drag_vs_raw_abs_lcri",
     ]
@@ -442,6 +449,9 @@ def test_execution_adjusted_lcri_quantile_diagnostics_measures_signal_survival()
     )
     assert diagnostics["signal_survival_ratio"].tolist() == pytest.approx([0.5, 0.5, 1.0])
     assert diagnostics["tradable_share"].tolist() == pytest.approx([0.5, 0.5, 1.0])
+    assert diagnostics["mean_selected_fill_probability"].tolist() == pytest.approx([0.30, 0.35, 0.85])
+    assert diagnostics["mean_selected_adverse_fill_probability"].tolist() == pytest.approx([0.05, 0.05, 0.20])
+    assert diagnostics["fill_minus_adverse_probability_spread"].tolist() == pytest.approx([0.25, 0.30, 0.65])
     assert diagnostics["edge_drag_vs_raw_abs_lcri"].tolist() == pytest.approx([0.9, 1.85, 1.7])
 
 
