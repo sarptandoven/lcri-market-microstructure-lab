@@ -24,6 +24,7 @@ from lcri_lab.execution import (
     passive_fill_event_policy_stability,
     passive_fill_event_policy_stability_scorecard,
     passive_fill_event_toxicity_scorecard,
+    passive_fill_event_window_sensitivity,
     passive_fill_event_transition_policy_curve,
     passive_fill_event_transition_scorecard,
     passive_fill_event_transition_summary,
@@ -2526,6 +2527,46 @@ def test_passive_fill_event_toxicity_scorecard_labels_pass_and_thin_samples() ->
         passive_fill_event_toxicity_scorecard(summary, min_events=3)["event_toxicity_label"]
         == "insufficient_event_windows"
     )
+
+
+def test_passive_fill_event_window_sensitivity_sweeps_threshold_publishability() -> None:
+    frame = pd.DataFrame(
+        {
+            "regime": ["thin", "thin", "thin", "thin", "thin"],
+            "best_execution_side": ["long", "long", "long", "long", "long"],
+            "bid_fill_probability": [0.20, 0.90, 0.30, 0.75, 0.30],
+            "ask_fill_probability": [0.10, 0.10, 0.10, 0.10, 0.10],
+            "bid_adverse_fill_probability": [0.10, 0.50, 0.10, 0.20, 0.10],
+            "ask_adverse_fill_probability": [0.10, 0.10, 0.10, 0.10, 0.10],
+            "execution_adjusted_edge_ticks": [0.20, 0.50, -0.60, 0.40, 0.40],
+            "long_net_return_ticks": [0.20, 0.50, -0.60, 0.40, 0.40],
+            "short_net_return_ticks": [-0.20, -0.50, 0.60, -0.40, -0.40],
+        }
+    )
+
+    sensitivity = passive_fill_event_window_sensitivity(
+        frame,
+        thresholds=(0.70, 0.80),
+        windows=(1,),
+        regime_col="regime",
+        max_adverse_post_edge_share=0.60,
+        min_mean_post_minus_pre_edge=-0.25,
+    )
+
+    assert sensitivity["threshold"].tolist() == pytest.approx([0.70, 0.80])
+    assert sensitivity["window"].tolist() == [1, 1]
+    assert sensitivity["total_events"].tolist() == [2, 1]
+    assert sensitivity["event_toxicity_label"].tolist() == [
+        "event_window_pass",
+        "event_window_blocker",
+    ]
+    assert sensitivity["weighted_mean_post_minus_pre_realized_edge"].tolist() == pytest.approx(
+        [0.10, -0.80]
+    )
+    assert sensitivity["sensitivity_label"].tolist() == [
+        "event_window_threshold_pass",
+        "event_window_threshold_blocker",
+    ]
 
 
 def test_passive_fill_event_toxicity_scorecard_rejects_bad_summary() -> None:

@@ -4751,6 +4751,124 @@ def passive_fill_event_toxicity_scorecard(
     }
 
 
+def passive_fill_event_window_sensitivity(
+    frame: pd.DataFrame,
+    *,
+    thresholds: tuple[float, ...] = (0.60, 0.70, 0.80, 0.90),
+    windows: tuple[int, ...] = (1, 3, 5),
+    side_col: str = "best_execution_side",
+    long_return_col: str = "long_net_return_ticks",
+    short_return_col: str = "short_net_return_ticks",
+    regime_col: str | None = None,
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    max_adverse_post_edge_share: float = 0.60,
+    min_mean_post_minus_pre_edge: float = -0.25,
+    min_events: int = 1,
+) -> pd.DataFrame:
+    """Stress-test passive-fill event toxicity across threshold/window choices.
+
+    A single event-window threshold can make execution-adjusted LCRI look either
+    publishable or fragile by accident. This sensitivity surface reruns the full
+    event-window diagnostic, regime summary, and toxicity scorecard for each
+    threshold/window pair so review artifacts can distinguish robust execution
+    toxicity from a hyperparameter artifact.
+    """
+    columns = [
+        "threshold",
+        "window",
+        "event_rows",
+        "summary_rows",
+        "regimes",
+        "total_events",
+        "eligible_regimes",
+        "blocked_regimes",
+        "worst_regime",
+        "worst_adverse_post_edge_share",
+        "worst_mean_post_minus_pre_realized_edge",
+        "worst_post_minus_pre_realized_edge",
+        "weighted_mean_event_fill_probability",
+        "weighted_mean_event_adverse_fill_probability",
+        "weighted_mean_post_minus_pre_realized_edge",
+        "event_toxicity_label",
+        "sensitivity_label",
+    ]
+    if not thresholds:
+        raise ValueError("thresholds must be a non-empty sequence")
+    if not windows:
+        raise ValueError("windows must be a non-empty sequence")
+    clean_thresholds = [float(threshold) for threshold in thresholds]
+    if any(not math.isfinite(threshold) or not 0.0 <= threshold <= 1.0 for threshold in clean_thresholds):
+        raise ValueError("threshold values must be in [0.0, 1.0]")
+    clean_windows: list[int] = []
+    for window in windows:
+        if not isinstance(window, int) or isinstance(window, bool) or window < 1:
+            raise ValueError("window values must be positive integers")
+        clean_windows.append(int(window))
+
+    rows: list[dict[str, float | int | str]] = []
+    for threshold in sorted(clean_thresholds):
+        for window in sorted(clean_windows):
+            events = passive_fill_event_window_diagnostics(
+                frame,
+                threshold=threshold,
+                window=window,
+                side_col=side_col,
+                long_return_col=long_return_col,
+                short_return_col=short_return_col,
+                regime_col=regime_col,
+                group_cols=group_cols,
+            )
+            summary = passive_fill_event_regime_summary(events)
+            scorecard = passive_fill_event_toxicity_scorecard(
+                summary,
+                max_adverse_post_edge_share=max_adverse_post_edge_share,
+                min_mean_post_minus_pre_edge=min_mean_post_minus_pre_edge,
+                min_events=min_events,
+            )
+            label = str(scorecard["event_toxicity_label"])
+            if label == "event_window_pass":
+                sensitivity_label = "event_window_threshold_pass"
+            elif label == "event_window_blocker":
+                sensitivity_label = "event_window_threshold_blocker"
+            else:
+                sensitivity_label = "event_window_threshold_insufficient_sample"
+            rows.append(
+                {
+                    "threshold": float(threshold),
+                    "window": int(window),
+                    "event_rows": int(len(events)),
+                    "summary_rows": int(len(summary)),
+                    "regimes": int(scorecard["regimes"]),
+                    "total_events": int(scorecard["total_events"]),
+                    "eligible_regimes": int(scorecard["eligible_regimes"]),
+                    "blocked_regimes": int(scorecard["blocked_regimes"]),
+                    "worst_regime": str(scorecard["worst_regime"]),
+                    "worst_adverse_post_edge_share": float(
+                        scorecard["worst_adverse_post_edge_share"]
+                    ),
+                    "worst_mean_post_minus_pre_realized_edge": float(
+                        scorecard["worst_mean_post_minus_pre_realized_edge"]
+                    ),
+                    "worst_post_minus_pre_realized_edge": float(
+                        scorecard["worst_post_minus_pre_realized_edge"]
+                    ),
+                    "weighted_mean_event_fill_probability": float(
+                        scorecard["weighted_mean_event_fill_probability"]
+                    ),
+                    "weighted_mean_event_adverse_fill_probability": float(
+                        scorecard["weighted_mean_event_adverse_fill_probability"]
+                    ),
+                    "weighted_mean_post_minus_pre_realized_edge": float(
+                        scorecard["weighted_mean_post_minus_pre_realized_edge"]
+                    ),
+                    "event_toxicity_label": label,
+                    "sensitivity_label": sensitivity_label,
+                }
+            )
+    return pd.DataFrame(rows)[columns]
+
+
+
 def passive_fill_event_lifecycle_policy_curve(
     events: pd.DataFrame,
     *,

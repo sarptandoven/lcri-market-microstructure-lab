@@ -143,6 +143,9 @@ surfaces without opening every file:
   review. Heldout runs emit the same schema with a `heldout_` prefix.
 - `passive_fill_event_regime_summary.csv`: regime aggregation of passive-fill
   event-window drift, adverse-post-event share, and worst drift.
+- `passive_fill_event_window_sensitivity.csv`: threshold x window stress surface
+  that reruns event-window diagnostics, regime summaries, and toxicity gates to
+  separate robust passive-fill toxicity from hyperparameter artifacts.
 - `passive_fill_event_transition_summary.csv`: transition-path aggregation of
   passive-fill event toxicity, highlighting boundary states such as calm→thin or
   thin→stress where fills may become adverse despite high predicted fill odds.

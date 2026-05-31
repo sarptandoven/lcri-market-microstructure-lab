@@ -119,6 +119,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "passive_fill_event_lead_lag_profile.csv").exists()
     assert (tmp_path / "passive_fill_event_lead_lag_scorecard.csv").exists()
     assert (tmp_path / "passive_fill_event_regime_summary.csv").exists()
+    assert (tmp_path / "passive_fill_event_window_sensitivity.csv").exists()
     assert (tmp_path / "passive_fill_event_transition_summary.csv").exists()
     assert (tmp_path / "passive_fill_event_lifecycle_summary.csv").exists()
     assert (tmp_path / "passive_fill_event_lifecycle_policy_curve.csv").exists()
@@ -132,6 +133,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_passive_fill_event_lead_lag_profile.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_lead_lag_scorecard.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_regime_summary.csv").exists()
+    assert (tmp_path / "heldout_passive_fill_event_window_sensitivity.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_transition_summary.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_lifecycle_summary.csv").exists()
     assert (tmp_path / "heldout_passive_fill_event_lifecycle_policy_curve.csv").exists()
@@ -553,6 +555,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["heldout_execution_publishability_release_gate.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_windows.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["passive_fill_event_window_sensitivity.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_lifecycle_summary.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_toxicity_scorecard.json"]["size_bytes"] > 0
     assert (
@@ -566,6 +569,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["passive_fill_threshold_policy_curve.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_passive_fill_event_windows.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["heldout_passive_fill_event_window_sensitivity.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_passive_fill_event_toxicity_scorecard.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_passive_fill_realization_horizon_sweep.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_passive_fill_threshold_policy_curve.csv"]["size_bytes"] > 0
