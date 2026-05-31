@@ -101,6 +101,7 @@ from lcri_lab.execution import (
     passive_fill_event_lifecycle_policy_curve,
     passive_fill_event_lifecycle_scorecard,
     passive_fill_event_lifecycle_summary,
+    passive_fill_event_policy_stability,
     passive_fill_event_regime_summary,
     passive_fill_event_toxicity_scorecard,
     passive_fill_event_transition_policy_curve,
@@ -608,6 +609,15 @@ def run_demo(
     heldout_passive_fill_event_transition_toxicity = passive_fill_event_transition_scorecard(
         heldout_passive_fill_event_transitions
     )
+    passive_fill_event_lifecycle_policy_stability = passive_fill_event_policy_stability(
+        passive_fill_event_lifecycle_policy,
+        heldout_passive_fill_event_lifecycle_policy,
+    )
+    passive_fill_event_transition_policy_stability = passive_fill_event_policy_stability(
+        passive_fill_event_transition_policy,
+        heldout_passive_fill_event_transition_policy,
+        path_col="regime_transition",
+    )
     passive_fill_labeled = _add_passive_fill_realization_proxy(
         scored,
         horizon=passive_fill_horizon,
@@ -876,6 +886,8 @@ def run_demo(
         "passive_fill_event_lifecycle_summary.csv",
         "passive_fill_event_lifecycle_policy_curve.csv",
         "passive_fill_event_transition_policy_curve.csv",
+        "passive_fill_event_lifecycle_policy_stability.csv",
+        "passive_fill_event_transition_policy_stability.csv",
         "passive_fill_event_toxicity_scorecard.json",
         "passive_fill_event_lifecycle_toxicity_scorecard.json",
         "passive_fill_event_transition_toxicity_scorecard.json",
@@ -1148,6 +1160,12 @@ def run_demo(
     )
     passive_fill_event_transition_policy.to_csv(
         output / "passive_fill_event_transition_policy_curve.csv", index=False
+    )
+    passive_fill_event_lifecycle_policy_stability.to_csv(
+        output / "passive_fill_event_lifecycle_policy_stability.csv", index=False
+    )
+    passive_fill_event_transition_policy_stability.to_csv(
+        output / "passive_fill_event_transition_policy_stability.csv", index=False
     )
     write_json(output / "passive_fill_event_toxicity_scorecard.json", passive_fill_event_toxicity)
     write_json(

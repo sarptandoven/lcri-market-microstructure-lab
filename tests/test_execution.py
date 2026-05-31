@@ -19,6 +19,7 @@ from lcri_lab.execution import (
     passive_fill_event_lifecycle_policy_curve,
     passive_fill_event_lifecycle_scorecard,
     passive_fill_event_lifecycle_summary,
+    passive_fill_event_policy_stability,
     passive_fill_event_toxicity_scorecard,
     passive_fill_event_transition_policy_curve,
     passive_fill_event_transition_scorecard,
@@ -2227,6 +2228,69 @@ def test_execution_functions_reject_non_finite_inputs() -> None:
 
     with pytest.raises(ValueError, match="finite"):
         add_queue_position_features(frame, levels=2)
+
+
+def test_passive_fill_event_policy_stability_flags_heldout_toxicity_regressions() -> None:
+    train_policy = pd.DataFrame(
+        {
+            "lifecycle_path": ["calm|event|calm", "thin|event|stress", "calm|event|calm"],
+            "threshold": [0.70, 0.70, 0.80],
+            "total_events": [10, 8, 10],
+            "candidate_events": [6, 4, 3],
+            "event_share": [0.60, 0.50, 0.30],
+            "mean_event_fill_probability": [0.82, 0.84, 0.90],
+            "mean_event_adverse_fill_probability": [0.20, 0.30, 0.15],
+            "mean_post_minus_pre_realized_edge": [0.30, 0.10, 0.40],
+            "adverse_post_edge_share": [0.20, 0.25, 0.10],
+            "policy_label": [
+                "broad_lifecycle_policy",
+                "broad_lifecycle_policy",
+                "selective_lifecycle_policy",
+            ],
+        }
+    )
+    heldout_policy = pd.DataFrame(
+        {
+            "lifecycle_path": ["calm|event|calm", "thin|event|stress", "calm|event|calm"],
+            "threshold": [0.70, 0.70, 0.80],
+            "total_events": [9, 6, 9],
+            "candidate_events": [3, 3, 0],
+            "event_share": [1 / 3, 0.50, 0.0],
+            "mean_event_fill_probability": [0.81, 0.83, 0.0],
+            "mean_event_adverse_fill_probability": [0.28, 0.50, 0.0],
+            "mean_post_minus_pre_realized_edge": [-0.10, -0.35, 0.0],
+            "adverse_post_edge_share": [0.70, 0.80, 0.0],
+            "policy_label": [
+                "lifecycle_policy_review",
+                "lifecycle_policy_blocked",
+                "no_lifecycle_policy_events",
+            ],
+        }
+    )
+
+    stability = passive_fill_event_policy_stability(train_policy, heldout_policy)
+
+    assert stability["lifecycle_path"].tolist() == [
+        "thin|event|stress",
+        "calm|event|calm",
+        "calm|event|calm",
+    ]
+    assert stability["threshold"].tolist() == pytest.approx([0.70, 0.70, 0.80])
+    assert stability["heldout_stability_label"].tolist() == [
+        "heldout_policy_blocker",
+        "heldout_policy_review",
+        "heldout_policy_no_events",
+    ]
+    assert stability["candidate_event_retention"].tolist() == pytest.approx([3 / 4, 3 / 6, 0.0])
+    assert stability["mean_post_minus_pre_realized_edge_delta"].tolist() == pytest.approx(
+        [-0.45, -0.40, -0.40]
+    )
+    assert stability["adverse_post_edge_share_delta"].tolist() == pytest.approx([0.55, 0.50, -0.10])
+
+
+def test_passive_fill_event_policy_stability_rejects_missing_columns() -> None:
+    with pytest.raises(ValueError, match="missing passive fill event policy stability train columns"):
+        passive_fill_event_policy_stability(pd.DataFrame({"lifecycle_path": ["a"]}), pd.DataFrame())
 
 
 def test_passive_fill_threshold_policy_curve_scores_actionable_cutoffs() -> None:

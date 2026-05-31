@@ -3901,6 +3901,209 @@ def passive_fill_event_transition_policy_curve(
     return pd.DataFrame(rows, columns=columns)
 
 
+def passive_fill_event_policy_stability(
+    train_policy: pd.DataFrame,
+    heldout_policy: pd.DataFrame,
+    *,
+    path_col: str = "lifecycle_path",
+    threshold_col: str = "threshold",
+) -> pd.DataFrame:
+    """Compare event-window passive-fill policy curves across train/heldout splits.
+
+    In-sample lifecycle or transition policies can look tradable because they find
+    narrow high-fill cutoffs, then fail exactly where passive execution becomes
+    toxic out of sample. This stability table joins policy curves by path and
+    threshold, measures candidate retention and toxicity deltas, and labels rows
+    where a train-approved passive policy becomes blocked, review-only, or empty
+    on heldout data.
+    """
+    columns = [
+        path_col,
+        threshold_col,
+        "train_total_events",
+        "heldout_total_events",
+        "train_candidate_events",
+        "heldout_candidate_events",
+        "candidate_event_retention",
+        "train_event_share",
+        "heldout_event_share",
+        "event_share_delta",
+        "train_mean_event_fill_probability",
+        "heldout_mean_event_fill_probability",
+        "mean_event_fill_probability_delta",
+        "train_mean_event_adverse_fill_probability",
+        "heldout_mean_event_adverse_fill_probability",
+        "mean_event_adverse_fill_probability_delta",
+        "train_mean_post_minus_pre_realized_edge",
+        "heldout_mean_post_minus_pre_realized_edge",
+        "mean_post_minus_pre_realized_edge_delta",
+        "train_adverse_post_edge_share",
+        "heldout_adverse_post_edge_share",
+        "adverse_post_edge_share_delta",
+        "train_policy_label",
+        "heldout_policy_label",
+        "heldout_stability_label",
+    ]
+    required = {
+        path_col,
+        threshold_col,
+        "total_events",
+        "candidate_events",
+        "event_share",
+        "mean_event_fill_probability",
+        "mean_event_adverse_fill_probability",
+        "mean_post_minus_pre_realized_edge",
+        "adverse_post_edge_share",
+        "policy_label",
+    }
+    _require_columns(train_policy, required, "passive fill event policy stability train")
+    _require_columns(heldout_policy, required, "passive fill event policy stability heldout")
+    if train_policy.empty:
+        return pd.DataFrame(columns=columns)
+
+    numeric_columns = [
+        threshold_col,
+        "total_events",
+        "candidate_events",
+        "event_share",
+        "mean_event_fill_probability",
+        "mean_event_adverse_fill_probability",
+        "mean_post_minus_pre_realized_edge",
+        "adverse_post_edge_share",
+    ]
+    train_values = _finite_values(train_policy, numeric_columns, "passive fill event policy stability train")
+    heldout_values = _finite_values(
+        heldout_policy, numeric_columns, "passive fill event policy stability heldout"
+    )
+    for label, values in {"train": train_values, "heldout": heldout_values}.items():
+        if (values[["total_events", "candidate_events"]] < 0.0).any().any():
+            raise ValueError(f"passive fill event policy stability {label} counts must be non-negative")
+        if (values["candidate_events"] > values["total_events"]).any():
+            raise ValueError(
+                f"passive fill event policy stability {label} candidates exceed total events"
+            )
+        probability_columns = [
+            "event_share",
+            "mean_event_fill_probability",
+            "mean_event_adverse_fill_probability",
+            "adverse_post_edge_share",
+        ]
+        if not values[probability_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+            raise ValueError(
+                f"passive fill event policy stability {label} probabilities must be in [0.0, 1.0]"
+            )
+
+    train = train_values.copy()
+    train[path_col] = train_policy[path_col].astype(str)
+    train["policy_label"] = train_policy["policy_label"].astype(str)
+    heldout = heldout_values.copy()
+    heldout[path_col] = heldout_policy[path_col].astype(str)
+    heldout["policy_label"] = heldout_policy["policy_label"].astype(str)
+
+    merged = train.merge(
+        heldout,
+        on=[path_col, threshold_col],
+        how="left",
+        suffixes=("_train", "_heldout"),
+    )
+    rows: list[dict[str, float | int | str]] = []
+    for _, row in merged.iterrows():
+        heldout_missing = pd.isna(row.get("total_events_heldout"))
+        train_candidates = float(row["candidate_events_train"])
+        heldout_candidates = 0.0 if heldout_missing else float(row["candidate_events_heldout"])
+        heldout_label = "missing_heldout_policy_path" if heldout_missing else str(row["policy_label_heldout"])
+        stability_label = _passive_fill_event_policy_stability_label(heldout_label)
+        train_edge = float(row["mean_post_minus_pre_realized_edge_train"])
+        heldout_edge = 0.0 if heldout_missing else float(row["mean_post_minus_pre_realized_edge_heldout"])
+        train_adverse = float(row["adverse_post_edge_share_train"])
+        heldout_adverse = 1.0 if heldout_missing else float(row["adverse_post_edge_share_heldout"])
+        rows.append(
+            {
+                path_col: str(row[path_col]),
+                threshold_col: float(row[threshold_col]),
+                "train_total_events": int(row["total_events_train"]),
+                "heldout_total_events": 0 if heldout_missing else int(row["total_events_heldout"]),
+                "train_candidate_events": int(row["candidate_events_train"]),
+                "heldout_candidate_events": int(heldout_candidates),
+                "candidate_event_retention": float(
+                    heldout_candidates / train_candidates if train_candidates else 0.0
+                ),
+                "train_event_share": float(row["event_share_train"]),
+                "heldout_event_share": 0.0 if heldout_missing else float(row["event_share_heldout"]),
+                "event_share_delta": float(
+                    (0.0 if heldout_missing else row["event_share_heldout"]) - row["event_share_train"]
+                ),
+                "train_mean_event_fill_probability": float(row["mean_event_fill_probability_train"]),
+                "heldout_mean_event_fill_probability": 0.0
+                if heldout_missing
+                else float(row["mean_event_fill_probability_heldout"]),
+                "mean_event_fill_probability_delta": float(
+                    (0.0 if heldout_missing else row["mean_event_fill_probability_heldout"])
+                    - row["mean_event_fill_probability_train"]
+                ),
+                "train_mean_event_adverse_fill_probability": float(
+                    row["mean_event_adverse_fill_probability_train"]
+                ),
+                "heldout_mean_event_adverse_fill_probability": 1.0
+                if heldout_missing
+                else float(row["mean_event_adverse_fill_probability_heldout"]),
+                "mean_event_adverse_fill_probability_delta": float(
+                    (1.0 if heldout_missing else row["mean_event_adverse_fill_probability_heldout"])
+                    - row["mean_event_adverse_fill_probability_train"]
+                ),
+                "train_mean_post_minus_pre_realized_edge": train_edge,
+                "heldout_mean_post_minus_pre_realized_edge": heldout_edge,
+                "mean_post_minus_pre_realized_edge_delta": float(heldout_edge - train_edge),
+                "train_adverse_post_edge_share": train_adverse,
+                "heldout_adverse_post_edge_share": heldout_adverse,
+                "adverse_post_edge_share_delta": float(heldout_adverse - train_adverse),
+                "train_policy_label": str(row["policy_label_train"]),
+                "heldout_policy_label": heldout_label,
+                "heldout_stability_label": stability_label,
+            }
+        )
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    result = pd.DataFrame(rows, columns=columns)
+    priority = result["heldout_stability_label"].map(
+        {
+            "heldout_policy_blocker": 4,
+            "heldout_policy_review": 3,
+            "heldout_policy_no_events": 2,
+            "heldout_policy_missing": 2,
+            "heldout_policy_stable": 1,
+        }
+    )
+    return (
+        result.assign(_priority=priority.fillna(0))
+        .sort_values(
+            [
+                "_priority",
+                "adverse_post_edge_share_delta",
+                "mean_post_minus_pre_realized_edge_delta",
+                path_col,
+                threshold_col,
+            ],
+            ascending=[False, False, True, True, True],
+        )
+        .drop(columns="_priority")
+        .reset_index(drop=True)
+    )
+
+
+def _passive_fill_event_policy_stability_label(policy_label: str) -> str:
+    if policy_label == "missing_heldout_policy_path":
+        return "heldout_policy_missing"
+    if "blocked" in policy_label:
+        return "heldout_policy_blocker"
+    if "review" in policy_label:
+        return "heldout_policy_review"
+    if policy_label.startswith("no_"):
+        return "heldout_policy_no_events"
+    return "heldout_policy_stable"
+
+
+
 def passive_fill_event_lifecycle_scorecard(
     lifecycle_summary: pd.DataFrame,
     *,
