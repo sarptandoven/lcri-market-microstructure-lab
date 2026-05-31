@@ -123,6 +123,11 @@ def test_public_api_exports_queue_position_adverse_selection_policy_frontier() -
     assert "queue_position_adverse_selection_policy_summary" in lcri_lab.__all__
 
 
+def test_public_api_exports_queue_position_expected_value_frontier() -> None:
+    assert callable(lcri_lab.queue_position_expected_value_frontier)
+    assert "queue_position_expected_value_frontier" in lcri_lab.__all__
+
+
 def test_public_api_exports_queue_position_calibration_stability() -> None:
     assert callable(lcri_lab.queue_position_calibration_stability)
     assert callable(lcri_lab.queue_position_calibration_stability_summary)

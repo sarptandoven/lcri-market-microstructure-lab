@@ -1704,6 +1704,188 @@ def passive_fill_threshold_policy_curve(
     return pd.DataFrame(rows)[list(_empty_passive_fill_threshold_policy_curve().columns)]
 
 
+def queue_position_expected_value_frontier(
+    frame: pd.DataFrame,
+    *,
+    min_fill_probabilities: list[float] | tuple[float, ...] = (0.50, 0.60, 0.70, 0.80),
+    max_queue_shares: list[float] | tuple[float, ...] = (0.25, 0.50, 0.75),
+    adverse_selection_cost_ticks: float = 0.50,
+    queue_drag_cost_ticks: float = 0.25,
+    side_col: str = "best_execution_side",
+    regime_col: str | None = None,
+) -> pd.DataFrame:
+    """Score queue-aware passive policies as expected-value frontiers.
+
+    Fill-probability thresholds alone can prefer deep-in-queue orders whose expected
+    edge vanishes after toxicity and opportunity-cost drag. This diagnostic crosses
+    side-specific minimum fill probability with maximum visible queue share, then
+    reports ex-ante edge, toxicity-adjusted EV, and coverage by regime so execution
+    review can choose passive policies on tradable value rather than raw signal rank.
+    """
+    columns = [
+        "regime",
+        "min_fill_probability",
+        "max_queue_share",
+        "tradable_rows",
+        "candidate_rows",
+        "candidate_share",
+        "long_rows",
+        "short_rows",
+        "mean_queue_share",
+        "mean_fill_probability",
+        "mean_adverse_fill_probability",
+        "mean_execution_adjusted_edge_ticks",
+        "expected_value_ticks",
+        "risk_adjusted_expected_value_ticks",
+        "policy_label",
+    ]
+    if isinstance(min_fill_probabilities, (str, bytes)) or not min_fill_probabilities:
+        raise ValueError("min_fill_probabilities must be a non-empty sequence")
+    if isinstance(max_queue_shares, (str, bytes)) or not max_queue_shares:
+        raise ValueError("max_queue_shares must be a non-empty sequence")
+    for name, sequence in {
+        "min_fill_probabilities": min_fill_probabilities,
+        "max_queue_shares": max_queue_shares,
+    }.items():
+        for value in sequence:
+            numeric_value = float(value)
+            if not math.isfinite(numeric_value) or not 0.0 <= numeric_value <= 1.0:
+                raise ValueError(f"{name} values must be finite and in [0.0, 1.0]")
+    for name, value in {
+        "adverse_selection_cost_ticks": adverse_selection_cost_ticks,
+        "queue_drag_cost_ticks": queue_drag_cost_ticks,
+    }.items():
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"{name} must be finite and non-negative")
+
+    required = {
+        side_col,
+        "bid_queue_share",
+        "ask_queue_share",
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+        "execution_adjusted_edge_ticks",
+    }
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(frame, required, "queue position expected value frontier")
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    numeric_columns = [
+        "bid_queue_share",
+        "ask_queue_share",
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+        "execution_adjusted_edge_ticks",
+    ]
+    values = _finite_values(frame, numeric_columns, "queue position expected value frontier")
+    if (values[["bid_queue_share", "ask_queue_share"]] < 0.0).any().any():
+        raise ValueError("queue position expected value frontier queue shares must be non-negative")
+    probability_columns = [
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+    ]
+    if not values[probability_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("queue position expected value frontier probabilities must be in [0, 1]")
+
+    side = frame[side_col].astype(str)
+    tradable = side.isin(["long", "short"])
+    if not bool(tradable.any()):
+        return pd.DataFrame(columns=columns)
+
+    selected = pd.DataFrame(index=frame.index[tradable])
+    selected_side = side.loc[tradable]
+    selected["regime"] = frame.loc[tradable, regime_col].astype(str) if regime_col else "all"
+    selected["side"] = selected_side
+    selected["queue_share"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_queue_share"],
+        values.loc[tradable, "ask_queue_share"],
+    )
+    selected["fill_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_fill_probability"],
+        values.loc[tradable, "ask_fill_probability"],
+    )
+    selected["adverse_fill_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_adverse_fill_probability"],
+        values.loc[tradable, "ask_adverse_fill_probability"],
+    )
+    selected["execution_adjusted_edge_ticks"] = values.loc[
+        tradable, "execution_adjusted_edge_ticks"
+    ]
+    selected["expected_value_ticks"] = (
+        selected["execution_adjusted_edge_ticks"] * selected["fill_probability"]
+    )
+    selected["risk_adjusted_expected_value_ticks"] = (
+        selected["expected_value_ticks"]
+        - selected["adverse_fill_probability"] * adverse_selection_cost_ticks
+        - selected["queue_share"] * queue_drag_cost_ticks
+    )
+
+    rows: list[dict[str, float | int | str]] = []
+    for regime, group in selected.groupby("regime", sort=True):
+        tradable_rows = len(group)
+        for min_fill in sorted(float(value) for value in min_fill_probabilities):
+            for max_queue in sorted(float(value) for value in max_queue_shares):
+                candidate = group[
+                    (group["fill_probability"] >= min_fill)
+                    & (group["queue_share"] <= max_queue)
+                ]
+                candidate_rows = len(candidate)
+                if candidate_rows:
+                    mean_queue = float(candidate["queue_share"].mean())
+                    mean_fill = float(candidate["fill_probability"].mean())
+                    mean_adverse = float(candidate["adverse_fill_probability"].mean())
+                    mean_edge = float(candidate["execution_adjusted_edge_ticks"].mean())
+                    expected_value = float(candidate["expected_value_ticks"].mean())
+                    risk_adjusted_ev = float(candidate["risk_adjusted_expected_value_ticks"].mean())
+                    long_rows = int((candidate["side"] == "long").sum())
+                    short_rows = int((candidate["side"] == "short").sum())
+                else:
+                    mean_queue = 0.0
+                    mean_fill = 0.0
+                    mean_adverse = 0.0
+                    mean_edge = 0.0
+                    expected_value = 0.0
+                    risk_adjusted_ev = 0.0
+                    long_rows = 0
+                    short_rows = 0
+                candidate_share = float(candidate_rows / tradable_rows) if tradable_rows else 0.0
+                rows.append(
+                    {
+                        "regime": str(regime),
+                        "min_fill_probability": min_fill,
+                        "max_queue_share": max_queue,
+                        "tradable_rows": int(tradable_rows),
+                        "candidate_rows": int(candidate_rows),
+                        "candidate_share": candidate_share,
+                        "long_rows": long_rows,
+                        "short_rows": short_rows,
+                        "mean_queue_share": mean_queue,
+                        "mean_fill_probability": mean_fill,
+                        "mean_adverse_fill_probability": mean_adverse,
+                        "mean_execution_adjusted_edge_ticks": mean_edge,
+                        "expected_value_ticks": expected_value,
+                        "risk_adjusted_expected_value_ticks": risk_adjusted_ev,
+                        "policy_label": _queue_position_expected_value_policy_label(
+                            candidate_share=candidate_share,
+                            risk_adjusted_ev=risk_adjusted_ev,
+                            mean_adverse_fill_probability=mean_adverse,
+                        ),
+                    }
+                )
+    return pd.DataFrame(rows)[columns]
+
+
 def queue_position_adverse_selection_policy_frontier(
     frame: pd.DataFrame,
     *,
@@ -6032,6 +6214,20 @@ def _passive_fill_threshold_policy_label(
     if mean_realized_edge > 0.0:
         return "edge_positive_fill_uncertain_policy"
     return "execution_policy_rejected"
+
+
+def _queue_position_expected_value_policy_label(
+    *, candidate_share: float, risk_adjusted_ev: float, mean_adverse_fill_probability: float
+) -> str:
+    if candidate_share <= 0.0:
+        return "no_queue_ev_candidates"
+    if risk_adjusted_ev <= 0.0:
+        return "queue_policy_rejected"
+    if mean_adverse_fill_probability >= 0.30:
+        return "queue_policy_toxicity_review"
+    if candidate_share >= 0.50:
+        return "broad_positive_ev_queue_policy"
+    return "selective_positive_ev_queue_policy"
 
 
 def _empty_queue_position_fill_surface() -> pd.DataFrame:

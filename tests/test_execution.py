@@ -55,6 +55,7 @@ from lcri_lab.execution import (
     queue_position_fill_surface,
     queue_position_toxicity_surface,
     queue_position_fraction_sweep,
+    queue_position_expected_value_frontier,
     queue_position_latency_sensitivity,
     queue_position_regime_fraction_sweep,
 )
@@ -3088,6 +3089,80 @@ def test_passive_fill_threshold_policy_curve_scores_actionable_cutoffs() -> None
 def test_passive_fill_threshold_policy_curve_rejects_invalid_thresholds() -> None:
     with pytest.raises(ValueError, match="threshold values must be in"):
         passive_fill_threshold_policy_curve(pd.DataFrame(), thresholds=(1.25,))
+
+
+def test_queue_position_expected_value_frontier_scores_queue_and_fill_cutoffs() -> None:
+    frame = pd.DataFrame(
+        {
+            "regime": ["calm", "calm", "stress", "stress", "calm"],
+            "best_execution_side": ["long", "long", "short", "short", "abstain"],
+            "bid_queue_share": [0.10, 0.45, 0.20, 0.70, 0.15],
+            "ask_queue_share": [0.60, 0.35, 0.20, 0.30, 0.10],
+            "bid_fill_probability": [0.90, 0.65, 0.30, 0.20, 0.80],
+            "ask_fill_probability": [0.20, 0.40, 0.85, 0.70, 0.30],
+            "bid_adverse_fill_probability": [0.10, 0.25, 0.30, 0.20, 0.10],
+            "ask_adverse_fill_probability": [0.35, 0.30, 0.15, 0.45, 0.20],
+            "execution_adjusted_edge_ticks": [0.60, 0.20, 0.50, -0.10, 0.0],
+        }
+    )
+
+    frontier = queue_position_expected_value_frontier(
+        frame,
+        min_fill_probabilities=(0.60, 0.80),
+        max_queue_shares=(0.25, 0.50),
+        adverse_selection_cost_ticks=0.40,
+        queue_drag_cost_ticks=0.20,
+        regime_col="regime",
+    )
+
+    assert frontier["regime"].tolist() == [
+        "calm",
+        "calm",
+        "calm",
+        "calm",
+        "stress",
+        "stress",
+        "stress",
+        "stress",
+    ]
+    assert frontier["min_fill_probability"].tolist() == pytest.approx([
+        0.60,
+        0.60,
+        0.80,
+        0.80,
+        0.60,
+        0.60,
+        0.80,
+        0.80,
+    ])
+    assert frontier["max_queue_share"].tolist() == pytest.approx([
+        0.25,
+        0.50,
+        0.25,
+        0.50,
+        0.25,
+        0.50,
+        0.25,
+        0.50,
+    ])
+    assert frontier["candidate_rows"].tolist() == [1, 2, 1, 1, 1, 2, 1, 1]
+    assert frontier["candidate_share"].tolist() == pytest.approx([0.5, 1.0, 0.5, 0.5, 0.5, 1.0, 0.5, 0.5])
+    calm_broad = frontier[(frontier["regime"] == "calm") & (frontier["max_queue_share"] == 0.50)].iloc[0]
+    assert calm_broad["mean_fill_probability"] == pytest.approx((0.90 + 0.65) / 2)
+    assert calm_broad["expected_value_ticks"] == pytest.approx((0.60 * 0.90 + 0.20 * 0.65) / 2)
+    assert calm_broad["risk_adjusted_expected_value_ticks"] == pytest.approx(
+        ((0.60 * 0.90 - 0.10 * 0.40 - 0.10 * 0.20) + (0.20 * 0.65 - 0.25 * 0.40 - 0.45 * 0.20)) / 2
+    )
+    assert calm_broad["policy_label"] == "broad_positive_ev_queue_policy"
+    stress_broad = frontier[(frontier["regime"] == "stress") & (frontier["max_queue_share"] == 0.50)].iloc[0]
+    assert stress_broad["policy_label"] == "queue_policy_toxicity_review"
+
+
+def test_queue_position_expected_value_frontier_rejects_invalid_costs_and_missing_columns() -> None:
+    with pytest.raises(ValueError, match="adverse_selection_cost_ticks must be finite and non-negative"):
+        queue_position_expected_value_frontier(pd.DataFrame(), adverse_selection_cost_ticks=-0.1)
+    with pytest.raises(ValueError, match="missing queue position expected value frontier columns"):
+        queue_position_expected_value_frontier(pd.DataFrame({"best_execution_side": ["long"]}))
 
 
 def test_execution_adjusted_lcri_event_window_attribution_flags_high_lcri_event_fragility() -> None:
