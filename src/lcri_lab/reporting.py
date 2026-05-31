@@ -1149,6 +1149,130 @@ def verify_passive_fill_event_transition_policy_curve(
     return errors
 
 
+def verify_passive_fill_event_policy_stability(
+    output_dir: Path,
+    artifact: str = "passive_fill_event_lifecycle_policy_stability.csv",
+    *,
+    context_col: str = "lifecycle_path",
+) -> list[str]:
+    """Return errors for train-vs-heldout passive-fill event policy stability artifacts."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing passive fill event policy stability: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        context_col,
+        "threshold",
+        "train_total_events",
+        "heldout_total_events",
+        "train_candidate_events",
+        "heldout_candidate_events",
+        "candidate_event_retention",
+        "train_event_share",
+        "heldout_event_share",
+        "event_share_delta",
+        "train_mean_event_fill_probability",
+        "heldout_mean_event_fill_probability",
+        "mean_event_fill_probability_delta",
+        "train_mean_event_adverse_fill_probability",
+        "heldout_mean_event_adverse_fill_probability",
+        "mean_event_adverse_fill_probability_delta",
+        "train_mean_post_minus_pre_realized_edge",
+        "heldout_mean_post_minus_pre_realized_edge",
+        "mean_post_minus_pre_realized_edge_delta",
+        "train_adverse_post_edge_share",
+        "heldout_adverse_post_edge_share",
+        "adverse_post_edge_share_delta",
+        "train_policy_label",
+        "heldout_policy_label",
+        "heldout_stability_label",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete passive fill event policy stability {artifact}: {missing}"]
+
+    label_columns = {context_col, "train_policy_label", "heldout_policy_label", "heldout_stability_label"}
+    numeric_columns = list(required - label_columns)
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite passive fill event policy stability values in {artifact}")
+    count_columns = [
+        "train_total_events",
+        "heldout_total_events",
+        "train_candidate_events",
+        "heldout_candidate_events",
+    ]
+    if not numeric[count_columns].ge(0.0).all().all():
+        errors.append(f"negative passive fill event policy stability counts in {artifact}")
+    probability_columns = [
+        "threshold",
+        "train_event_share",
+        "heldout_event_share",
+        "train_mean_event_fill_probability",
+        "heldout_mean_event_fill_probability",
+        "train_mean_event_adverse_fill_probability",
+        "heldout_mean_event_adverse_fill_probability",
+        "train_adverse_post_edge_share",
+        "heldout_adverse_post_edge_share",
+    ]
+    if not numeric[probability_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        errors.append(f"bounded passive fill event policy stability probabilities violated in {artifact}")
+    if (numeric["train_candidate_events"] > numeric["train_total_events"]).any() or (
+        numeric["heldout_candidate_events"] > numeric["heldout_total_events"]
+    ).any():
+        errors.append(f"passive fill event policy stability candidates exceed totals in {artifact}")
+    expected_retention = np.divide(
+        numeric["heldout_candidate_events"],
+        numeric["train_candidate_events"].replace(0.0, np.nan),
+    ).fillna(0.0)
+    if not np.allclose(numeric["candidate_event_retention"], expected_retention, atol=1e-9):
+        errors.append(f"inconsistent passive fill event policy stability retention in {artifact}")
+    delta_pairs = [
+        ("event_share_delta", "heldout_event_share", "train_event_share"),
+        (
+            "mean_event_fill_probability_delta",
+            "heldout_mean_event_fill_probability",
+            "train_mean_event_fill_probability",
+        ),
+        (
+            "mean_event_adverse_fill_probability_delta",
+            "heldout_mean_event_adverse_fill_probability",
+            "train_mean_event_adverse_fill_probability",
+        ),
+        (
+            "mean_post_minus_pre_realized_edge_delta",
+            "heldout_mean_post_minus_pre_realized_edge",
+            "train_mean_post_minus_pre_realized_edge",
+        ),
+        ("adverse_post_edge_share_delta", "heldout_adverse_post_edge_share", "train_adverse_post_edge_share"),
+    ]
+    inconsistent_deltas = [
+        delta
+        for delta, heldout, train in delta_pairs
+        if not np.allclose(numeric[delta], numeric[heldout] - numeric[train], atol=1e-9)
+    ]
+    if inconsistent_deltas:
+        errors.append(
+            f"inconsistent passive fill event policy stability deltas in {artifact}: {inconsistent_deltas}"
+        )
+    allowed_stability_labels = {
+        "heldout_policy_blocker",
+        "heldout_policy_review",
+        "heldout_policy_no_events",
+        "heldout_policy_missing",
+        "heldout_policy_stable",
+    }
+    unknown_stability_labels = sorted(
+        set(frame["heldout_stability_label"].astype(str)) - allowed_stability_labels
+    )
+    if unknown_stability_labels:
+        errors.append(
+            f"unknown passive fill event policy stability labels in {artifact}: {unknown_stability_labels}"
+        )
+    return errors
+
+
 
 def verify_event_level_passive_fill_horizon_sweep(
     output_dir: Path, artifact: str = "event_level_passive_fill_horizon_sweep.csv"

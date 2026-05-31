@@ -24,6 +24,7 @@ from lcri_lab.reporting import (
     verify_adverse_selection_phase_shift_summary,
     verify_event_level_passive_fill_horizon_sweep,
     verify_execution_publishability_review_artifacts,
+    verify_passive_fill_event_policy_stability,
     verify_execution_adjusted_lcri_quantile_diagnostics,
     verify_figure_artifacts,
     verify_passive_fill_realization_horizon_sweep,
@@ -398,6 +399,87 @@ def test_verify_event_level_passive_fill_horizon_sweep_requires_event_source(tmp
     ).to_csv(tmp_path / "event_level_passive_fill_horizon_sweep.csv", index=False)
     errors = verify_event_level_passive_fill_horizon_sweep(tmp_path)
     assert "non-event passive-fill horizon depletion sources" in errors
+
+
+def test_verify_passive_fill_event_policy_stability_accepts_lifecycle_rows(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {
+                "lifecycle_path": "calm|event|calm",
+                "threshold": 0.70,
+                "train_total_events": 10,
+                "heldout_total_events": 9,
+                "train_candidate_events": 6,
+                "heldout_candidate_events": 3,
+                "candidate_event_retention": 0.50,
+                "train_event_share": 0.60,
+                "heldout_event_share": 1 / 3,
+                "event_share_delta": 1 / 3 - 0.60,
+                "train_mean_event_fill_probability": 0.82,
+                "heldout_mean_event_fill_probability": 0.81,
+                "mean_event_fill_probability_delta": -0.01,
+                "train_mean_event_adverse_fill_probability": 0.20,
+                "heldout_mean_event_adverse_fill_probability": 0.28,
+                "mean_event_adverse_fill_probability_delta": 0.08,
+                "train_mean_post_minus_pre_realized_edge": 0.30,
+                "heldout_mean_post_minus_pre_realized_edge": -0.10,
+                "mean_post_minus_pre_realized_edge_delta": -0.40,
+                "train_adverse_post_edge_share": 0.20,
+                "heldout_adverse_post_edge_share": 0.70,
+                "adverse_post_edge_share_delta": 0.50,
+                "train_policy_label": "broad_lifecycle_policy",
+                "heldout_policy_label": "lifecycle_policy_review",
+                "heldout_stability_label": "heldout_policy_review",
+            }
+        ]
+    ).to_csv(tmp_path / "passive_fill_event_lifecycle_policy_stability.csv", index=False)
+
+    assert verify_passive_fill_event_policy_stability(tmp_path) == []
+
+
+def test_verify_passive_fill_event_policy_stability_rejects_invalid_transition_rows(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {
+                "regime_transition": "calm->stress",
+                "threshold": 1.20,
+                "train_total_events": 4,
+                "heldout_total_events": 3,
+                "train_candidate_events": 5,
+                "heldout_candidate_events": 4,
+                "candidate_event_retention": 0.80,
+                "train_event_share": 1.25,
+                "heldout_event_share": 0.50,
+                "event_share_delta": -0.25,
+                "train_mean_event_fill_probability": 0.70,
+                "heldout_mean_event_fill_probability": 0.65,
+                "mean_event_fill_probability_delta": -0.05,
+                "train_mean_event_adverse_fill_probability": 0.20,
+                "heldout_mean_event_adverse_fill_probability": 0.30,
+                "mean_event_adverse_fill_probability_delta": 0.10,
+                "train_mean_post_minus_pre_realized_edge": 0.30,
+                "heldout_mean_post_minus_pre_realized_edge": -0.10,
+                "mean_post_minus_pre_realized_edge_delta": -0.35,
+                "train_adverse_post_edge_share": 0.20,
+                "heldout_adverse_post_edge_share": 0.70,
+                "adverse_post_edge_share_delta": 0.49,
+                "train_policy_label": "broad_transition_policy",
+                "heldout_policy_label": "transition_policy_blocked",
+                "heldout_stability_label": "unknown_label",
+            }
+        ]
+    ).to_csv(tmp_path / "passive_fill_event_transition_policy_stability.csv", index=False)
+
+    errors = verify_passive_fill_event_policy_stability(
+        tmp_path,
+        artifact="passive_fill_event_transition_policy_stability.csv",
+        context_col="regime_transition",
+    )
+
+    assert any("bounded passive fill event policy stability probabilities" in error for error in errors)
+    assert any("passive fill event policy stability candidates exceed totals" in error for error in errors)
+    assert any("inconsistent passive fill event policy stability deltas" in error for error in errors)
+    assert any("unknown passive fill event policy stability labels" in error for error in errors)
 
 
 def test_verify_adverse_selection_phase_shift_summary_checks_schema(tmp_path) -> None:

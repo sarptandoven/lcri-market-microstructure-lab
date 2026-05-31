@@ -123,6 +123,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "passive_fill_event_lifecycle_summary.csv").exists()
     assert (tmp_path / "passive_fill_event_lifecycle_policy_curve.csv").exists()
     assert (tmp_path / "passive_fill_event_transition_policy_curve.csv").exists()
+    assert (tmp_path / "passive_fill_event_lifecycle_policy_stability.csv").exists()
+    assert (tmp_path / "passive_fill_event_transition_policy_stability.csv").exists()
     assert (tmp_path / "passive_fill_event_toxicity_scorecard.json").exists()
     assert (tmp_path / "passive_fill_event_lifecycle_toxicity_scorecard.json").exists()
     assert (tmp_path / "passive_fill_event_transition_toxicity_scorecard.json").exists()

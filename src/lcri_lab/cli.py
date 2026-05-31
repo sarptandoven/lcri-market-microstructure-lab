@@ -171,6 +171,7 @@ from lcri_lab.reporting import (
     verify_execution_publishability_release_gate,
     verify_passive_fill_realization_horizon_sweep,
     verify_passive_fill_event_lifecycle_policy_curve,
+    verify_passive_fill_event_policy_stability,
     verify_passive_fill_event_transition_policy_curve,
     verify_passive_fill_threshold_policy_curve,
     verify_phase_shift_artifact_review,
@@ -2264,6 +2265,20 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_passive_fill_event_transition_policy_curve.csv"
             )
             if "heldout_passive_fill_event_transition_policy_curve.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_passive_fill_event_policy_stability(report_dir)
+            if "passive_fill_event_lifecycle_policy_stability.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_passive_fill_event_policy_stability(
+                report_dir,
+                "passive_fill_event_transition_policy_stability.csv",
+                context_col="regime_transition",
+            )
+            if "passive_fill_event_transition_policy_stability.csv" in manifest_artifacts
             else []
         ),
         *(
