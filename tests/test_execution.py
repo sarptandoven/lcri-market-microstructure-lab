@@ -34,6 +34,7 @@ from lcri_lab.execution import (
     queue_position_regime_capacity_concentration,
     queue_position_regime_capacity_frontier,
     queue_position_calibration_drift,
+    queue_position_calibration_residual_summary,
     queue_position_edge_decay,
     queue_position_fill_calibration_surface,
     queue_position_fill_surface,
@@ -1211,6 +1212,51 @@ def test_queue_position_fill_calibration_surface_rejects_bad_inputs() -> None:
         queue_position_fill_calibration_surface(pd.DataFrame(), queue_bins=0)
     with pytest.raises(ValueError, match="missing queue position fill calibration surface columns"):
         queue_position_fill_calibration_surface(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_calibration_residual_summary_ranks_underfilled_queue_slices() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["thin", "thin", "thin", "stress"],
+            "best_execution_side": ["long", "long", "short", "long"],
+            "queue_share_bin": [1, 2, 1, 1],
+            "fill_probability_bin": [2, 1, 2, 2],
+            "rows": [10, 30, 20, 5],
+            "mean_queue_share": [0.20, 0.80, 0.30, 0.25],
+            "mean_predicted_fill_probability": [0.80, 0.60, 0.30, 0.70],
+            "realized_fill_rate": [0.70, 0.20, 0.55, 0.65],
+            "calibration_error": [-0.10, -0.40, 0.25, -0.05],
+            "absolute_calibration_error": [0.10, 0.40, 0.25, 0.05],
+            "brier_score": [0.18, 0.30, 0.20, 0.12],
+            "mean_execution_adjusted_edge_ticks": [0.40, -0.30, 0.20, 0.10],
+        }
+    )
+
+    summary = queue_position_calibration_residual_summary(surface, error_threshold=0.15)
+
+    assert summary["regime"].tolist() == ["thin", "thin", "stress"]
+    assert summary["best_execution_side"].tolist() == ["long", "short", "long"]
+    assert summary["rows"].tolist() == [40, 20, 5]
+    assert summary["underfilled_bins"].tolist() == [1, 0, 0]
+    assert summary["overfilled_bins"].tolist() == [0, 1, 0]
+    assert summary["weighted_calibration_error"].tolist() == pytest.approx([-0.325, 0.25, -0.05])
+    assert summary["weighted_absolute_calibration_error"].tolist() == pytest.approx([0.325, 0.25, 0.05])
+    assert summary["weighted_mean_execution_adjusted_edge_ticks"].tolist() == pytest.approx(
+        [-0.125, 0.20, 0.10]
+    )
+    assert summary["worst_queue_share_bin"].tolist() == [2, 1, 1]
+    assert summary["residual_label"].tolist() == [
+        "underfilled_execution_drag",
+        "overfilled_execution_opportunity",
+        "calibration_residual_controlled",
+    ]
+
+
+def test_queue_position_calibration_residual_summary_rejects_bad_surface() -> None:
+    with pytest.raises(ValueError, match="error_threshold"):
+        queue_position_calibration_residual_summary(pd.DataFrame(), error_threshold=-0.1)
+    with pytest.raises(ValueError, match="missing queue position calibration residual summary columns"):
+        queue_position_calibration_residual_summary(pd.DataFrame({"regime": ["thin"]}))
 
 
 def test_passive_fill_event_window_diagnostics_tracks_side_specific_drift() -> None:

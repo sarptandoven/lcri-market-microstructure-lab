@@ -1593,6 +1593,118 @@ def queue_position_fill_calibration_surface(
     return output
 
 
+def queue_position_calibration_residual_summary(
+    surface: pd.DataFrame,
+    *,
+    regime_col: str = "regime",
+    error_threshold: float = 0.15,
+) -> pd.DataFrame:
+    """Rank queue-position fill model residuals by regime and execution side.
+
+    The calibration surface shows individual queue/probability cells, but release
+    review also needs an aggregate answer: which regime-side slices systematically
+    overstate or understate passive fills, and does that residual coincide with
+    execution edge drag? This reducer preserves side and regime, weights cells by
+    their opportunity count, and labels underfilled/overfilled slices for queue
+    model recalibration or conservative execution gating.
+    """
+    if not regime_col:
+        raise ValueError("regime_col must be non-empty")
+    if not math.isfinite(error_threshold) or error_threshold < 0.0:
+        raise ValueError("error_threshold must be a finite non-negative value")
+
+    columns = list(_empty_queue_position_calibration_residual_summary().columns)
+    if surface.empty:
+        return _empty_queue_position_calibration_residual_summary()
+
+    required = {
+        regime_col,
+        "best_execution_side",
+        "queue_share_bin",
+        "fill_probability_bin",
+        "rows",
+        "mean_queue_share",
+        "calibration_error",
+        "absolute_calibration_error",
+        "mean_execution_adjusted_edge_ticks",
+    }
+    _require_columns(surface, required, "queue position calibration residual summary")
+    numeric_columns = [
+        "queue_share_bin",
+        "fill_probability_bin",
+        "rows",
+        "mean_queue_share",
+        "calibration_error",
+        "absolute_calibration_error",
+        "mean_execution_adjusted_edge_ticks",
+    ]
+    values = _finite_values(surface, numeric_columns, "queue position calibration residual summary")
+    if not values["rows"].ge(0.0).all():
+        raise ValueError("queue position calibration residual summary rows must be non-negative")
+    if not values["mean_queue_share"].ge(0.0).all():
+        raise ValueError("queue position calibration residual summary queue shares must be non-negative")
+    if not values["calibration_error"].between(-1.0, 1.0).all():
+        raise ValueError("queue position calibration residual summary errors must be in [-1, 1]")
+    if not values["absolute_calibration_error"].between(0.0, 1.0).all():
+        raise ValueError("queue position calibration residual summary absolute errors must be in [0, 1]")
+
+    working = surface.copy()
+    working[regime_col] = working[regime_col].astype(str)
+    working["best_execution_side"] = working["best_execution_side"].astype(str)
+    for column in numeric_columns:
+        working[column] = values[column]
+    working = working[working["rows"] > 0.0]
+    if working.empty:
+        return _empty_queue_position_calibration_residual_summary()
+
+    rows: list[dict[str, float | int | str]] = []
+    for (regime, execution_side), group in working.groupby(
+        [regime_col, "best_execution_side"], sort=True
+    ):
+        weights = group["rows"].to_numpy(dtype=float)
+        weighted_error = float(np.average(group["calibration_error"], weights=weights))
+        weighted_abs_error = float(np.average(group["absolute_calibration_error"], weights=weights))
+        weighted_queue_share = float(np.average(group["mean_queue_share"], weights=weights))
+        weighted_edge = float(
+            np.average(group["mean_execution_adjusted_edge_ticks"], weights=weights)
+        )
+        worst = group.sort_values(
+            ["absolute_calibration_error", "rows", "queue_share_bin", "fill_probability_bin"],
+            ascending=[False, False, True, True],
+        ).iloc[0]
+        rows.append(
+            {
+                "regime": str(regime),
+                "best_execution_side": str(execution_side),
+                "bins": int(len(group)),
+                "rows": int(group["rows"].sum()),
+                "underfilled_bins": int((group["calibration_error"] < -error_threshold).sum()),
+                "overfilled_bins": int((group["calibration_error"] > error_threshold).sum()),
+                "weighted_mean_queue_share": weighted_queue_share,
+                "weighted_calibration_error": weighted_error,
+                "weighted_absolute_calibration_error": weighted_abs_error,
+                "weighted_mean_execution_adjusted_edge_ticks": weighted_edge,
+                "worst_queue_share_bin": int(worst["queue_share_bin"]),
+                "worst_fill_probability_bin": int(worst["fill_probability_bin"]),
+                "worst_absolute_calibration_error": float(worst["absolute_calibration_error"]),
+                "residual_label": _queue_calibration_residual_label(
+                    weighted_error=weighted_error,
+                    weighted_abs_error=weighted_abs_error,
+                    weighted_edge=weighted_edge,
+                    error_threshold=error_threshold,
+                ),
+            }
+        )
+    output = pd.DataFrame(rows, columns=columns)
+    if regime_col != "regime":
+        output = output.rename(columns={"regime": regime_col})
+    return output.sort_values(
+        ["weighted_absolute_calibration_error", "rows", regime_col, "best_execution_side"],
+        ascending=[False, False, True, True],
+    ).reset_index(drop=True)
+
+
+
 def queue_position_calibration_drift(
     surface: pd.DataFrame,
     *,
@@ -3869,6 +3981,45 @@ def _empty_queue_position_calibration_drift() -> pd.DataFrame:
             "drift_label",
         ]
     )
+
+
+def _empty_queue_position_calibration_residual_summary() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "regime",
+            "best_execution_side",
+            "bins",
+            "rows",
+            "underfilled_bins",
+            "overfilled_bins",
+            "weighted_mean_queue_share",
+            "weighted_calibration_error",
+            "weighted_absolute_calibration_error",
+            "weighted_mean_execution_adjusted_edge_ticks",
+            "worst_queue_share_bin",
+            "worst_fill_probability_bin",
+            "worst_absolute_calibration_error",
+            "residual_label",
+        ]
+    )
+
+
+def _queue_calibration_residual_label(
+    *,
+    weighted_error: float,
+    weighted_abs_error: float,
+    weighted_edge: float,
+    error_threshold: float,
+) -> str:
+    if weighted_error < -error_threshold and weighted_edge <= 0.0:
+        return "underfilled_execution_drag"
+    if weighted_error < -error_threshold:
+        return "underfilled_but_edge_positive"
+    if weighted_error > error_threshold and weighted_edge >= 0.0:
+        return "overfilled_execution_opportunity"
+    if weighted_abs_error > error_threshold:
+        return "calibration_residual_watch"
+    return "calibration_residual_controlled"
 
 
 def _queue_calibration_drift_label(
