@@ -628,22 +628,30 @@ def baseline_nonlinear_publishability_summary(
     attribution: pd.DataFrame,
     rolling_summary: pd.DataFrame,
     *,
+    coefficient_stability: pd.DataFrame | None = None,
     min_contribution_share: float = 0.50,
     min_median_lift: float = 0.0,
+    min_coefficient_sign_consistency: float = 0.80,
 ) -> dict[str, bool | float | str]:
     """Summarize whether nonlinear liquidity neutralization is publishable.
 
-    Nonlinear baseline claims should clear two hurdles: the fitted baseline should
-    actually allocate meaningful prediction mass to nonlinear liquidity features,
-    and rolling holdout diagnostics should show stable out-of-sample lift. This
-    compact gate combines component attribution with rolling basis stability so
-    release artifacts can distinguish real nonlinear neutralization from an
-    overfit or decorative basis expansion.
+    Nonlinear baseline claims should clear three hurdles: the fitted baseline
+    should allocate meaningful prediction mass to nonlinear liquidity features,
+    rolling holdout diagnostics should show stable out-of-sample lift, and (when
+    supplied) rolling coefficient audits should show economically interpretable
+    sign stability. This compact gate combines attribution, OOS stability, and
+    optional coefficient stability so release artifacts can distinguish real
+    nonlinear neutralization from an overfit or sign-flipping basis expansion.
     """
     if not math.isfinite(min_contribution_share) or not 0.0 <= min_contribution_share <= 1.0:
         raise ValueError("min_contribution_share must be finite and in [0, 1]")
     if not math.isfinite(min_median_lift):
         raise ValueError("min_median_lift must be finite")
+    if (
+        not math.isfinite(min_coefficient_sign_consistency)
+        or not 0.0 <= min_coefficient_sign_consistency <= 1.0
+    ):
+        raise ValueError("min_coefficient_sign_consistency must be finite and in [0, 1]")
 
     attribution_required = {"component", "contribution_share"}
     missing_attribution = sorted(attribution_required - set(attribution.columns))
@@ -688,18 +696,52 @@ def baseline_nonlinear_publishability_summary(
     if not all(math.isfinite(value) for value in numeric.values()):
         raise ValueError("nonlinear publishability rolling metrics must be finite")
     nonlinear_stable_lift = bool(nonlinear["stable_lift"])
+
+    coefficient_metrics: dict[str, bool | float] = {}
+    nonlinear_coefficients_stable = True
+    if coefficient_stability is not None:
+        stability_required = {"component", "sign_consistency", "stability_label"}
+        missing_stability = sorted(stability_required - set(coefficient_stability.columns))
+        if missing_stability:
+            raise ValueError(
+                f"missing nonlinear publishability coefficient stability columns: {missing_stability}"
+            )
+        nonlinear_stability = coefficient_stability[
+            coefficient_stability["component"].astype(str) == "nonlinear_liquidity"
+        ]
+        if nonlinear_stability.empty:
+            raise ValueError("coefficient_stability must include nonlinear_liquidity rows")
+        sign_consistency = nonlinear_stability["sign_consistency"].to_numpy(dtype=float)
+        if not np.isfinite(sign_consistency).all():
+            raise ValueError("coefficient stability sign consistency values must be finite")
+        stability_labels = nonlinear_stability["stability_label"].astype(str)
+        stable_mask = (sign_consistency >= min_coefficient_sign_consistency) & stability_labels.isin(
+            ["sign_stable_dominant", "sign_stable", "inactive"]
+        ).to_numpy()
+        nonlinear_coefficients_stable = bool(stable_mask.all())
+        coefficient_metrics = {
+            "nonlinear_min_coefficient_sign_consistency": float(sign_consistency.min()),
+            "nonlinear_stable_coefficient_rate": float(stable_mask.mean()),
+            "nonlinear_coefficients_stable": nonlinear_coefficients_stable,
+        }
+
     publishable = bool(
         nonlinear_contribution_share >= min_contribution_share
         and numeric["nonlinear_median_test_rmse_lift_vs_core"] >= min_median_lift
         and nonlinear_stable_lift
+        and nonlinear_coefficients_stable
     )
-    review_note = (
-        "nonlinear_baseline_supported" if publishable else "nonlinear_baseline_under_supported"
-    )
+    if publishable:
+        review_note = "nonlinear_baseline_supported"
+    elif not nonlinear_coefficients_stable:
+        review_note = "nonlinear_baseline_coefficient_instability"
+    else:
+        review_note = "nonlinear_baseline_under_supported"
     return {
         "nonlinear_contribution_share": nonlinear_contribution_share,
         **numeric,
         "nonlinear_stable_lift": nonlinear_stable_lift,
+        **coefficient_metrics,
         "publishable": publishable,
         "review_note": review_note,
     }
@@ -943,6 +985,125 @@ def baseline_tail_lift_diagnostics(
             }
         )
     return pd.DataFrame(rows, columns=columns)
+
+
+def baseline_nonlinear_coefficient_stability(
+    frame: pd.DataFrame,
+    *,
+    train_window: int = 500,
+    step: int | None = None,
+    ridge: float = 1e-3,
+    sign_deadband: float = 1e-10,
+) -> pd.DataFrame:
+    """Audit rolling coefficient stability for nonlinear liquidity neutralization terms.
+
+    Out-of-sample RMSE lift is necessary but not sufficient for a publishable
+    nonlinear LCRI baseline: a flexible basis can win folds while the stress terms
+    flip signs across time, making the learned neutralizer economically unstable.
+    This diagnostic refits the full standardized ridge basis on rolling
+    chronological windows and reports sign consistency plus coefficient dispersion
+    for each nonlinear liquidity term.
+    """
+    columns = [
+        "feature",
+        "component",
+        "windows",
+        "mean_coefficient",
+        "std_coefficient",
+        "mean_abs_coefficient",
+        "coefficient_cv",
+        "sign_consistency",
+        "stability_label",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    if not isinstance(train_window, int) or isinstance(train_window, bool) or train_window < 1:
+        raise ValueError("train_window must be a positive integer")
+    if step is None:
+        step = train_window
+    if not isinstance(step, int) or isinstance(step, bool) or step < 1:
+        raise ValueError("step must be a positive integer")
+    if not math.isfinite(ridge) or ridge < 0.0:
+        raise ValueError("ridge must be a finite non-negative value")
+    if not math.isfinite(sign_deadband) or sign_deadband < 0.0:
+        raise ValueError("sign_deadband must be a finite non-negative value")
+    if "raw_imbalance" not in frame.columns:
+        raise ValueError("missing coefficient stability columns: ['raw_imbalance']")
+
+    y = frame["raw_imbalance"].to_numpy(dtype=float)
+    if not np.isfinite(y).all():
+        raise ValueError("raw_imbalance values must be finite")
+    x = _design_matrix(frame)
+    feature_names = design_feature_names()
+    nonlinear_indexes = [feature_names.index(feature) for feature in NONLINEAR_LIQUIDITY_FEATURES]
+    if train_window > len(frame):
+        raise ValueError("at least one coefficient stability window is required")
+
+    coefficients_by_window: list[np.ndarray] = []
+    for start in range(0, len(frame) - train_window + 1, step):
+        end = start + train_window
+        x_train = x[start:end]
+        y_train = y[start:end]
+        mean = x_train.mean(axis=0)
+        scale = x_train.std(axis=0)
+        scale[scale == 0.0] = 1.0
+        train_design = np.column_stack([np.ones(train_window), (x_train - mean) / scale])
+        penalty = np.sqrt(ridge) * np.eye(train_design.shape[1])
+        penalty[0, 0] = 0.0
+        coefficients = np.linalg.lstsq(
+            np.vstack([train_design, penalty]),
+            np.concatenate([y_train, np.zeros(train_design.shape[1])]),
+            rcond=None,
+        )[0]
+        coefficients_by_window.append(coefficients[1:][nonlinear_indexes])
+    if not coefficients_by_window:
+        raise ValueError("at least one coefficient stability window is required")
+
+    coefficient_matrix = np.vstack(coefficients_by_window)
+    rows: list[dict[str, float | int | str]] = []
+    for offset, feature in enumerate(NONLINEAR_LIQUIDITY_FEATURES):
+        values = coefficient_matrix[:, offset]
+        abs_values = np.abs(values)
+        mean_coefficient = float(values.mean())
+        std_coefficient = float(values.std())
+        mean_abs_coefficient = float(abs_values.mean())
+        coefficient_cv = (
+            float(std_coefficient / mean_abs_coefficient) if mean_abs_coefficient > 0.0 else 0.0
+        )
+        active = abs_values > sign_deadband
+        if active.any():
+            signs = np.sign(values[active])
+            positive_share = float((signs > 0.0).mean())
+            negative_share = float((signs < 0.0).mean())
+            sign_consistency = max(positive_share, negative_share)
+        else:
+            sign_consistency = 0.0
+        if sign_consistency >= 0.95 and coefficient_cv <= 0.50:
+            label = "sign_stable_dominant"
+        elif sign_consistency >= 0.80:
+            label = "sign_stable"
+        elif mean_abs_coefficient <= sign_deadband:
+            label = "inactive"
+        else:
+            label = "sign_unstable"
+        rows.append(
+            {
+                "feature": feature,
+                "component": _component_for_feature(feature),
+                "windows": int(coefficient_matrix.shape[0]),
+                "mean_coefficient": mean_coefficient,
+                "std_coefficient": std_coefficient,
+                "mean_abs_coefficient": mean_abs_coefficient,
+                "coefficient_cv": coefficient_cv,
+                "sign_consistency": float(sign_consistency),
+                "stability_label": label,
+            }
+        )
+    return pd.DataFrame(rows, columns=columns).sort_values(
+        ["mean_abs_coefficient", "sign_consistency", "feature"],
+        ascending=[False, False, True],
+        ignore_index=True,
+    )
 
 
 def _component_for_feature(feature: str) -> str:

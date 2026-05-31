@@ -7,6 +7,7 @@ from lcri_lab.baseline import (
     baseline_basis_comparison,
     baseline_component_attribution,
     baseline_liquidity_stress_curve,
+    baseline_nonlinear_coefficient_stability,
     baseline_nonlinear_publishability_summary,
     baseline_regime_basis_comparison,
     baseline_regime_publishability_summary,
@@ -96,6 +97,57 @@ def test_baseline_component_attribution_exposes_nonlinear_liquidity_dominance() 
         "replenishment_inverse",
     }
     assert attribution["contribution_share"].sum() == pytest.approx(1.0)
+
+
+def test_baseline_nonlinear_coefficient_stability_flags_sign_stable_stress_terms() -> None:
+    books = simulate_order_books(SimulationConfig(rows=960, seed=33))
+    features = compute_features(books)
+    features["raw_imbalance"] = (
+        0.11 * features["spread_ticks"].to_numpy(dtype=float) ** 2
+        - 0.31 * features["volatility"].to_numpy(dtype=float) ** 2
+        + 0.37 * features["liquidity_void_ratio"].to_numpy(dtype=float)
+        * features["volatility"].to_numpy(dtype=float)
+        - 0.16 / (1.0 + features["replenishment_rate"].to_numpy(dtype=float))
+    )
+
+    stability = baseline_nonlinear_coefficient_stability(
+        features,
+        train_window=320,
+        step=160,
+        ridge=1e-8,
+    )
+    by_feature = stability.set_index("feature")
+
+    assert stability.columns.tolist() == [
+        "feature",
+        "component",
+        "windows",
+        "mean_coefficient",
+        "std_coefficient",
+        "mean_abs_coefficient",
+        "coefficient_cv",
+        "sign_consistency",
+        "stability_label",
+    ]
+    assert by_feature.loc["spread_stress_squared", "component"] == "nonlinear_liquidity"
+    assert by_feature.loc["spread_stress_squared", "sign_consistency"] == pytest.approx(1.0)
+    assert by_feature.loc["volatility_stress_squared", "sign_consistency"] == pytest.approx(1.0)
+    assert by_feature.loc["liquidity_void_x_volatility", "sign_consistency"] == pytest.approx(1.0)
+    assert by_feature.loc["spread_stress_squared", "stability_label"] in {
+        "sign_stable_dominant",
+        "sign_stable",
+    }
+    assert stability["mean_abs_coefficient"].is_monotonic_decreasing
+
+
+def test_baseline_nonlinear_coefficient_stability_rejects_invalid_windows() -> None:
+    books = simulate_order_books(SimulationConfig(rows=100, seed=34))
+    features = compute_features(books)
+
+    with pytest.raises(ValueError, match="train_window must be a positive integer"):
+        baseline_nonlinear_coefficient_stability(features, train_window=0)
+    with pytest.raises(ValueError, match="at least one coefficient stability window"):
+        baseline_nonlinear_coefficient_stability(features, train_window=200)
 
 
 def test_baseline_liquidity_stress_curve_is_centered_and_monotone_for_convex_spread() -> None:
@@ -507,6 +559,53 @@ def test_baseline_nonlinear_publishability_summary_flags_unsupported_baseline() 
 
     assert summary["publishable"] is False
     assert summary["review_note"] == "nonlinear_baseline_under_supported"
+
+
+def test_baseline_nonlinear_publishability_summary_requires_coefficient_stability() -> None:
+    attribution = pd.DataFrame(
+        {
+            "component": ["core", "nonlinear_liquidity", "nonlinear_liquidity"],
+            "feature": [
+                "spread_ticks",
+                "spread_stress_squared",
+                "liquidity_void_x_volatility",
+            ],
+            "contribution_share": [0.20, 0.45, 0.35],
+        }
+    )
+    rolling_summary = pd.DataFrame(
+        {
+            "basis": ["core", "nonlinear_liquidity"],
+            "winner_rate": [0.0, 1.0],
+            "positive_lift_rate": [0.0, 1.0],
+            "median_test_rmse_lift_vs_core": [0.0, 0.55],
+            "min_test_rmse_lift_vs_core": [0.0, 0.52],
+            "stable_lift": [False, True],
+        }
+    )
+    coefficient_stability = pd.DataFrame(
+        {
+            "feature": ["spread_stress_squared", "liquidity_void_x_volatility"],
+            "component": ["nonlinear_liquidity", "nonlinear_liquidity"],
+            "windows": [4, 4],
+            "mean_abs_coefficient": [0.25, 0.35],
+            "sign_consistency": [1.0, 0.50],
+            "stability_label": ["sign_stable", "sign_unstable"],
+        }
+    )
+
+    summary = baseline_nonlinear_publishability_summary(
+        attribution,
+        rolling_summary,
+        coefficient_stability=coefficient_stability,
+        min_coefficient_sign_consistency=0.80,
+    )
+
+    assert summary["nonlinear_min_coefficient_sign_consistency"] == pytest.approx(0.50)
+    assert summary["nonlinear_stable_coefficient_rate"] == pytest.approx(0.50)
+    assert summary["nonlinear_coefficients_stable"] is False
+    assert summary["publishable"] is False
+    assert summary["review_note"] == "nonlinear_baseline_coefficient_instability"
 
 
 def test_baseline_rolling_basis_summary_rejects_missing_columns() -> None:
