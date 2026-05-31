@@ -11,6 +11,7 @@ from lcri_lab.execution import (
     add_queue_position_realized_fill_proxy,
     execution_adjusted_edge_summary,
     execution_adjusted_lcri_quantile_diagnostics,
+    execution_adjusted_lcri_regime_attribution,
     passive_fill_calibration_curve,
     passive_fill_calibration_summary,
     passive_fill_event_regime_summary,
@@ -1186,6 +1187,47 @@ def test_queue_position_execution_readiness_scorecard_labels_publishable() -> No
 def test_queue_position_execution_readiness_scorecard_rejects_missing_keys() -> None:
     with pytest.raises(ValueError, match="missing queue execution readiness quality keys"):
         queue_position_execution_readiness_scorecard({"quality_gate_label": "x"}, {})
+
+
+def test_execution_adjusted_lcri_regime_attribution_exposes_regime_side_survival() -> None:
+    frame = pd.DataFrame(
+        {
+            "regime": ["open", "open", "open", "stress", "stress"],
+            "lcri": [2.0, 1.0, -2.0, 3.0, -1.0],
+            "lcri_probability": [0.90, 0.80, 0.20, 0.95, 0.30],
+            "best_execution_side": ["long", "abstain", "long", "short", "short"],
+            "execution_adjusted_edge_ticks": [0.50, -0.10, 0.20, -0.40, 0.30],
+            "bid_fill_probability": [0.80, 0.20, 0.70, 0.10, 0.20],
+            "ask_fill_probability": [0.30, 0.40, 0.20, 0.90, 0.60],
+            "bid_adverse_fill_probability": [0.10, 0.20, 0.30, 0.40, 0.20],
+            "ask_adverse_fill_probability": [0.20, 0.30, 0.10, 0.50, 0.10],
+        }
+    )
+
+    attribution = execution_adjusted_lcri_regime_attribution(frame)
+
+    rows = attribution.set_index(["regime", "lcri_side"])
+    open_long = rows.loc[("open", "long")]
+    assert open_long["rows"] == 2
+    assert open_long["tradable_rows"] == 1
+    assert open_long["execution_conflict_rows"] == 1
+    assert open_long["execution_survival_share"] == pytest.approx(0.50)
+    assert open_long["mean_fill_probability_advantage"] == pytest.approx(0.15)
+    assert open_long["review_label"] == "execution_friction_review"
+
+    open_short = rows.loc[("open", "short")]
+    assert open_short["dominant_execution_side"] == "long"
+    assert open_short["execution_conflict_share"] == pytest.approx(1.00)
+    assert open_short["review_label"] == "execution_side_inversion_review"
+
+    stress_long = rows.loc[("stress", "long")]
+    assert stress_long["review_label"] == "execution_side_inversion_review"
+    assert stress_long["mean_execution_adjusted_edge_ticks"] == pytest.approx(-0.40)
+
+
+def test_execution_adjusted_lcri_regime_attribution_rejects_missing_regime() -> None:
+    with pytest.raises(ValueError, match="missing execution-adjusted LCRI regime attribution columns"):
+        execution_adjusted_lcri_regime_attribution(pd.DataFrame({"lcri": [1.0]}))
 
 
 def test_passive_fill_calibration_curve_scores_realized_side_fills_by_regime() -> None:

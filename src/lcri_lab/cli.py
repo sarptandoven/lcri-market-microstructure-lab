@@ -95,6 +95,7 @@ from lcri_lab.execution import (
     add_queue_position_realized_fill_proxy,
     execution_adjusted_edge_summary,
     execution_adjusted_lcri_quantile_diagnostics,
+    execution_adjusted_lcri_regime_attribution,
     execution_adjusted_lcri_side_attribution,
     execution_publishability_release_gate,
     execution_publishability_review_packet,
@@ -764,6 +765,8 @@ def run_demo(
     )
     execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(scored)
     heldout_execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(heldout_scored)
+    execution_lcri_regime_attribution = execution_adjusted_lcri_regime_attribution(scored)
+    heldout_execution_lcri_regime_attribution = execution_adjusted_lcri_regime_attribution(heldout_scored)
     execution_lcri_quantile_diagnostics = execution_adjusted_lcri_quantile_diagnostics(scored)
     heldout_execution_lcri_quantile_diagnostics = execution_adjusted_lcri_quantile_diagnostics(
         heldout_scored
@@ -894,6 +897,8 @@ def run_demo(
         "heldout_execution_adjusted_edge_summary.json",
         "execution_adjusted_lcri_side_attribution.csv",
         "heldout_execution_adjusted_lcri_side_attribution.csv",
+        "execution_adjusted_lcri_regime_attribution.csv",
+        "heldout_execution_adjusted_lcri_regime_attribution.csv",
         "execution_adjusted_lcri_quantile_diagnostics.csv",
         "heldout_execution_adjusted_lcri_quantile_diagnostics.csv",
         "execution_publishability_review_packet.csv",
@@ -1319,6 +1324,12 @@ def run_demo(
     )
     heldout_execution_lcri_side_attribution.to_csv(
         output / "heldout_execution_adjusted_lcri_side_attribution.csv", index=False
+    )
+    execution_lcri_regime_attribution.to_csv(
+        output / "execution_adjusted_lcri_regime_attribution.csv", index=False
+    )
+    heldout_execution_lcri_regime_attribution.to_csv(
+        output / "heldout_execution_adjusted_lcri_regime_attribution.csv", index=False
     )
     execution_lcri_quantile_diagnostics.to_csv(
         output / "execution_adjusted_lcri_quantile_diagnostics.csv", index=False

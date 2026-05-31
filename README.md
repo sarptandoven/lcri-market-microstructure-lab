@@ -129,6 +129,8 @@ reports/
   heldout_passive_fill_event_lead_lag_profile.csv
   execution_adjusted_lcri_quantile_diagnostics.csv
   heldout_execution_adjusted_lcri_quantile_diagnostics.csv
+  execution_adjusted_lcri_regime_attribution.csv
+  heldout_execution_adjusted_lcri_regime_attribution.csv
   transition_robustness.json
   heldout_transition_robustness.json
   research_summary.md
@@ -137,7 +139,7 @@ reports/
   sample_snapshots.csv
 ```
 
-The execution-adjusted LCRI quantile diagnostics bucket rows by raw `abs(lcri)` and report how much signal survives passive-execution constraints, including the selected-side fill probability, selected-side adverse-fill probability, and fill-minus-adverse spread for each bucket.
+The execution-adjusted LCRI quantile diagnostics bucket rows by raw `abs(lcri)` and report how much signal survives passive-execution constraints, including the selected-side fill probability, selected-side adverse-fill probability, and fill-minus-adverse spread for each bucket. The regime attribution companion groups by liquidity regime and raw LCRI side so reviewers can see where queue-aware execution preserves, abstains, or inverts the residual imbalance before treating an LCRI result as publishable.
 
 ## Python usage
 
