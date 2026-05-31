@@ -987,6 +987,98 @@ def baseline_tail_lift_diagnostics(
     return pd.DataFrame(rows, columns=columns)
 
 
+def baseline_stress_tail_publishability_summary(
+    diagnostics: pd.DataFrame,
+    *,
+    min_tail_lift: float = 0.0,
+) -> pd.DataFrame:
+    """Summarize whether nonlinear baseline lift survives every stress tail.
+
+    ``baseline_tail_lift_diagnostics`` is intentionally feature/bucket granular.
+    This release-facing companion rolls those rows up by stress feature so review
+    packets can gate nonlinear neutralization claims on the weakest tail, not the
+    average lift that can hide one broken high-stress pocket.
+    """
+    columns = [
+        "feature",
+        "tail_buckets",
+        "test_rows",
+        "min_tail_lift",
+        "median_tail_lift",
+        "worst_tail_bucket",
+        "worst_tail_lift",
+        "supported_tail_buckets",
+        "unsupported_tail_buckets",
+        "max_core_residual_abs_mean",
+        "max_nonlinear_residual_abs_mean",
+        "publishable",
+        "review_note",
+    ]
+    if diagnostics.empty:
+        return pd.DataFrame(columns=columns)
+    if not math.isfinite(min_tail_lift):
+        raise ValueError("min_tail_lift must be finite")
+    required = {
+        "feature",
+        "tail_bucket",
+        "test_rows",
+        "nonlinear_rmse_lift_vs_core",
+        "core_residual_mean",
+        "nonlinear_residual_mean",
+    }
+    missing = sorted(required - set(diagnostics.columns))
+    if missing:
+        raise ValueError(f"missing stress tail publishability columns: {missing}")
+
+    numeric_columns = [
+        "test_rows",
+        "nonlinear_rmse_lift_vs_core",
+        "core_residual_mean",
+        "nonlinear_residual_mean",
+    ]
+    numeric = diagnostics[numeric_columns].astype(float)
+    if not np.isfinite(numeric.to_numpy()).all():
+        raise ValueError("stress tail publishability metrics must be finite")
+    if (numeric["test_rows"] < 0.0).any():
+        raise ValueError("stress tail publishability test rows must be non-negative")
+
+    rows: list[dict[str, bool | float | int | str]] = []
+    for feature, group in diagnostics.groupby("feature", sort=False):
+        lifts = group["nonlinear_rmse_lift_vs_core"].astype(float)
+        worst_index = lifts.idxmin()
+        supported = lifts >= min_tail_lift
+        publishable = bool(supported.all())
+        review_note = (
+            "nonlinear_stress_tail_supported"
+            if publishable
+            else "nonlinear_stress_tail_fragile"
+        )
+        rows.append(
+            {
+                "feature": str(feature),
+                "tail_buckets": int(group["tail_bucket"].astype(str).nunique()),
+                "test_rows": int(group["test_rows"].astype(float).sum()),
+                "min_tail_lift": float(lifts.min()),
+                "median_tail_lift": float(lifts.median()),
+                "worst_tail_bucket": str(group.loc[worst_index, "tail_bucket"]),
+                "worst_tail_lift": float(lifts.loc[worst_index]),
+                "supported_tail_buckets": int(supported.sum()),
+                "unsupported_tail_buckets": int((~supported).sum()),
+                "max_core_residual_abs_mean": float(
+                    group["core_residual_mean"].astype(float).abs().max()
+                ),
+                "max_nonlinear_residual_abs_mean": float(
+                    group["nonlinear_residual_mean"].astype(float).abs().max()
+                ),
+                "publishable": publishable,
+                "review_note": review_note,
+            }
+        )
+    output = pd.DataFrame(rows, columns=columns)
+    output["publishable"] = output["publishable"].astype(object)
+    return output
+
+
 def baseline_nonlinear_coefficient_stability(
     frame: pd.DataFrame,
     *,

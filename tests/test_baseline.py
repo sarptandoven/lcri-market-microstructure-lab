@@ -13,6 +13,7 @@ from lcri_lab.baseline import (
     baseline_regime_publishability_summary,
     baseline_rolling_basis_comparison,
     baseline_rolling_basis_summary,
+    baseline_stress_tail_publishability_summary,
     baseline_tail_lift_diagnostics,
     compute_lcri,
     design_feature_names,
@@ -232,6 +233,69 @@ def test_baseline_tail_lift_diagnostics_rejects_unknown_feature() -> None:
 
     with pytest.raises(ValueError, match="unknown design feature"):
         baseline_tail_lift_diagnostics(features, feature="not_a_feature")
+
+
+def test_baseline_stress_tail_publishability_summary_gates_all_stress_tails() -> None:
+    diagnostics = pd.DataFrame(
+        {
+            "feature": [
+                "spread_stress_squared",
+                "spread_stress_squared",
+                "liquidity_void_x_volatility",
+                "liquidity_void_x_volatility",
+            ],
+            "tail_bucket": ["low_tail", "high_tail", "low_tail", "high_tail"],
+            "test_rows": [30, 31, 32, 33],
+            "nonlinear_rmse_lift_vs_core": [0.22, 0.31, 0.19, 0.44],
+            "core_residual_mean": [0.04, -0.03, 0.02, -0.01],
+            "nonlinear_residual_mean": [0.01, -0.01, 0.00, 0.00],
+        }
+    )
+
+    summary = baseline_stress_tail_publishability_summary(diagnostics, min_tail_lift=0.15)
+    by_feature = summary.set_index("feature")
+
+    assert summary.columns.tolist() == [
+        "feature",
+        "tail_buckets",
+        "test_rows",
+        "min_tail_lift",
+        "median_tail_lift",
+        "worst_tail_bucket",
+        "worst_tail_lift",
+        "supported_tail_buckets",
+        "unsupported_tail_buckets",
+        "max_core_residual_abs_mean",
+        "max_nonlinear_residual_abs_mean",
+        "publishable",
+        "review_note",
+    ]
+    assert by_feature.loc["spread_stress_squared", "publishable"] is True
+    assert by_feature.loc["spread_stress_squared", "worst_tail_bucket"] == "low_tail"
+    assert by_feature.loc["liquidity_void_x_volatility", "publishable"] is True
+    assert by_feature.loc["liquidity_void_x_volatility", "min_tail_lift"] == pytest.approx(0.19)
+    assert summary["unsupported_tail_buckets"].sum() == 0
+
+
+def test_baseline_stress_tail_publishability_summary_flags_unsupported_tail() -> None:
+    diagnostics = pd.DataFrame(
+        {
+            "feature": ["volatility_stress_squared", "volatility_stress_squared"],
+            "tail_bucket": ["low_tail", "high_tail"],
+            "test_rows": [20, 21],
+            "nonlinear_rmse_lift_vs_core": [0.12, -0.04],
+            "core_residual_mean": [0.03, -0.05],
+            "nonlinear_residual_mean": [0.01, -0.06],
+        }
+    )
+
+    summary = baseline_stress_tail_publishability_summary(diagnostics, min_tail_lift=0.10)
+    row = summary.iloc[0]
+
+    assert row["publishable"] is False
+    assert row["unsupported_tail_buckets"] == 1
+    assert row["worst_tail_bucket"] == "high_tail"
+    assert row["review_note"] == "nonlinear_stress_tail_fragile"
 
 
 def test_baseline_basis_comparison_quantifies_out_of_sample_nonlinear_lift() -> None:
