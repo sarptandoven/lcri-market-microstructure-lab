@@ -724,6 +724,67 @@ def verify_baseline_tail_lift_diagnostics(
     return errors
 
 
+def verify_baseline_regime_publishability_summary(
+    output_dir: Path, artifact: str = "baseline_regime_publishability_summary.json"
+) -> list[str]:
+    """Return errors for malformed nonlinear-baseline regime release gates."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing baseline regime publishability summary: {artifact}"]
+    summary = json.loads(path.read_text())
+    required = {
+        "regimes",
+        "supported_regimes",
+        "unsupported_regimes",
+        "min_regime_mean_lift",
+        "min_regime_worst_fold_lift",
+        "min_regime_winner_rate",
+        "weakest_regime",
+        "publishable",
+        "review_note",
+    }
+    missing = sorted(required - set(summary))
+    if missing:
+        return [f"incomplete baseline regime publishability summary {artifact}: {missing}"]
+
+    errors: list[str] = []
+    int_keys = ["regimes", "supported_regimes", "unsupported_regimes"]
+    for key in int_keys:
+        value = summary[key]
+        if not isinstance(value, int) or isinstance(value, bool):
+            errors.append(f"non-integer baseline regime publishability {key} in {artifact}")
+    regimes = int(summary["regimes"])
+    supported = int(summary["supported_regimes"])
+    unsupported = int(summary["unsupported_regimes"])
+    if regimes < 1:
+        errors.append(f"non-positive baseline regime publishability regime count in {artifact}")
+    if supported < 0 or unsupported < 0 or supported + unsupported != regimes:
+        errors.append(f"inconsistent baseline regime publishability support counts in {artifact}")
+
+    numeric_keys = [
+        "min_regime_mean_lift",
+        "min_regime_worst_fold_lift",
+        "min_regime_winner_rate",
+    ]
+    numeric = np.array([float(summary[key]) for key in numeric_keys], dtype=float)
+    if not np.isfinite(numeric).all():
+        errors.append(f"non-finite baseline regime publishability metrics in {artifact}")
+    if not -1.0 <= float(summary["min_regime_mean_lift"]) <= 1.0:
+        errors.append(f"bounded baseline regime mean lift violated in {artifact}")
+    if not -1.0 <= float(summary["min_regime_worst_fold_lift"]) <= 1.0:
+        errors.append(f"bounded baseline regime worst lift violated in {artifact}")
+    if not 0.0 <= float(summary["min_regime_winner_rate"]) <= 1.0:
+        errors.append(f"bounded baseline regime winner rate violated in {artifact}")
+    if not isinstance(summary["publishable"], bool):
+        errors.append(f"non-boolean baseline regime publishability decision in {artifact}")
+    if not str(summary["weakest_regime"]).strip():
+        errors.append(f"blank baseline regime publishability weakest regime in {artifact}")
+    valid_notes = {"nonlinear_lift_regime_robust", "nonlinear_lift_regime_fragile"}
+    if str(summary["review_note"]) not in valid_notes:
+        errors.append(f"invalid baseline regime publishability review note in {artifact}")
+    return errors
+
+
 def verify_execution_publishability_release_gate(
     output_dir: Path, artifact: str = "execution_publishability_release_gate.json"
 ) -> list[str]:
@@ -3996,6 +4057,7 @@ def write_research_summary(
     heldout_metrics: pd.DataFrame | None = None,
     generalization_gap: pd.DataFrame | None = None,
     baseline_tail_lift_diagnostics: pd.DataFrame | None = None,
+    baseline_regime_publishability_summary: dict[str, Any] | None = None,
     regime_generalization_gap: pd.DataFrame | None = None,
     transition_generalization_gap: pd.DataFrame | None = None,
     generalization_fragility_diagnostics: pd.DataFrame | None = None,
@@ -4097,6 +4159,14 @@ def write_research_summary(
                 _markdown_table(baseline_tail_lift_diagnostics)
                 if baseline_tail_lift_diagnostics is not None
                 else "_Not generated._",
+                "",
+                "## Nonlinear baseline regime publishability",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (baseline_regime_publishability_summary or {}).items()
+                ],
+                "" if baseline_regime_publishability_summary else "_Not generated._",
                 "",
                 "## Regime generalization gap",
                 "",

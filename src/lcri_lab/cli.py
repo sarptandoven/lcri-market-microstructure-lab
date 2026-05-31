@@ -72,7 +72,11 @@ from lcri_lab.evaluation import (
     transition_signal_lift,
 )
 from lcri_lab.absorption import add_shadow_absorption
-from lcri_lab.baseline import baseline_regime_basis_comparison, baseline_tail_lift_diagnostics
+from lcri_lab.baseline import (
+    baseline_regime_basis_comparison,
+    baseline_regime_publishability_summary,
+    baseline_tail_lift_diagnostics,
+)
 from lcri_lab.alpha import (
     add_alpha_event_window_regimes,
     add_microstructure_alpha_stack,
@@ -150,6 +154,7 @@ from lcri_lab.reporting import (
     verify_artifact_coverage_matrix,
     verify_artifact_manifest,
     verify_artifact_metadata_summary,
+    verify_baseline_regime_publishability_summary,
     verify_baseline_tail_lift_diagnostics,
     verify_figure_artifacts,
     verify_generalization_fragility_consistency,
@@ -757,6 +762,10 @@ def run_demo(
         test_window=max(100, rows // 4),
         step=max(100, rows // 4),
     )
+    baseline_regime_publishability = baseline_regime_publishability_summary(
+        baseline_regime_basis,
+        min_regime_lift=0.0,
+    )
     baseline_tail_lift = baseline_tail_lift_diagnostics(
         scored,
         feature="liquidity_void_x_volatility",
@@ -771,6 +780,7 @@ def run_demo(
         "heldout_metrics.csv",
         "generalization_gap.csv",
         "baseline_regime_basis_comparison.csv",
+        "baseline_regime_publishability_summary.json",
         "baseline_tail_lift_diagnostics.csv",
         "regime_metrics.csv",
         "heldout_regime_metrics.csv",
@@ -966,6 +976,10 @@ def run_demo(
     heldout_metrics.to_csv(output / "heldout_metrics.csv", index=False)
     generalization_gap.to_csv(output / "generalization_gap.csv", index=False)
     baseline_regime_basis.to_csv(output / "baseline_regime_basis_comparison.csv", index=False)
+    write_json(
+        output / "baseline_regime_publishability_summary.json",
+        baseline_regime_publishability,
+    )
     baseline_tail_lift.to_csv(output / "baseline_tail_lift_diagnostics.csv", index=False)
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
     heldout_by_regime.to_csv(output / "heldout_regime_metrics.csv", index=False)
@@ -1344,6 +1358,7 @@ def run_demo(
         heldout_metrics=heldout_metrics,
         generalization_gap=generalization_gap,
         baseline_tail_lift_diagnostics=baseline_tail_lift,
+        baseline_regime_publishability_summary=baseline_regime_publishability,
         regime_generalization_gap=regime_gap,
         transition_generalization_gap=transition_gap,
         generalization_fragility_diagnostics=fragility_diagnostics,
@@ -2097,6 +2112,11 @@ def verify_report(report_dir: Path) -> None:
         *artifact_coverage_errors,
         *verify_artifact_metadata_summary(report_dir, manifest),
         *verify_figure_artifacts(report_dir, manifest),
+        *(
+            verify_baseline_regime_publishability_summary(report_dir)
+            if "baseline_regime_publishability_summary.json" in manifest_artifacts
+            else []
+        ),
         *(
             verify_baseline_tail_lift_diagnostics(report_dir)
             if "baseline_tail_lift_diagnostics.csv" in manifest_artifacts

@@ -17,6 +17,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_metrics.csv").exists()
     assert (tmp_path / "generalization_gap.csv").exists()
     assert (tmp_path / "baseline_regime_basis_comparison.csv").exists()
+    assert (tmp_path / "baseline_regime_publishability_summary.json").exists()
     assert (tmp_path / "regime_metrics.csv").exists()
     assert (tmp_path / "heldout_regime_metrics.csv").exists()
     assert (tmp_path / "regime_generalization_gap.csv").exists()
@@ -198,6 +199,17 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     execution_summary = json.loads((tmp_path / "execution_adjusted_edge_summary.json").read_text())
     assert execution_summary["rows"] == 750
     assert "tradable_share" in execution_summary
+    baseline_publishability = json.loads(
+        (tmp_path / "baseline_regime_publishability_summary.json").read_text()
+    )
+    assert {
+        "regimes",
+        "supported_regimes",
+        "unsupported_regimes",
+        "weakest_regime",
+        "publishable",
+        "review_note",
+    }.issubset(baseline_publishability)
     assert "publishable_side_conflict_share" in execution_summary
     baseline_regime_basis = pd.read_csv(tmp_path / "baseline_regime_basis_comparison.csv")
     assert set(baseline_regime_basis["basis"]) == {"core", "interaction", "nonlinear_liquidity"}
@@ -546,6 +558,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "## Hidden resiliency asymmetry summary" in summary
     assert "## Adverse selection phase-shift summary" in summary
     assert "## Execution-adjusted edge summary" in summary
+    assert "## Nonlinear baseline regime publishability" in summary
+    assert "- weakest_regime:" in summary
     assert "## Execution publishability release gate" in summary
     assert "## Passive-fill event-window regime diagnostics" in summary
     assert "## Passive-fill event-window toxicity scorecard" in summary

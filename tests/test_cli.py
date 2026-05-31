@@ -438,6 +438,35 @@ def test_verify_report_accepts_intact_manifest(
     assert "passes_verification" in captured.out
 
 
+def test_verify_report_checks_baseline_regime_publishability_summary(tmp_path: Path) -> None:
+    (tmp_path / "baseline_regime_publishability_summary.json").write_text(
+        json.dumps(
+            {
+                "regimes": 2,
+                "supported_regimes": 3,
+                "unsupported_regimes": -1,
+                "min_regime_mean_lift": 1.5,
+                "min_regime_worst_fold_lift": -1.5,
+                "min_regime_winner_rate": 1.2,
+                "weakest_regime": "",
+                "publishable": "yes",
+                "review_note": "unknown",
+            }
+        )
+    )
+    (tmp_path / "artifact_manifest.json").write_text(
+        json.dumps(
+            {
+                "artifacts": ["baseline_regime_publishability_summary.json"],
+                "artifact_metadata": {},
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="baseline regime publishability"):
+        verify_report(tmp_path)
+
+
 def test_verify_report_checks_execution_publishability_packets(tmp_path: Path) -> None:
     (tmp_path / "execution_publishability_review_packet.csv").write_text(
         "publishable_side,best_execution_side,rows,conflict_rows,conflict_share,"
