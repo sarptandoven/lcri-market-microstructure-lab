@@ -7381,12 +7381,14 @@ def execution_publishability_release_gate(
     lcri_regime_attribution: pd.DataFrame | None = None,
     latency_sensitivity: pd.DataFrame | None = None,
     fill_brier_decomposition: dict[str, float | int | str] | None = None,
+    path_risk_scorecard: pd.DataFrame | None = None,
     max_conflict_share: float = 0.25,
     max_high_priority_conflict_share: float = 0.10,
     min_lcri_regime_survival_share: float = 0.50,
     max_lcri_regime_conflict_share: float = 0.40,
     max_latency_fill_decay: float = 0.10,
     min_latency_candidate_retention_share: float = 0.50,
+    max_fragile_path_share: float = 0.25,
 ) -> dict[str, float | int | str | bool]:
     """Reduce execution-aware artifacts into an owner-facing release gate.
 
@@ -7403,6 +7405,7 @@ def execution_publishability_release_gate(
         "max_lcri_regime_conflict_share": max_lcri_regime_conflict_share,
         "max_latency_fill_decay": max_latency_fill_decay,
         "min_latency_candidate_retention_share": min_latency_candidate_retention_share,
+        "max_fragile_path_share": max_fragile_path_share,
     }.items():
         if not math.isfinite(value) or not 0.0 <= value <= 1.0:
             raise ValueError(f"{name} must be finite and in [0.0, 1.0]")
@@ -7561,6 +7564,71 @@ def execution_publishability_release_gate(
             if not math.isfinite(metric_value):
                 raise ValueError(f"{metric_name} must be finite")
 
+    path_risk_label = "execution_path_not_evaluated"
+    fragile_path_share = 0.0
+    fragile_path_count = 0
+    worst_path_id = "none"
+    worst_path_drawdown = 0.0
+    worst_path_turnover_rate = 0.0
+    worst_path_total_edge = 0.0
+    if path_risk_scorecard is not None:
+        if path_risk_scorecard.empty:
+            path_risk_label = "execution_path_no_evidence"
+        else:
+            required_path_columns = {
+                "path_id",
+                "tradable_rows",
+                "total_edge_ticks",
+                "max_drawdown_ticks",
+                "turnover_rate",
+                "path_risk_label",
+            }
+            _require_columns(
+                path_risk_scorecard,
+                required_path_columns,
+                "execution publishability path risk",
+            )
+            path_values = _finite_values(
+                path_risk_scorecard,
+                ["tradable_rows", "total_edge_ticks", "max_drawdown_ticks", "turnover_rate"],
+                "execution publishability path risk",
+            )
+            if (path_values[["tradable_rows", "max_drawdown_ticks", "turnover_rate"]] < 0.0).any().any():
+                raise ValueError("execution publishability path risk metrics must be non-negative")
+            labels = path_risk_scorecard["path_risk_label"].astype(str)
+            non_overall = path_risk_scorecard["path_id"].astype(str) != "overall"
+            group_mask = non_overall if bool(non_overall.any()) else pd.Series(True, index=path_risk_scorecard.index)
+            fragile_mask = labels == "execution_path_fragile"
+            fragile_group_mask = group_mask & fragile_mask
+            group_tradable_rows = float(path_values.loc[group_mask, "tradable_rows"].sum())
+            fragile_tradable_rows = float(path_values.loc[fragile_group_mask, "tradable_rows"].sum())
+            fragile_path_share = (
+                float(fragile_tradable_rows / group_tradable_rows) if group_tradable_rows else 0.0
+            )
+            fragile_path_count = int(fragile_group_mask.sum())
+            overall_rows = path_risk_scorecard[path_risk_scorecard["path_id"].astype(str) == "overall"]
+            overall_fragile = (
+                not overall_rows.empty
+                and str(overall_rows.iloc[0]["path_risk_label"]) == "execution_path_fragile"
+            )
+            path_risk_label = (
+                "execution_path_fragile"
+                if overall_fragile or fragile_path_share > max_fragile_path_share
+                else "execution_path_stable"
+            )
+            candidate_mask = fragile_group_mask if bool(fragile_group_mask.any()) else group_mask
+            candidates = path_values.loc[candidate_mask].copy()
+            fragility_score = (
+                candidates["max_drawdown_ticks"]
+                + candidates["turnover_rate"]
+                - candidates["total_edge_ticks"]
+            )
+            worst_index = fragility_score.idxmax()
+            worst_path_id = str(path_risk_scorecard.loc[worst_index, "path_id"])
+            worst_path_drawdown = float(path_values.loc[worst_index, "max_drawdown_ticks"])
+            worst_path_turnover_rate = float(path_values.loc[worst_index, "turnover_rate"])
+            worst_path_total_edge = float(path_values.loc[worst_index, "total_edge_ticks"])
+
     blocking_reasons: list[str] = []
     review_reasons: list[str] = []
     if total_rows == 0:
@@ -7596,6 +7664,10 @@ def execution_publishability_release_gate(
         "resolved_but_needs_calibration",
     }:
         review_reasons.append(fill_calibration_label)
+    if path_risk_label == "execution_path_fragile":
+        blocking_reasons.append(path_risk_label)
+    elif path_risk_label == "execution_path_no_evidence":
+        review_reasons.append(path_risk_label)
 
     if blocking_reasons:
         decision = "block"
@@ -7636,6 +7708,13 @@ def execution_publishability_release_gate(
         "fill_brier_skill_score": fill_brier_skill_score,
         "fill_calibration_reliability": fill_calibration_reliability,
         "fill_calibration_resolution": fill_calibration_resolution,
+        "path_risk_label": path_risk_label,
+        "fragile_path_count": fragile_path_count,
+        "fragile_path_share": fragile_path_share,
+        "worst_path_id": worst_path_id,
+        "worst_path_drawdown_ticks": worst_path_drawdown,
+        "worst_path_turnover_rate": worst_path_turnover_rate,
+        "worst_path_total_edge_ticks": worst_path_total_edge,
         "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
         "review_reasons": ";".join(review_reasons) if review_reasons else "none",
         "decision": decision,
@@ -8406,6 +8485,110 @@ def queue_position_latency_release_scorecard(
         "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
         "review_reasons": ";".join(review_reasons) if review_reasons else "none",
     }
+
+
+def queue_position_path_risk_scorecard(
+    frame: pd.DataFrame,
+    *,
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    side_col: str = "best_execution_side",
+    edge_col: str = "execution_adjusted_edge_ticks",
+    max_drawdown_ticks: float = 2.0,
+    max_turnover_rate: float = 0.50,
+    min_total_edge_ticks: float = 0.0,
+) -> pd.DataFrame:
+    """Summarize path-dependent risk for queue-position-aware execution policies.
+
+    Point-in-time execution-adjusted edge can look publishable while the realized
+    path is not: fill-aware signals may churn sides, cluster losses, or give back
+    edge through drawdowns. This scorecard treats non-abstain rows as the executed
+    path, measures cumulative edge, peak-to-trough drawdown from a zero starting
+    capital point, and counts long/short side flips. Optional groups expose fragile
+    sessions, symbols, or event windows while the appended overall row preserves a
+    release-level view.
+    """
+    if not math.isfinite(max_drawdown_ticks) or max_drawdown_ticks < 0.0:
+        raise ValueError("max_drawdown_ticks must be a finite non-negative value")
+    if not math.isfinite(max_turnover_rate) or max_turnover_rate < 0.0:
+        raise ValueError("max_turnover_rate must be a finite non-negative value")
+    if not math.isfinite(min_total_edge_ticks):
+        raise ValueError("min_total_edge_ticks must be finite")
+
+    grouping_columns = _normalize_group_columns(frame, group_cols, "queue position path risk group")
+    required = {side_col, edge_col, *grouping_columns}
+    columns = [
+        "path_id",
+        "rows",
+        "tradable_rows",
+        "abstain_rows",
+        "mean_edge_ticks",
+        "total_edge_ticks",
+        "max_drawdown_ticks",
+        "hit_rate",
+        "turnover_events",
+        "turnover_rate",
+        "path_risk_label",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    _require_columns(frame, required, "queue position path risk")
+    values = _finite_values(frame, [edge_col], "queue position path risk")
+    sides = frame[side_col].astype(str)
+
+    def score_path(path: pd.DataFrame, path_sides: pd.Series, path_id: str) -> dict[str, float | int | str]:
+        path_edges = values.loc[path.index, edge_col]
+        path_tradable = path_sides != "abstain"
+        executed_edges = path_edges.loc[path_tradable]
+        executed_sides = path_sides.loc[path_tradable]
+        tradable_rows = int(path_tradable.sum())
+        if tradable_rows == 0:
+            mean_edge = 0.0
+            total_edge = 0.0
+            max_drawdown = 0.0
+            hit_rate = 0.0
+            turnover_events = 0
+            turnover_rate = 0.0
+        else:
+            cumulative = executed_edges.cumsum()
+            running_peak = cumulative.cummax().clip(lower=0.0)
+            drawdown = running_peak - cumulative
+            side_changes = executed_sides.ne(executed_sides.shift()).iloc[1:]
+            turnover_events = int(side_changes.sum())
+            mean_edge = float(executed_edges.mean())
+            total_edge = float(executed_edges.sum())
+            max_drawdown = float(drawdown.max())
+            hit_rate = float((executed_edges > 0.0).mean())
+            turnover_rate = float(turnover_events / tradable_rows)
+        fragile = (
+            total_edge < min_total_edge_ticks
+            or max_drawdown > max_drawdown_ticks
+            or turnover_rate > max_turnover_rate
+        )
+        return {
+            "path_id": path_id,
+            "rows": len(path),
+            "tradable_rows": tradable_rows,
+            "abstain_rows": int((~path_tradable).sum()),
+            "mean_edge_ticks": mean_edge,
+            "total_edge_ticks": total_edge,
+            "max_drawdown_ticks": max_drawdown,
+            "hit_rate": hit_rate,
+            "turnover_events": turnover_events,
+            "turnover_rate": turnover_rate,
+            "path_risk_label": "execution_path_fragile" if fragile else "execution_path_stable",
+        }
+
+    rows: list[dict[str, float | int | str]] = []
+    if grouping_columns:
+        groupby_arg: str | list[str] = grouping_columns[0] if len(grouping_columns) == 1 else grouping_columns
+        for key, group in frame.groupby(groupby_arg, sort=True, dropna=False):
+            if isinstance(key, tuple):
+                path_id = "|".join(str(part) for part in key)
+            else:
+                path_id = str(key)
+            rows.append(score_path(group, sides.loc[group.index], path_id))
+    rows.append(score_path(frame, sides, "overall"))
+    return pd.DataFrame(rows, columns=columns)
 
 
 def execution_publishability_review_packet(frame: pd.DataFrame) -> pd.DataFrame:

@@ -178,6 +178,28 @@ into:
 Does residual imbalance remain tradable after visible queue position, passive fill selection, adverse fills, transaction costs, and queue-state latency?
 ```
 
+## Execution path risk scorecard
+
+`queue_position_path_risk_scorecard` turns row-level execution-adjusted edge into a path-dependent release diagnostic. It ignores `abstain` rows, then for the selected passive side sequence reports cumulative edge, mean edge, hit rate, peak-to-trough drawdown from a zero starting point, and long/short side-flip turnover. Optional `group_cols` split the path by symbol/session/event window and append an `overall` row. The scorecard can be passed into `execution_publishability_release_gate(path_risk_scorecard=...)` so demo/release approval blocks not only on average execution edge and conflict rates, but also on fragile realized paths.
+
+```python
+path_risk = queue_position_path_risk_scorecard(
+    execution_frame,
+    group_cols="session",
+    max_drawdown_ticks=2.0,
+    max_turnover_rate=0.50,
+)
+release_gate = execution_publishability_release_gate(
+    execution_publishability_review_packet(execution_frame),
+    quality_gate=quality_gate,
+    capacity_stability=capacity_stability,
+    path_risk_scorecard=path_risk,
+    max_fragile_path_share=0.25,
+)
+```
+
+The resulting `path_risk_label` is `execution_path_fragile` when the path loses money, exceeds the drawdown budget, or churns sides faster than the turnover threshold. The release gate propagates the same label when the overall path is fragile or fragile grouped paths exceed `max_fragile_path_share`. This closes a publishability gap left by average-edge tables: a queue-position-aware policy can have positive average execution-adjusted edge while still being non-demoable because losses cluster or passive side decisions oscillate under microstructure noise.
+
 ## Limitations
 
 This is a snapshot proxy, not a full event-level matching-engine simulator. It does not observe order IDs, cancellations, hidden liquidity, queue priority loss, or trade prints. The purpose is to provide an execution-aware research surface that is compatible with the current normalized snapshot schema. A later tranche can replace or calibrate the proxy with event-level fill labels when real message data is available.
