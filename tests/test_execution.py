@@ -8,6 +8,7 @@ from lcri_lab.execution import (
     add_event_level_realized_fill_proxy,
     add_passive_fill_event_window_regimes,
     add_queue_position_features,
+    add_queue_position_order_size_features,
     add_queue_position_realized_fill_proxy,
     execution_adjusted_edge_summary,
     execution_adjusted_lcri_event_window_attribution,
@@ -94,6 +95,49 @@ def test_queue_position_features_estimate_visible_queue_ahead() -> None:
     assert output["queue_position_imbalance"].tolist() == pytest.approx([-25.0, 75.0])
 
 
+def test_queue_position_order_size_features_estimate_full_queue_clearance() -> None:
+    queued = add_queue_position_features(_book_frame(), levels=2, queue_position_fraction=0.25)
+
+    output = add_queue_position_order_size_features(queued, levels=2, order_size_fraction=0.10)
+
+    assert output["bid_child_order_size"].tolist() == pytest.approx([10.0, 40.0])
+    assert output["ask_child_order_size"].tolist() == pytest.approx([20.0, 10.0])
+    assert output["bid_queue_clear_size"].tolist() == pytest.approx([35.0, 140.0])
+    assert output["ask_queue_clear_size"].tolist() == pytest.approx([70.0, 35.0])
+    assert output["bid_order_size_share"].tolist() == pytest.approx([10.0 / 150.0, 40.0 / 450.0])
+    assert output["ask_order_size_share"].tolist() == pytest.approx([20.0 / 250.0, 10.0 / 150.0])
+    assert output["bid_queue_clear_share"].tolist() == pytest.approx([35.0 / 150.0, 140.0 / 450.0])
+    assert output["ask_queue_clear_share"].tolist() == pytest.approx([70.0 / 250.0, 35.0 / 150.0])
+    assert output["queue_clear_size_imbalance"].tolist() == pytest.approx([-35.0, 105.0])
+
+
+def test_queue_position_order_size_features_accept_explicit_child_order_columns() -> None:
+    queued = add_queue_position_features(_book_frame(), levels=2, queue_position_fraction=0.25).assign(
+        bid_order=[5.0, 60.0],
+        ask_order=[15.0, 20.0],
+    )
+
+    output = add_queue_position_order_size_features(
+        queued,
+        levels=2,
+        order_size_fraction=0.99,
+        bid_order_size_col="bid_order",
+        ask_order_size_col="ask_order",
+    )
+
+    assert output["bid_child_order_size"].tolist() == pytest.approx([5.0, 60.0])
+    assert output["ask_child_order_size"].tolist() == pytest.approx([15.0, 20.0])
+    assert output["bid_queue_clear_size"].tolist() == pytest.approx([30.0, 160.0])
+    assert output["ask_queue_clear_size"].tolist() == pytest.approx([65.0, 45.0])
+
+
+def test_queue_position_order_size_features_rejects_negative_child_size() -> None:
+    queued = add_queue_position_features(_book_frame(), levels=2).assign(bid_order=[1.0, -1.0])
+
+    with pytest.raises(ValueError, match="order sizes must be non-negative"):
+        add_queue_position_order_size_features(queued, levels=2, bid_order_size_col="bid_order")
+
+
 def test_queue_position_realized_fill_proxy_uses_visible_depletion_and_price_loss() -> None:
     frame = pd.DataFrame(
         {
@@ -132,6 +176,28 @@ def test_queue_position_realized_fill_proxy_handles_front_of_queue_without_last_
 
     assert output["bid_queue_depletion_ratio"].tolist() == pytest.approx([0.0, 0.0])
     assert output["ask_queue_depletion_ratio"].tolist() == pytest.approx([0.0, 0.0])
+    assert output["bid_realized_fill"].tolist() == pytest.approx([0.0, 0.0])
+    assert output["ask_realized_fill"].tolist() == pytest.approx([0.0, 0.0])
+
+
+def test_queue_position_realized_fill_proxy_requires_child_order_clearance_when_present() -> None:
+    frame = pd.DataFrame(
+        {
+            "bid_px_1": [100.0, 100.0],
+            "ask_px_1": [101.0, 101.0],
+            "bid_sz_1": [100.0, 55.0],
+            "ask_sz_1": [80.0, 45.0],
+            "bid_queue_ahead": [40.0, 40.0],
+            "ask_queue_ahead": [30.0, 30.0],
+            "bid_queue_clear_size": [55.0, 55.0],
+            "ask_queue_clear_size": [45.0, 45.0],
+        }
+    )
+
+    output = add_queue_position_realized_fill_proxy(frame)
+
+    assert output["bid_queue_depletion_ratio"].tolist() == pytest.approx([45.0 / 55.0, 0.0])
+    assert output["ask_queue_depletion_ratio"].tolist() == pytest.approx([35.0 / 45.0, 0.0])
     assert output["bid_realized_fill"].tolist() == pytest.approx([0.0, 0.0])
     assert output["ask_realized_fill"].tolist() == pytest.approx([0.0, 0.0])
 
@@ -217,6 +283,36 @@ def test_event_level_realized_fill_proxy_uses_trades_and_cancels_until_horizon()
     assert output["ask_realized_fill"].tolist() == pytest.approx([1.0, 0.0])
 
 
+def test_event_level_realized_fill_proxy_requires_child_order_clearance_when_present() -> None:
+    snapshots = pd.DataFrame(
+        {
+            "timestamp": [0.0],
+            "bid_px_1": [100.0],
+            "ask_px_1": [101.0],
+            "bid_queue_ahead": [40.0],
+            "ask_queue_ahead": [30.0],
+            "bid_queue_clear_size": [60.0],
+            "ask_queue_clear_size": [50.0],
+        }
+    )
+    events = pd.DataFrame(
+        {
+            "timestamp": [0.25, 0.50],
+            "event_type": ["trade", "trade"],
+            "side": ["sell", "buy"],
+            "price": [100.0, 101.0],
+            "size": [45.0, 35.0],
+        }
+    )
+
+    output = add_event_level_realized_fill_proxy(snapshots, events, horizon=1.0)
+
+    assert output["bid_event_depletion_ratio"].tolist() == pytest.approx([45.0 / 60.0])
+    assert output["ask_event_depletion_ratio"].tolist() == pytest.approx([35.0 / 50.0])
+    assert output["bid_realized_fill"].tolist() == pytest.approx([0.0])
+    assert output["ask_realized_fill"].tolist() == pytest.approx([0.0])
+
+
 def test_event_level_realized_fill_proxy_respects_group_boundaries() -> None:
     snapshots = pd.DataFrame(
         {
@@ -291,6 +387,18 @@ def test_passive_fill_probabilities_move_with_pressure_and_queue() -> None:
     assert output.loc[0, "bid_fill_probability"] > output.loc[0, "ask_fill_probability"]
     assert output.loc[1, "ask_fill_probability"] > output.loc[1, "bid_fill_probability"]
     assert output["passive_fill_regime"].tolist() == ["bid_depletion", "ask_depletion"]
+
+
+def test_passive_fill_probabilities_penalize_child_order_clearance_size() -> None:
+    queued = add_queue_position_features(_book_frame(), levels=2, queue_position_fraction=0.25)
+    small_order = add_queue_position_order_size_features(queued, levels=2, order_size_fraction=0.05)
+    large_order = add_queue_position_order_size_features(queued, levels=2, order_size_fraction=0.50)
+
+    small_output = add_passive_fill_probabilities(small_order)
+    large_output = add_passive_fill_probabilities(large_order)
+
+    assert small_output["bid_fill_probability"].tolist()[0] > large_output["bid_fill_probability"].tolist()[0]
+    assert small_output["ask_fill_probability"].tolist()[1] > large_output["ask_fill_probability"].tolist()[1]
 
 
 def test_passive_fill_probabilities_bound_outputs() -> None:

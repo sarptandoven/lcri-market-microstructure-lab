@@ -11,6 +11,17 @@ ask_queue_ahead = queue_position_fraction * ask_sz_1
 
 The queue-ahead values are normalized by same-side visible depth to produce queue-share penalties. A deeper position in the visible queue reduces passive fill probability even when residual pressure points toward depletion.
 
+The execution proxy can now make that penalty child-order-size-aware with `add_queue_position_order_size_features`:
+
+```text
+bid_child_order_size = order_size_fraction * bid_sz_1  # or explicit bid order size
+ask_child_order_size = order_size_fraction * ask_sz_1  # or explicit ask order size
+bid_queue_clear_size = bid_queue_ahead + bid_child_order_size
+ask_queue_clear_size = ask_queue_ahead + ask_child_order_size
+```
+
+Those clearance sizes are normalized as `bid_queue_clear_share` and `ask_queue_clear_share`. When the clearance-share columns are present, `add_passive_fill_probabilities` uses them instead of the raw queue-ahead share, so larger child orders receive lower passive full-fill probability even at the same queue position and pressure state. The realized-fill labelers also honor the clearance sizes: `add_queue_position_realized_fill_proxy` and `add_event_level_realized_fill_proxy` require visible or event-level queue depletion to clear queue-ahead plus child size before marking a full passive fill. This is a snapshot-level capacity guardrail: it distinguishes “can get a token lot filled” from “can clear a realistic child order before the book moves.”
+
 ## Passive fill logic
 
 For a passive buy resting at the bid, fill probability increases when sell pressure is likely to deplete the bid:

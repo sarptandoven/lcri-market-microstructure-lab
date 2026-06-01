@@ -136,6 +136,85 @@ def add_queue_position_features(
     return output
 
 
+def add_queue_position_order_size_features(
+    frame: pd.DataFrame,
+    *,
+    levels: int = 5,
+    order_size_fraction: float = 0.10,
+    bid_order_size_col: str | None = None,
+    ask_order_size_col: str | None = None,
+) -> pd.DataFrame:
+    """Add child-order-size-aware passive queue clearance features.
+
+    ``add_queue_position_features`` estimates queue ahead for a passive order. Real
+    passive execution also depends on the order's own displayed size: a larger
+    child order needs queue-ahead *plus* child size to clear before it receives a
+    full fill. This helper keeps the snapshot approximation transparent by either
+    taking explicit bid/ask child order columns or, when absent, sizing each child
+    order as a fraction of the current best displayed size.
+    """
+    if levels < 1:
+        raise ValueError("levels must be positive")
+    if not math.isfinite(order_size_fraction):
+        raise ValueError("order_size_fraction must be finite")
+    if order_size_fraction < 0.0:
+        raise ValueError("order_size_fraction must be non-negative")
+
+    required = {"bid_queue_ahead", "ask_queue_ahead"}
+    required.update({f"bid_sz_{level}" for level in range(1, levels + 1)})
+    required.update({f"ask_sz_{level}" for level in range(1, levels + 1)})
+    if bid_order_size_col is not None:
+        required.add(bid_order_size_col)
+    if ask_order_size_col is not None:
+        required.add(ask_order_size_col)
+    _require_columns(frame, required, "queue position order size")
+
+    values = _finite_values(frame, sorted(required), "queue position order size")
+    if (values < 0.0).any().any():
+        raise ValueError("queue position order sizes must be non-negative")
+
+    output = frame.copy()
+    bid_total = pd.Series(0.0, index=frame.index)
+    ask_total = pd.Series(0.0, index=frame.index)
+    for level in range(1, levels + 1):
+        bid_total = bid_total + values[f"bid_sz_{level}"]
+        ask_total = ask_total + values[f"ask_sz_{level}"]
+
+    if bid_order_size_col is None:
+        bid_order_size = values["bid_sz_1"] * order_size_fraction
+    else:
+        bid_order_size = values[bid_order_size_col]
+    if ask_order_size_col is None:
+        ask_order_size = values["ask_sz_1"] * order_size_fraction
+    else:
+        ask_order_size = values[ask_order_size_col]
+
+    bid_clear_size = values["bid_queue_ahead"] + bid_order_size
+    ask_clear_size = values["ask_queue_ahead"] + ask_order_size
+    output["bid_child_order_size"] = bid_order_size
+    output["ask_child_order_size"] = ask_order_size
+    output["bid_queue_clear_size"] = bid_clear_size
+    output["ask_queue_clear_size"] = ask_clear_size
+    output["bid_order_size_share"] = np.divide(
+        bid_order_size,
+        bid_total.replace(0.0, np.nan),
+    ).fillna(0.0)
+    output["ask_order_size_share"] = np.divide(
+        ask_order_size,
+        ask_total.replace(0.0, np.nan),
+    ).fillna(0.0)
+    output["bid_queue_clear_share"] = np.divide(
+        bid_clear_size,
+        bid_total.replace(0.0, np.nan),
+    ).fillna(0.0)
+    output["ask_queue_clear_share"] = np.divide(
+        ask_clear_size,
+        ask_total.replace(0.0, np.nan),
+    ).fillna(0.0)
+    output["queue_clear_size_imbalance"] = bid_clear_size - ask_clear_size
+    return output
+
+
 def add_queue_position_realized_fill_proxy(
     frame: pd.DataFrame,
     *,
@@ -167,6 +246,9 @@ def add_queue_position_realized_fill_proxy(
         "bid_queue_ahead",
         "ask_queue_ahead",
     }
+    clear_size_columns = {"bid_queue_clear_size", "ask_queue_clear_size"}
+    if clear_size_columns & set(frame.columns):
+        required.update(clear_size_columns)
     _require_columns(frame, required, "queue position realized fill proxy")
     if group_cols is None:
         grouping_columns: list[str] = []
@@ -190,6 +272,8 @@ def add_queue_position_realized_fill_proxy(
 
     values = _finite_values(frame, sorted(required), "queue position realized fill proxy")
     size_columns = ["bid_sz_1", "ask_sz_1", "bid_queue_ahead", "ask_queue_ahead"]
+    if clear_size_columns.issubset(required):
+        size_columns.extend(["bid_queue_clear_size", "ask_queue_clear_size"])
     if (values[size_columns] < 0.0).any().any():
         raise ValueError("queue position realized fill proxy sizes must be non-negative")
 
@@ -243,6 +327,9 @@ def add_queue_position_realized_fill_proxy(
 
     bid_queue = values["bid_queue_ahead"]
     ask_queue = values["ask_queue_ahead"]
+    if {"bid_queue_clear_size", "ask_queue_clear_size"}.issubset(values.columns):
+        bid_queue = values["bid_queue_clear_size"]
+        ask_queue = values["ask_queue_clear_size"]
     bid_ratio = pd.Series(
         np.where(
             bid_queue > 0.0,
@@ -322,6 +409,9 @@ def add_event_level_realized_fill_proxy(
         "ask_queue_ahead",
         *grouping_columns,
     }
+    clear_size_columns = {"bid_queue_clear_size", "ask_queue_clear_size"}
+    if clear_size_columns & set(snapshots.columns):
+        snapshot_required.update(clear_size_columns)
     event_required = {
         timestamp_col,
         event_type_col,
@@ -343,9 +433,12 @@ def add_event_level_realized_fill_proxy(
     if snapshots.empty:
         return output
 
+    snapshot_numeric_columns = [timestamp_col, "bid_px_1", "ask_px_1", "bid_queue_ahead", "ask_queue_ahead"]
+    if clear_size_columns.issubset(snapshot_required):
+        snapshot_numeric_columns.extend(["bid_queue_clear_size", "ask_queue_clear_size"])
     snapshot_numeric = _finite_values(
         snapshots,
-        [timestamp_col, "bid_px_1", "ask_px_1", "bid_queue_ahead", "ask_queue_ahead"],
+        snapshot_numeric_columns,
         "event-level realized fill snapshot",
     )
     event_numeric = _finite_values(
@@ -353,7 +446,10 @@ def add_event_level_realized_fill_proxy(
         [timestamp_col, event_price_col, event_size_col],
         "event-level realized fill event",
     )
-    if (snapshot_numeric[["bid_queue_ahead", "ask_queue_ahead"]] < 0.0).any().any():
+    snapshot_size_columns = ["bid_queue_ahead", "ask_queue_ahead"]
+    if clear_size_columns.issubset(snapshot_required):
+        snapshot_size_columns.extend(["bid_queue_clear_size", "ask_queue_clear_size"])
+    if (snapshot_numeric[snapshot_size_columns] < 0.0).any().any():
         raise ValueError("event-level realized fill snapshot queues must be non-negative")
     if (event_numeric[event_size_col] < 0.0).any():
         raise ValueError("event-level realized fill event sizes must be non-negative")
@@ -404,6 +500,9 @@ def add_event_level_realized_fill_proxy(
     ask_depletion = pd.Series(ask_depletions, index=snapshots.index)
     bid_queue = snapshot_numeric["bid_queue_ahead"]
     ask_queue = snapshot_numeric["ask_queue_ahead"]
+    if {"bid_queue_clear_size", "ask_queue_clear_size"}.issubset(snapshot_numeric.columns):
+        bid_queue = snapshot_numeric["bid_queue_clear_size"]
+        ask_queue = snapshot_numeric["ask_queue_clear_size"]
     bid_ratio = pd.Series(
         np.where(
             bid_queue > 0.0,
@@ -458,6 +557,14 @@ def add_passive_fill_probabilities(
     pressure = values[pressure_col]
     bid_queue_share = values["bid_queue_share"].clip(lower=0.0)
     ask_queue_share = values["ask_queue_share"].clip(lower=0.0)
+    if {"bid_queue_clear_share", "ask_queue_clear_share"}.issubset(frame.columns):
+        clear_values = _finite_values(
+            frame,
+            ["bid_queue_clear_share", "ask_queue_clear_share"],
+            "fill probability queue clearance",
+        )
+        bid_queue_share = clear_values["bid_queue_clear_share"].clip(lower=0.0)
+        ask_queue_share = clear_values["ask_queue_clear_share"].clip(lower=0.0)
     spread_ticks = values["spread_ticks"].clip(lower=0.0)
     volatility = values["volatility"].clip(lower=0.0)
     replenishment = values["replenishment_rate"].clip(lower=0.0)
