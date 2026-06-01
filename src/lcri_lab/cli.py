@@ -136,6 +136,8 @@ from lcri_lab.execution import (
     queue_position_fill_calibration_surface,
     queue_position_fill_surface,
     queue_position_fraction_sweep,
+    queue_position_latency_edge_survival,
+    queue_position_latency_edge_survival_scorecard,
     queue_position_latency_regime_surface,
     queue_position_latency_release_scorecard,
     queue_position_regime_capacity_concentration,
@@ -722,6 +724,16 @@ def run_demo(
     heldout_queue_latency_regime_surface = queue_position_latency_regime_surface(
         heldout_passive_fill_labeled
     )
+    queue_latency_edge_survival = queue_position_latency_edge_survival(passive_fill_labeled)
+    heldout_queue_latency_edge_survival = queue_position_latency_edge_survival(
+        heldout_passive_fill_labeled
+    )
+    queue_latency_edge_survival_scorecard = queue_position_latency_edge_survival_scorecard(
+        queue_latency_edge_survival
+    )
+    heldout_queue_latency_edge_survival_scorecard = queue_position_latency_edge_survival_scorecard(
+        heldout_queue_latency_edge_survival
+    )
     queue_latency_release_scorecard = queue_position_latency_release_scorecard(
         queue_latency_regime_surface
     )
@@ -1074,6 +1086,10 @@ def run_demo(
         "heldout_queue_position_fill_calibration_surface.csv",
         "queue_position_latency_regime_surface.csv",
         "heldout_queue_position_latency_regime_surface.csv",
+        "queue_position_latency_edge_survival.csv",
+        "heldout_queue_position_latency_edge_survival.csv",
+        "queue_position_latency_edge_survival_scorecard.json",
+        "heldout_queue_position_latency_edge_survival_scorecard.json",
         "queue_position_latency_release_scorecard.json",
         "heldout_queue_position_latency_release_scorecard.json",
         "queue_position_fraction_sweep.csv",
@@ -1445,6 +1461,20 @@ def run_demo(
     )
     heldout_queue_latency_regime_surface.to_csv(
         output / "heldout_queue_position_latency_regime_surface.csv", index=False
+    )
+    queue_latency_edge_survival.to_csv(
+        output / "queue_position_latency_edge_survival.csv", index=False
+    )
+    heldout_queue_latency_edge_survival.to_csv(
+        output / "heldout_queue_position_latency_edge_survival.csv", index=False
+    )
+    write_json(
+        output / "queue_position_latency_edge_survival_scorecard.json",
+        queue_latency_edge_survival_scorecard,
+    )
+    write_json(
+        output / "heldout_queue_position_latency_edge_survival_scorecard.json",
+        heldout_queue_latency_edge_survival_scorecard,
     )
     write_json(
         output / "queue_position_latency_release_scorecard.json",

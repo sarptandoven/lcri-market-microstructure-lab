@@ -173,6 +173,16 @@ surfaces without opening every file:
   decision-latency surface that keeps the decision side fixed and measures whether
   realized fills decay when queue decisions are delayed by later snapshots. Heldout
   runs emit the same schema with a `heldout_` prefix.
+- `queue_position_latency_edge_survival.csv`: decision-latency edge survival curve
+  that prices delayed selected-side realized fills in execution-adjusted ticks,
+  exposing whether stale queue state loses the high-edge fills even when aggregate
+  fill-rate decay looks acceptable. Heldout runs emit the same schema with a
+  `heldout_` prefix.
+- `queue_position_latency_edge_survival_scorecard.json`: compact release gate for
+  the edge-survival curve with candidate-weighted edge gap, weighted edge survival
+  ratio, fragile-edge candidate share, worst delayed-edge pointer, and
+  `pass`/`review`/`block` decision labels. Heldout runs emit the same schema with
+  a `heldout_` prefix.
 - `queue_position_latency_release_scorecard.json`: compact release gate for the
   latency surface with candidate-weighted fill decay, fragile-candidate share,
   worst regime/latency pointer, and `pass`/`review`/`block` decision labels.

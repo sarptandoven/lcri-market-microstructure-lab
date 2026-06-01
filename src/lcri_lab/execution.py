@@ -7430,6 +7430,262 @@ def queue_position_latency_sensitivity(
     return pd.DataFrame(rows, columns=columns)
 
 
+def queue_position_latency_edge_survival(
+    frame: pd.DataFrame,
+    *,
+    latencies: list[int] | tuple[int, ...] = (0, 1, 2, 5),
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    side_col: str = "best_execution_side",
+    bid_realized_col: str = "bid_realized_fill",
+    ask_realized_col: str = "ask_realized_fill",
+    edge_col: str = "execution_adjusted_edge_ticks",
+    max_realized_edge_decay: float = 0.10,
+) -> pd.DataFrame:
+    """Price how much execution-adjusted edge survives stale queue decisions.
+
+    Fill-rate latency curves can look acceptable while the lost fills are exactly
+    the high-edge opportunities. This diagnostic keeps the decision side and edge
+    at row ``t`` fixed, then applies realized selected-side fills from future
+    snapshot latencies. The resulting realized-edge curve gives reviewers a direct
+    tick-valued estimate of edge lost to queue-state staleness.
+    """
+    columns = [
+        "latency_steps",
+        "candidates",
+        "long_candidates",
+        "short_candidates",
+        "realized_fill_rate",
+        "mean_decision_edge_ticks",
+        "realized_edge_ticks",
+        "realized_edge_gap_vs_immediate",
+        "edge_survival_ratio",
+        "edge_latency_label",
+    ]
+    if not latencies:
+        raise ValueError("latencies must be a non-empty sequence")
+    if any(not isinstance(latency, int) or isinstance(latency, bool) or latency < 0 for latency in latencies):
+        raise ValueError("latencies must be non-negative integers")
+    if len(set(latencies)) != len(latencies):
+        raise ValueError("latencies must be unique")
+    if not math.isfinite(max_realized_edge_decay) or max_realized_edge_decay < 0.0:
+        raise ValueError("max_realized_edge_decay must be finite and non-negative")
+
+    required = {side_col, bid_realized_col, ask_realized_col, edge_col}
+    _require_columns(frame, required, "queue position latency edge survival")
+    grouping_columns = _normalize_group_columns(frame, group_cols, "queue position latency edge survival group")
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    values = _finite_values(
+        frame,
+        [bid_realized_col, ask_realized_col, edge_col],
+        "queue position latency edge survival",
+    )
+    sides = frame[side_col].astype(str)
+    tradable = sides.isin({"long", "short"})
+
+    def latency_realized(column: str, latency: int) -> pd.Series:
+        if latency == 0:
+            return values[column]
+        if not grouping_columns:
+            return values[column].shift(-latency)
+        keys = [frame[group_col] for group_col in grouping_columns]
+        return values[column].groupby(keys, sort=False, dropna=False).shift(-latency)
+
+    rows: list[dict[str, float | int | str]] = []
+    anchor_realized_edge: float | None = None
+    for latency in sorted(latencies):
+        bid_realized = latency_realized(bid_realized_col, latency)
+        ask_realized = latency_realized(ask_realized_col, latency)
+        selected_realized = pd.Series(
+            np.select(
+                [sides == "long", sides == "short"],
+                [bid_realized, ask_realized],
+                default=np.nan,
+            ),
+            index=frame.index,
+        )
+        mask = tradable & selected_realized.notna()
+        candidates = int(mask.sum())
+        if candidates == 0:
+            fill_rate = 0.0
+            mean_edge = 0.0
+            realized_edge = 0.0
+        else:
+            fill_rate = float(selected_realized[mask].mean())
+            mean_edge = float(values.loc[mask, edge_col].mean())
+            realized_edge = float((values.loc[mask, edge_col] * selected_realized[mask]).mean())
+        if anchor_realized_edge is None:
+            anchor_realized_edge = realized_edge
+        edge_gap = realized_edge - anchor_realized_edge
+        if latency == 0:
+            label = "anchor_latency"
+        elif edge_gap < -max_realized_edge_decay:
+            label = "edge_latency_fragile"
+        else:
+            label = "edge_latency_robust"
+        survival_ratio = 0.0 if anchor_realized_edge == 0.0 else realized_edge / anchor_realized_edge
+        rows.append(
+            {
+                "latency_steps": int(latency),
+                "candidates": candidates,
+                "long_candidates": int(((sides == "long") & mask).sum()),
+                "short_candidates": int(((sides == "short") & mask).sum()),
+                "realized_fill_rate": fill_rate,
+                "mean_decision_edge_ticks": mean_edge,
+                "realized_edge_ticks": realized_edge,
+                "realized_edge_gap_vs_immediate": float(edge_gap),
+                "edge_survival_ratio": float(survival_ratio),
+                "edge_latency_label": label,
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
+def queue_position_latency_edge_survival_scorecard(
+    survival: pd.DataFrame,
+    *,
+    max_fragile_edge_candidate_share: float = 0.20,
+    review_fragile_edge_candidate_share: float = 0.10,
+    min_candidate_weighted_edge_gap: float = -0.10,
+    review_candidate_weighted_edge_gap: float = -0.05,
+    min_weighted_edge_survival_ratio: float = 0.80,
+) -> dict[str, float | int | str]:
+    """Summarize whether tick-valued queue-latency edge survives release gates."""
+    for name, value in {
+        "max_fragile_edge_candidate_share": max_fragile_edge_candidate_share,
+        "review_fragile_edge_candidate_share": review_fragile_edge_candidate_share,
+        "min_candidate_weighted_edge_gap": min_candidate_weighted_edge_gap,
+        "review_candidate_weighted_edge_gap": review_candidate_weighted_edge_gap,
+        "min_weighted_edge_survival_ratio": min_weighted_edge_survival_ratio,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= max_fragile_edge_candidate_share <= 1.0:
+        raise ValueError("max_fragile_edge_candidate_share must be in [0, 1]")
+    if not 0.0 <= review_fragile_edge_candidate_share <= 1.0:
+        raise ValueError("review_fragile_edge_candidate_share must be in [0, 1]")
+    if not 0.0 <= min_weighted_edge_survival_ratio <= 1.0:
+        raise ValueError("min_weighted_edge_survival_ratio must be in [0, 1]")
+
+    if survival.empty:
+        return {
+            "latency_rows": 0,
+            "anchor_candidates": 0,
+            "latency_candidates": 0,
+            "anchor_edge_ticks": 0.0,
+            "fragile_edge_latency_rows": 0,
+            "fragile_edge_candidate_share": 0.0,
+            "candidate_weighted_edge_gap": 0.0,
+            "candidate_weighted_edge_survival_ratio": 0.0,
+            "worst_latency_steps": 0,
+            "worst_edge_gap": 0.0,
+            "edge_survival_release_decision": "review",
+            "edge_survival_release_label": "queue_latency_edge_survival_no_evidence",
+            "blocking_reasons": "none",
+            "review_reasons": "no_latency_edge_evidence",
+        }
+
+    required = {
+        "latency_steps",
+        "candidates",
+        "realized_edge_ticks",
+        "realized_edge_gap_vs_immediate",
+        "edge_survival_ratio",
+        "edge_latency_label",
+    }
+    _require_columns(survival, required, "queue position latency edge survival scorecard")
+    values = _finite_values(
+        survival,
+        [
+            "latency_steps",
+            "candidates",
+            "realized_edge_ticks",
+            "realized_edge_gap_vs_immediate",
+            "edge_survival_ratio",
+        ],
+        "queue position latency edge survival scorecard",
+    )
+    if (values[["latency_steps", "candidates"]] < 0.0).any().any():
+        raise ValueError("queue position latency edge survival scorecard counts must be non-negative")
+    if not (values["latency_steps"] % 1.0).eq(0.0).all():
+        raise ValueError("queue position latency edge survival scorecard latency steps must be integers")
+
+    labels = survival["edge_latency_label"].astype(str)
+    anchor_mask = values["latency_steps"].eq(0.0)
+    latency_mask = ~anchor_mask
+    anchor_candidates = int(values.loc[anchor_mask, "candidates"].sum())
+    latency_candidates = int(values.loc[latency_mask, "candidates"].sum())
+    anchor_edge = (
+        0.0
+        if not anchor_mask.any()
+        else float(values.loc[anchor_mask, "realized_edge_ticks"].iloc[0])
+    )
+
+    fragile_mask = latency_mask & labels.eq("edge_latency_fragile")
+    fragile_candidates = float(values.loc[fragile_mask, "candidates"].sum())
+    fragile_share = 0.0 if latency_candidates == 0 else fragile_candidates / latency_candidates
+    if latency_candidates == 0:
+        weighted_gap = 0.0
+        weighted_ratio = 0.0
+    else:
+        weights = values.loc[latency_mask, "candidates"]
+        weighted_gap = float(
+            np.average(values.loc[latency_mask, "realized_edge_gap_vs_immediate"], weights=weights)
+        )
+        weighted_ratio = float(np.average(values.loc[latency_mask, "edge_survival_ratio"], weights=weights))
+
+    if latency_mask.any():
+        worst_idx = values.loc[latency_mask, "realized_edge_gap_vs_immediate"].idxmin()
+        worst_latency_steps = int(values.loc[worst_idx, "latency_steps"])
+        worst_edge_gap = float(values.loc[worst_idx, "realized_edge_gap_vs_immediate"])
+    else:
+        worst_latency_steps = 0
+        worst_edge_gap = 0.0
+
+    blocking_reasons: list[str] = []
+    review_reasons: list[str] = []
+    if latency_candidates == 0:
+        review_reasons.append("no_latency_edge_evidence")
+    if fragile_share > max_fragile_edge_candidate_share:
+        blocking_reasons.append("fragile_edge_candidate_share")
+    elif fragile_share > review_fragile_edge_candidate_share:
+        review_reasons.append("fragile_edge_candidate_share")
+    if weighted_gap < min_candidate_weighted_edge_gap:
+        blocking_reasons.append("candidate_weighted_edge_gap")
+    elif weighted_gap < review_candidate_weighted_edge_gap:
+        review_reasons.append("candidate_weighted_edge_gap")
+    if weighted_ratio < min_weighted_edge_survival_ratio and latency_candidates > 0:
+        blocking_reasons.append("weighted_edge_survival_ratio")
+
+    if blocking_reasons:
+        decision = "block"
+        label = "queue_latency_edge_survival_blocked"
+    elif review_reasons:
+        decision = "review"
+        label = "queue_latency_edge_survival_review"
+    else:
+        decision = "pass"
+        label = "queue_latency_edge_survival_pass"
+
+    return {
+        "latency_rows": int(latency_mask.sum()),
+        "anchor_candidates": anchor_candidates,
+        "latency_candidates": latency_candidates,
+        "anchor_edge_ticks": anchor_edge,
+        "fragile_edge_latency_rows": int(fragile_mask.sum()),
+        "fragile_edge_candidate_share": float(fragile_share),
+        "candidate_weighted_edge_gap": weighted_gap,
+        "candidate_weighted_edge_survival_ratio": weighted_ratio,
+        "worst_latency_steps": worst_latency_steps,
+        "worst_edge_gap": worst_edge_gap,
+        "edge_survival_release_decision": decision,
+        "edge_survival_release_label": label,
+        "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
+        "review_reasons": ";".join(review_reasons) if review_reasons else "none",
+    }
+
+
 def queue_position_latency_regime_surface(
     frame: pd.DataFrame,
     *,

@@ -135,6 +135,10 @@ reports/
   heldout_execution_adjusted_lcri_regime_attribution.csv
   queue_position_latency_regime_surface.csv
   heldout_queue_position_latency_regime_surface.csv
+  queue_position_latency_edge_survival.csv
+  heldout_queue_position_latency_edge_survival.csv
+  queue_position_latency_edge_survival_scorecard.json
+  heldout_queue_position_latency_edge_survival_scorecard.json
   queue_position_latency_release_scorecard.json
   heldout_queue_position_latency_release_scorecard.json
   transition_robustness.json
@@ -145,7 +149,7 @@ reports/
   sample_snapshots.csv
 ```
 
-The execution-adjusted LCRI quantile diagnostics bucket rows by raw `abs(lcri)` and report how much signal survives passive-execution constraints, including the selected-side fill probability, selected-side adverse-fill probability, and fill-minus-adverse spread for each bucket. The event-window attribution companion cross-tabulates raw LCRI strength with passive-fill event-window regimes so reviewers can spot high-LCRI pockets where fills are available but adverse selection erases the edge. The regime attribution companion groups by liquidity regime and raw LCRI side so reviewers can see where queue-aware execution preserves, abstains, or inverts the residual imbalance before treating an LCRI result as publishable. The queue-position latency regime surface then replays selected-side realized fills at later snapshot latencies inside each passive-fill event-window regime, exposing cases where apparent passive alpha only exists with zero-latency queue state. The latency release scorecard condenses that surface into candidate-weighted fill decay, fragile-candidate share, worst latency/regime pointer, and pass/review/block labels for API and CI consumers.
+The execution-adjusted LCRI quantile diagnostics bucket rows by raw `abs(lcri)` and report how much signal survives passive-execution constraints, including the selected-side fill probability, selected-side adverse-fill probability, and fill-minus-adverse spread for each bucket. The event-window attribution companion cross-tabulates raw LCRI strength with passive-fill event-window regimes so reviewers can spot high-LCRI pockets where fills are available but adverse selection erases the edge. The regime attribution companion groups by liquidity regime and raw LCRI side so reviewers can see where queue-aware execution preserves, abstains, or inverts the residual imbalance before treating an LCRI result as publishable. The queue-position latency regime surface then replays selected-side realized fills at later snapshot latencies inside each passive-fill event-window regime, exposing cases where apparent passive alpha only works with zero-latency queue state. The latency edge-survival artifact prices that same stale-queue replay in realized execution-adjusted ticks, so lost high-edge fills are not hidden by aggregate fill-rate averages; its scorecard gates releases on candidate-weighted edge survival, worst delayed-edge gap, and fragile-edge candidate share. The latency release scorecard condenses the fill-rate surface into candidate-weighted fill decay, fragile-candidate share, worst latency/regime pointer, and pass/review/block labels for API and CI consumers.
 
 ## Python usage
 

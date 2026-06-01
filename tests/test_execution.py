@@ -60,6 +60,8 @@ from lcri_lab.execution import (
     queue_position_expected_value_policy_scorecard,
     queue_position_expected_value_stress_table,
     queue_position_latency_sensitivity,
+    queue_position_latency_edge_survival,
+    queue_position_latency_edge_survival_scorecard,
     queue_position_latency_regime_surface,
     queue_position_latency_release_scorecard,
     queue_position_regime_fraction_sweep,
@@ -2705,6 +2707,87 @@ def test_queue_position_latency_sensitivity_audits_stale_execution_decisions() -
 def test_queue_position_latency_sensitivity_rejects_negative_latency() -> None:
     with pytest.raises(ValueError, match="latencies must be non-negative integers"):
         queue_position_latency_sensitivity(pd.DataFrame(), latencies=[0, -1])
+
+
+def test_queue_position_latency_edge_survival_prices_delayed_fill_decay() -> None:
+    frame = pd.DataFrame(
+        {
+            "symbol": ["A", "A", "A", "B", "B"],
+            "best_execution_side": ["long", "long", "short", "short", "long"],
+            "bid_realized_fill": [1.0, 0.0, 1.0, 0.0, 1.0],
+            "ask_realized_fill": [0.0, 1.0, 1.0, 1.0, 0.0],
+            "execution_adjusted_edge_ticks": [0.20, 0.10, 0.30, 0.40, 0.50],
+        }
+    )
+
+    survival = queue_position_latency_edge_survival(
+        frame,
+        latencies=[0, 1],
+        group_cols="symbol",
+        max_realized_edge_decay=0.10,
+    )
+
+    assert survival["latency_steps"].tolist() == [0, 1]
+    assert survival["candidates"].tolist() == [5, 3]
+    assert survival["realized_fill_rate"].tolist() == pytest.approx([0.80, 1.0 / 3.0])
+    assert survival["mean_decision_edge_ticks"].tolist() == pytest.approx([0.30, (0.20 + 0.10 + 0.40) / 3.0])
+    assert survival["realized_edge_ticks"].tolist() == pytest.approx([0.28, 0.10 / 3.0])
+    assert survival["realized_edge_gap_vs_immediate"].tolist() == pytest.approx([0.0, (0.10 / 3.0) - 0.28])
+    assert survival["edge_survival_ratio"].tolist() == pytest.approx([1.0, (0.10 / 3.0) / 0.28])
+    assert survival["edge_latency_label"].tolist() == ["anchor_latency", "edge_latency_fragile"]
+
+
+def test_queue_position_latency_edge_survival_rejects_missing_edge_state() -> None:
+    with pytest.raises(ValueError, match="missing queue position latency edge survival columns"):
+        queue_position_latency_edge_survival(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_latency_edge_survival_scorecard_blocks_lost_edge() -> None:
+    survival = pd.DataFrame(
+        {
+            "latency_steps": [0, 1, 2],
+            "candidates": [10, 8, 6],
+            "realized_edge_ticks": [0.30, 0.18, 0.05],
+            "realized_edge_gap_vs_immediate": [0.0, -0.12, -0.25],
+            "edge_survival_ratio": [1.0, 0.60, 1.0 / 6.0],
+            "edge_latency_label": [
+                "anchor_latency",
+                "edge_latency_fragile",
+                "edge_latency_fragile",
+            ],
+        }
+    )
+
+    scorecard = queue_position_latency_edge_survival_scorecard(
+        survival,
+        max_fragile_edge_candidate_share=0.50,
+        review_fragile_edge_candidate_share=0.20,
+        min_candidate_weighted_edge_gap=-0.20,
+        review_candidate_weighted_edge_gap=-0.05,
+        min_weighted_edge_survival_ratio=0.50,
+    )
+
+    assert scorecard["anchor_edge_ticks"] == pytest.approx(0.30)
+    assert scorecard["latency_candidates"] == 14
+    assert scorecard["fragile_edge_candidate_share"] == pytest.approx(1.0)
+    assert scorecard["candidate_weighted_edge_gap"] == pytest.approx(
+        ((8 * -0.12) + (6 * -0.25)) / 14
+    )
+    assert scorecard["candidate_weighted_edge_survival_ratio"] == pytest.approx(
+        ((8 * 0.60) + (6 * (1.0 / 6.0))) / 14
+    )
+    assert scorecard["worst_latency_steps"] == 2
+    assert scorecard["edge_survival_release_decision"] == "block"
+    assert scorecard["edge_survival_release_label"] == "queue_latency_edge_survival_blocked"
+    assert "fragile_edge_candidate_share" in scorecard["blocking_reasons"]
+
+
+def test_queue_position_latency_edge_survival_scorecard_reviews_empty_input() -> None:
+    scorecard = queue_position_latency_edge_survival_scorecard(pd.DataFrame())
+
+    assert scorecard["edge_survival_release_decision"] == "review"
+    assert scorecard["edge_survival_release_label"] == "queue_latency_edge_survival_no_evidence"
+    assert scorecard["review_reasons"] == "no_latency_edge_evidence"
 
 
 def test_execution_publishability_review_packet_handles_empty_frames() -> None:

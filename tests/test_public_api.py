@@ -147,7 +147,11 @@ def test_public_api_exports_queue_position_calibration_reliability_scorecard() -
 
 
 def test_public_api_exports_queue_position_latency_release_scorecard() -> None:
+    assert callable(lcri_lab.queue_position_latency_edge_survival)
+    assert callable(lcri_lab.queue_position_latency_edge_survival_scorecard)
     assert callable(lcri_lab.queue_position_latency_release_scorecard)
+    assert "queue_position_latency_edge_survival" in lcri_lab.__all__
+    assert "queue_position_latency_edge_survival_scorecard" in lcri_lab.__all__
     assert "queue_position_latency_release_scorecard" in lcri_lab.__all__
 
 
