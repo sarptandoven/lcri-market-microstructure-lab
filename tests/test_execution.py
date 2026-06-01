@@ -13,6 +13,7 @@ from lcri_lab.execution import (
     execution_adjusted_edge_component_attribution,
     execution_adjusted_edge_summary,
     execution_adjusted_lcri_event_window_attribution,
+    execution_adjusted_lcri_event_window_release_scorecard,
     execution_adjusted_lcri_quantile_diagnostics,
     execution_adjusted_lcri_regime_attribution,
     passive_fill_brier_decomposition,
@@ -3817,6 +3818,110 @@ def test_execution_adjusted_lcri_event_window_attribution_rejects_missing_regime
         ValueError, match="missing execution-adjusted LCRI event-window attribution columns"
     ):
         execution_adjusted_lcri_event_window_attribution(pd.DataFrame({"lcri": [1.0]}))
+
+
+def test_execution_adjusted_lcri_event_window_release_scorecard_blocks_toxic_events() -> None:
+    attribution = pd.DataFrame(
+        {
+            "passive_fill_event_window_regime": ["event", "post_event", "calm"],
+            "bucket": ["high_abs_lcri", "high_abs_lcri", "low_abs_lcri"],
+            "rows": [8, 6, 10],
+            "signal_survival_ratio": [0.20, 0.80, 0.90],
+            "tradable_share": [1.0, 1.0, 0.4],
+            "fill_minus_adverse_probability_spread": [0.05, 0.40, 0.20],
+            "mean_execution_adjusted_edge_ticks": [-0.30, 0.50, 0.10],
+            "negative_edge_share": [0.75, 0.10, 0.05],
+            "event_window_execution_label": [
+                "high_lcri_event_toxicity",
+                "event_window_edge_survives",
+                "low_lcri_reference",
+            ],
+        }
+    )
+
+    scorecard = execution_adjusted_lcri_event_window_release_scorecard(
+        attribution,
+        max_toxic_high_lcri_row_share=0.30,
+        min_high_lcri_survival_ratio=0.50,
+        min_high_lcri_fill_adverse_spread=0.25,
+    )
+
+    assert scorecard == {
+        "high_lcri_rows": 14,
+        "toxic_high_lcri_rows": 8,
+        "toxic_high_lcri_row_share": pytest.approx(8 / 14),
+        "event_high_lcri_rows": 8,
+        "event_toxic_high_lcri_rows": 8,
+        "event_toxic_high_lcri_row_share": pytest.approx(1.0),
+        "weighted_high_lcri_signal_survival_ratio": pytest.approx((0.20 * 8 + 0.80 * 6) / 14),
+        "weighted_high_lcri_fill_adverse_spread": pytest.approx((0.05 * 8 + 0.40 * 6) / 14),
+        "weighted_high_lcri_negative_edge_share": pytest.approx((0.75 * 8 + 0.10 * 6) / 14),
+        "worst_event_window_regime": "event",
+        "worst_event_window_bucket": "high_abs_lcri",
+        "worst_event_window_label": "high_lcri_event_toxicity",
+        "release_decision": "block",
+        "release_label": "execution_lcri_event_window_blocked",
+        "blocking_reasons": "toxic_high_lcri_share;event_toxic_high_lcri_share;low_signal_survival;low_fill_adverse_spread",
+        "review_reasons": "none",
+    }
+
+
+def test_execution_adjusted_lcri_event_window_release_scorecard_passes_surviving_edges() -> None:
+    attribution = pd.DataFrame(
+        {
+            "passive_fill_event_window_regime": ["event", "post_event"],
+            "bucket": ["high_abs_lcri", "high_abs_lcri"],
+            "rows": [5, 5],
+            "signal_survival_ratio": [0.75, 0.80],
+            "tradable_share": [1.0, 1.0],
+            "fill_minus_adverse_probability_spread": [0.30, 0.35],
+            "mean_execution_adjusted_edge_ticks": [0.40, 0.50],
+            "negative_edge_share": [0.05, 0.10],
+            "event_window_execution_label": [
+                "event_window_edge_survives",
+                "event_window_edge_survives",
+            ],
+        }
+    )
+
+    scorecard = execution_adjusted_lcri_event_window_release_scorecard(attribution)
+
+    assert scorecard["release_decision"] == "pass"
+    assert scorecard["release_label"] == "execution_lcri_event_window_pass"
+    assert scorecard["blocking_reasons"] == "none"
+
+
+def test_execution_adjusted_lcri_event_window_release_scorecard_reviews_without_high_lcri() -> None:
+    attribution = pd.DataFrame(
+        {
+            "passive_fill_event_window_regime": ["event", "calm"],
+            "bucket": ["low_abs_lcri", "medium_abs_lcri"],
+            "rows": [5, 5],
+            "signal_survival_ratio": [0.0, 0.0],
+            "tradable_share": [1.0, 1.0],
+            "fill_minus_adverse_probability_spread": [-0.50, -0.25],
+            "mean_execution_adjusted_edge_ticks": [-0.40, -0.30],
+            "negative_edge_share": [1.0, 1.0],
+            "event_window_execution_label": [
+                "low_lcri_reference",
+                "low_lcri_reference",
+            ],
+        }
+    )
+
+    scorecard = execution_adjusted_lcri_event_window_release_scorecard(attribution)
+
+    assert scorecard["release_decision"] == "review"
+    assert scorecard["release_label"] == "execution_lcri_event_window_review"
+    assert scorecard["blocking_reasons"] == "none"
+    assert scorecard["review_reasons"] == "no_high_lcri_rows"
+
+
+def test_execution_adjusted_lcri_event_window_release_scorecard_rejects_missing_columns() -> None:
+    with pytest.raises(
+        ValueError, match="missing execution-adjusted LCRI event-window release scorecard columns"
+    ):
+        execution_adjusted_lcri_event_window_release_scorecard(pd.DataFrame({"rows": [1]}))
 
 
 def test_queue_position_latency_regime_surface_segments_decision_regimes() -> None:

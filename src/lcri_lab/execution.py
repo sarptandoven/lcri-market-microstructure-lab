@@ -9257,3 +9257,171 @@ def execution_adjusted_lcri_event_window_attribution(
         ascending=[True, True, True],
         ignore_index=True,
     )
+
+
+def execution_adjusted_lcri_event_window_release_scorecard(
+    attribution: pd.DataFrame,
+    *,
+    max_toxic_high_lcri_row_share: float = 0.25,
+    max_event_toxic_high_lcri_row_share: float = 0.50,
+    min_high_lcri_survival_ratio: float = 0.50,
+    min_high_lcri_fill_adverse_spread: float = 0.05,
+) -> dict[str, float | int | str]:
+    """Gate execution-adjusted LCRI release on event-window survivability.
+
+    ``execution_adjusted_lcri_event_window_attribution`` exposes where raw LCRI
+    strength survives queue-position-aware passive execution. This scorecard turns
+    that surface into a publishability decision: high-LCRI rows should not be
+    concentrated in toxic passive-fill event windows, and the row-weighted
+    execution-adjusted signal should retain enough magnitude and fill-minus-
+    adverse spread to be economically credible.
+    """
+    for name, value in {
+        "max_toxic_high_lcri_row_share": max_toxic_high_lcri_row_share,
+        "max_event_toxic_high_lcri_row_share": max_event_toxic_high_lcri_row_share,
+        "min_high_lcri_survival_ratio": min_high_lcri_survival_ratio,
+        "min_high_lcri_fill_adverse_spread": min_high_lcri_fill_adverse_spread,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= max_toxic_high_lcri_row_share <= 1.0:
+        raise ValueError("max_toxic_high_lcri_row_share must be between 0 and 1")
+    if not 0.0 <= max_event_toxic_high_lcri_row_share <= 1.0:
+        raise ValueError("max_event_toxic_high_lcri_row_share must be between 0 and 1")
+
+    required = {
+        "passive_fill_event_window_regime",
+        "bucket",
+        "rows",
+        "signal_survival_ratio",
+        "fill_minus_adverse_probability_spread",
+        "negative_edge_share",
+        "event_window_execution_label",
+    }
+    _require_columns(
+        attribution,
+        required,
+        "execution-adjusted LCRI event-window release scorecard",
+    )
+    if attribution.empty:
+        return {
+            "high_lcri_rows": 0,
+            "toxic_high_lcri_rows": 0,
+            "toxic_high_lcri_row_share": 0.0,
+            "event_high_lcri_rows": 0,
+            "event_toxic_high_lcri_rows": 0,
+            "event_toxic_high_lcri_row_share": 0.0,
+            "weighted_high_lcri_signal_survival_ratio": 0.0,
+            "weighted_high_lcri_fill_adverse_spread": 0.0,
+            "weighted_high_lcri_negative_edge_share": 0.0,
+            "worst_event_window_regime": "none",
+            "worst_event_window_bucket": "none",
+            "worst_event_window_label": "none",
+            "release_decision": "review",
+            "release_label": "execution_lcri_event_window_review",
+            "blocking_reasons": "none",
+            "review_reasons": "no_high_lcri_rows",
+        }
+
+    values = _finite_values(
+        attribution,
+        [
+            "rows",
+            "signal_survival_ratio",
+            "fill_minus_adverse_probability_spread",
+            "negative_edge_share",
+        ],
+        "execution-adjusted LCRI event-window release scorecard",
+    )
+    if (values["rows"] < 0.0).any():
+        raise ValueError("execution-adjusted LCRI event-window release rows must be non-negative")
+
+    data = attribution.copy()
+    for column in values.columns:
+        data[column] = values[column]
+    high_lcri = data["bucket"].astype(str).map(_is_high_lcri_bucket)
+    toxic = data["event_window_execution_label"].astype(str).eq("high_lcri_event_toxicity")
+    event_window = data["passive_fill_event_window_regime"].astype(str).eq("event")
+    high_lcri_rows = int(data.loc[high_lcri, "rows"].sum())
+    toxic_high_lcri_rows = int(data.loc[high_lcri & toxic, "rows"].sum())
+    event_high_lcri_rows = int(data.loc[high_lcri & event_window, "rows"].sum())
+    event_toxic_high_lcri_rows = int(data.loc[high_lcri & event_window & toxic, "rows"].sum())
+    toxic_share = toxic_high_lcri_rows / high_lcri_rows if high_lcri_rows else 0.0
+    event_toxic_share = (
+        event_toxic_high_lcri_rows / event_high_lcri_rows if event_high_lcri_rows else 0.0
+    )
+
+    if high_lcri_rows:
+        weights = data.loc[high_lcri, "rows"].astype(float)
+        weighted_survival = float(
+            np.average(data.loc[high_lcri, "signal_survival_ratio"], weights=weights)
+        )
+        weighted_spread = float(
+            np.average(data.loc[high_lcri, "fill_minus_adverse_probability_spread"], weights=weights)
+        )
+        weighted_negative_edge = float(
+            np.average(data.loc[high_lcri, "negative_edge_share"], weights=weights)
+        )
+    else:
+        weighted_survival = 0.0
+        weighted_spread = 0.0
+        weighted_negative_edge = 0.0
+
+    if high_lcri.any():
+        worst_candidates = data.loc[high_lcri].assign(
+            _toxicity_rank=toxic.loc[high_lcri].astype(int).to_numpy(),
+        )
+        worst = worst_candidates.sort_values(
+            ["_toxicity_rank", "negative_edge_share", "signal_survival_ratio", "rows"],
+            ascending=[False, False, True, False],
+        ).iloc[0]
+        worst_regime = str(worst["passive_fill_event_window_regime"])
+        worst_bucket = str(worst["bucket"])
+        worst_label = str(worst["event_window_execution_label"])
+    else:
+        worst_regime = "none"
+        worst_bucket = "none"
+        worst_label = "none"
+
+    blocking_reasons = []
+    review_reasons = []
+    if high_lcri_rows == 0:
+        review_reasons.append("no_high_lcri_rows")
+    else:
+        if toxic_share > max_toxic_high_lcri_row_share:
+            blocking_reasons.append("toxic_high_lcri_share")
+        if event_toxic_share > max_event_toxic_high_lcri_row_share:
+            blocking_reasons.append("event_toxic_high_lcri_share")
+        if weighted_survival < min_high_lcri_survival_ratio:
+            blocking_reasons.append("low_signal_survival")
+        if weighted_spread < min_high_lcri_fill_adverse_spread:
+            blocking_reasons.append("low_fill_adverse_spread")
+
+    if blocking_reasons:
+        release_decision = "block"
+        release_label = "execution_lcri_event_window_blocked"
+    elif review_reasons:
+        release_decision = "review"
+        release_label = "execution_lcri_event_window_review"
+    else:
+        release_decision = "pass"
+        release_label = "execution_lcri_event_window_pass"
+
+    return {
+        "high_lcri_rows": high_lcri_rows,
+        "toxic_high_lcri_rows": toxic_high_lcri_rows,
+        "toxic_high_lcri_row_share": float(toxic_share),
+        "event_high_lcri_rows": event_high_lcri_rows,
+        "event_toxic_high_lcri_rows": event_toxic_high_lcri_rows,
+        "event_toxic_high_lcri_row_share": float(event_toxic_share),
+        "weighted_high_lcri_signal_survival_ratio": weighted_survival,
+        "weighted_high_lcri_fill_adverse_spread": weighted_spread,
+        "weighted_high_lcri_negative_edge_share": weighted_negative_edge,
+        "worst_event_window_regime": worst_regime,
+        "worst_event_window_bucket": worst_bucket,
+        "worst_event_window_label": worst_label,
+        "release_decision": release_decision,
+        "release_label": release_label,
+        "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
+        "review_reasons": ";".join(review_reasons) if review_reasons else "none",
+    }
