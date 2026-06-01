@@ -173,6 +173,10 @@ surfaces without opening every file:
   decision-latency surface that keeps the decision side fixed and measures whether
   realized fills decay when queue decisions are delayed by later snapshots. Heldout
   runs emit the same schema with a `heldout_` prefix.
+- `queue_position_latency_release_scorecard.json`: compact release gate for the
+  latency surface with candidate-weighted fill decay, fragile-candidate share,
+  worst regime/latency pointer, and `pass`/`review`/`block` decision labels.
+  Heldout runs emit the same schema with a `heldout_` prefix.
 - `lcri_uncertainty_weighted_review_priority.csv`: owner-review queue that
   combines contradiction packet priority with CI coverage width, CI/gate
   disagreement counts, and fragility uncertainty.

@@ -155,6 +155,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_queue_position_fill_calibration_surface.csv").exists()
     assert (tmp_path / "queue_position_latency_regime_surface.csv").exists()
     assert (tmp_path / "heldout_queue_position_latency_regime_surface.csv").exists()
+    assert (tmp_path / "queue_position_latency_release_scorecard.json").exists()
+    assert (tmp_path / "heldout_queue_position_latency_release_scorecard.json").exists()
     assert (tmp_path / "queue_position_fraction_sweep.csv").exists()
     assert (tmp_path / "heldout_queue_position_fraction_sweep.csv").exists()
     assert (tmp_path / "queue_position_regime_fraction_sweep.csv").exists()
@@ -537,6 +539,11 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "realized_fill_gap_vs_immediate",
         "latency_regime_label",
     }.issubset(latency_regime_columns)
+    latency_release_scorecard = json.loads(
+        (tmp_path / "queue_position_latency_release_scorecard.json").read_text()
+    )
+    assert latency_release_scorecard["latency_release_decision"] in {"pass", "review", "block"}
+    assert "candidate_weighted_fill_gap" in latency_release_scorecard
     assert metadata_summary["artifacts_with_metadata"] > 0
     assert metadata_summary["total_size_bytes"] > 0
     assert metadata_summary["largest_artifact"] != "none"

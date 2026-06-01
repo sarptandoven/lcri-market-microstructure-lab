@@ -7562,6 +7562,146 @@ def queue_position_latency_regime_surface(
     return pd.DataFrame(rows, columns=columns)
 
 
+def queue_position_latency_release_scorecard(
+    surface: pd.DataFrame,
+    *,
+    regime_col: str = "passive_fill_event_window_regime",
+    max_fragile_candidate_share: float = 0.20,
+    review_fragile_candidate_share: float = 0.10,
+    min_weighted_fill_gap: float = -0.10,
+    review_weighted_fill_gap: float = -0.05,
+    min_candidate_retention_share: float = 0.70,
+) -> dict[str, float | int | str]:
+    """Summarize whether queue-position evidence survives latency for release.
+
+    The latency regime surface is useful for reviewers, but release gates need a
+    compact decision artifact. This scorecard weights non-zero latency rows by
+    candidate count, flags regimes where realized fills decay after queue-state
+    staleness, and exposes the worst regime/latency pair so demo artifacts do not
+    overstate passive execution quality from zero-latency labels.
+    """
+    for name, value in {
+        "max_fragile_candidate_share": max_fragile_candidate_share,
+        "review_fragile_candidate_share": review_fragile_candidate_share,
+        "min_weighted_fill_gap": min_weighted_fill_gap,
+        "review_weighted_fill_gap": review_weighted_fill_gap,
+        "min_candidate_retention_share": min_candidate_retention_share,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= max_fragile_candidate_share <= 1.0:
+        raise ValueError("max_fragile_candidate_share must be in [0, 1]")
+    if not 0.0 <= review_fragile_candidate_share <= 1.0:
+        raise ValueError("review_fragile_candidate_share must be in [0, 1]")
+    if not 0.0 <= min_candidate_retention_share <= 1.0:
+        raise ValueError("min_candidate_retention_share must be in [0, 1]")
+
+    required = {regime_col, "latency_steps", "candidates", "realized_fill_gap_vs_immediate", "latency_regime_label"}
+    _require_columns(surface, required, "queue position latency release scorecard")
+    if surface.empty:
+        return {
+            "regimes": 0,
+            "latency_rows": 0,
+            "anchor_candidates": 0,
+            "latency_candidates": 0,
+            "candidate_retention_share": 0.0,
+            "fragile_latency_rows": 0,
+            "fragile_candidate_share": 0.0,
+            "candidate_weighted_fill_gap": 0.0,
+            "worst_regime": "none",
+            "worst_latency_steps": 0,
+            "worst_fill_gap": 0.0,
+            "latency_release_decision": "review",
+            "latency_release_label": "queue_latency_release_no_evidence",
+            "blocking_reasons": "none",
+            "review_reasons": "no_latency_evidence",
+        }
+
+    values = _finite_values(
+        surface,
+        ["latency_steps", "candidates", "realized_fill_gap_vs_immediate"],
+        "queue position latency release scorecard",
+    )
+    if (values[["latency_steps", "candidates"]] < 0.0).any().any():
+        raise ValueError("queue position latency release scorecard counts must be non-negative")
+    if not (values["latency_steps"] % 1.0).eq(0.0).all():
+        raise ValueError("queue position latency release scorecard latency steps must be integers")
+
+    regimes = surface[regime_col].astype(str)
+    labels = surface["latency_regime_label"].astype(str)
+    anchor_mask = values["latency_steps"].eq(0.0)
+    latency_mask = ~anchor_mask
+    anchor_candidates = int(values.loc[anchor_mask, "candidates"].sum())
+    latency_candidates = int(values.loc[latency_mask, "candidates"].sum())
+    candidate_retention_share = 0.0 if anchor_candidates == 0 else latency_candidates / anchor_candidates
+
+    fragile_mask = latency_mask & labels.eq("latency_fragile")
+    fragile_candidates = float(values.loc[fragile_mask, "candidates"].sum())
+    fragile_candidate_share = 0.0 if latency_candidates == 0 else fragile_candidates / latency_candidates
+    if latency_candidates == 0:
+        weighted_gap = 0.0
+    else:
+        weighted_gap = float(
+            np.average(
+                values.loc[latency_mask, "realized_fill_gap_vs_immediate"],
+                weights=values.loc[latency_mask, "candidates"],
+            )
+        )
+
+    if latency_mask.any():
+        worst_idx = values.loc[latency_mask, "realized_fill_gap_vs_immediate"].idxmin()
+        worst_regime = str(regimes.loc[worst_idx])
+        worst_latency_steps = int(values.loc[worst_idx, "latency_steps"])
+        worst_fill_gap = float(values.loc[worst_idx, "realized_fill_gap_vs_immediate"])
+    else:
+        worst_regime = "none"
+        worst_latency_steps = 0
+        worst_fill_gap = 0.0
+
+    blocking_reasons: list[str] = []
+    review_reasons: list[str] = []
+    if latency_candidates == 0:
+        review_reasons.append("no_latency_evidence")
+    if fragile_candidate_share > max_fragile_candidate_share:
+        blocking_reasons.append("fragile_candidate_share")
+    elif fragile_candidate_share > review_fragile_candidate_share:
+        review_reasons.append("fragile_candidate_share")
+    if weighted_gap < min_weighted_fill_gap:
+        blocking_reasons.append("weighted_fill_gap")
+    elif weighted_gap < review_weighted_fill_gap:
+        review_reasons.append("weighted_fill_gap")
+    if candidate_retention_share < min_candidate_retention_share:
+        review_reasons.append("candidate_retention")
+
+    if blocking_reasons:
+        decision = "block"
+        label = "queue_latency_release_blocked"
+    elif review_reasons:
+        decision = "review"
+        label = "queue_latency_release_review"
+    else:
+        decision = "pass"
+        label = "queue_latency_release_pass"
+
+    return {
+        "regimes": int(regimes.nunique()),
+        "latency_rows": int(latency_mask.sum()),
+        "anchor_candidates": anchor_candidates,
+        "latency_candidates": latency_candidates,
+        "candidate_retention_share": float(candidate_retention_share),
+        "fragile_latency_rows": int(fragile_mask.sum()),
+        "fragile_candidate_share": float(fragile_candidate_share),
+        "candidate_weighted_fill_gap": weighted_gap,
+        "worst_regime": worst_regime,
+        "worst_latency_steps": worst_latency_steps,
+        "worst_fill_gap": worst_fill_gap,
+        "latency_release_decision": decision,
+        "latency_release_label": label,
+        "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
+        "review_reasons": ";".join(review_reasons) if review_reasons else "none",
+    }
+
+
 def execution_publishability_review_packet(frame: pd.DataFrame) -> pd.DataFrame:
     """Aggregate pre/post-execution publishability conflicts for review.
 

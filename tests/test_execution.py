@@ -61,6 +61,7 @@ from lcri_lab.execution import (
     queue_position_expected_value_stress_table,
     queue_position_latency_sensitivity,
     queue_position_latency_regime_surface,
+    queue_position_latency_release_scorecard,
     queue_position_regime_fraction_sweep,
 )
 
@@ -3498,3 +3499,72 @@ def test_queue_position_latency_regime_surface_segments_decision_regimes() -> No
 def test_queue_position_latency_regime_surface_requires_regime_column() -> None:
     with pytest.raises(ValueError, match="missing queue position latency regime surface columns"):
         queue_position_latency_regime_surface(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_latency_release_scorecard_blocks_fragile_latency_regimes() -> None:
+    surface = pd.DataFrame(
+        {
+            "event_window_regime": ["calm", "calm", "event", "event", "post", "post"],
+            "latency_steps": [0, 1, 0, 1, 0, 2],
+            "candidates": [10, 8, 6, 5, 4, 4],
+            "realized_fill_rate": [0.80, 0.76, 0.90, 0.45, 0.75, 0.60],
+            "realized_fill_gap_vs_immediate": [0.0, -0.04, 0.0, -0.45, 0.0, -0.15],
+            "mean_execution_adjusted_edge_ticks": [0.30, 0.28, 0.60, 0.20, 0.35, 0.30],
+            "latency_regime_label": [
+                "anchor_latency",
+                "latency_robust",
+                "anchor_latency",
+                "latency_fragile",
+                "anchor_latency",
+                "latency_fragile",
+            ],
+        }
+    )
+
+    scorecard = queue_position_latency_release_scorecard(
+        surface,
+        regime_col="event_window_regime",
+        max_fragile_candidate_share=0.25,
+        min_weighted_fill_gap=-0.12,
+    )
+
+    assert scorecard == {
+        "regimes": 3,
+        "latency_rows": 3,
+        "anchor_candidates": 20,
+        "latency_candidates": 17,
+        "candidate_retention_share": pytest.approx(17 / 20),
+        "fragile_latency_rows": 2,
+        "fragile_candidate_share": pytest.approx(9 / 17),
+        "candidate_weighted_fill_gap": pytest.approx((-0.04 * 8 - 0.45 * 5 - 0.15 * 4) / 17),
+        "worst_regime": "event",
+        "worst_latency_steps": 1,
+        "worst_fill_gap": pytest.approx(-0.45),
+        "latency_release_decision": "block",
+        "latency_release_label": "queue_latency_release_blocked",
+        "blocking_reasons": "fragile_candidate_share;weighted_fill_gap",
+        "review_reasons": "none",
+    }
+
+
+def test_queue_position_latency_release_scorecard_passes_latency_robust_surface() -> None:
+    surface = pd.DataFrame(
+        {
+            "event_window_regime": ["calm", "calm"],
+            "latency_steps": [0, 1],
+            "candidates": [10, 9],
+            "realized_fill_gap_vs_immediate": [0.0, -0.03],
+            "latency_regime_label": ["anchor_latency", "latency_robust"],
+        }
+    )
+
+    scorecard = queue_position_latency_release_scorecard(surface, regime_col="event_window_regime")
+
+    assert scorecard["latency_release_decision"] == "pass"
+    assert scorecard["latency_release_label"] == "queue_latency_release_pass"
+    assert scorecard["blocking_reasons"] == "none"
+
+
+def test_queue_position_latency_release_scorecard_rejects_missing_columns() -> None:
+    with pytest.raises(ValueError, match="missing queue position latency release scorecard columns"):
+        queue_position_latency_release_scorecard(pd.DataFrame({"latency_steps": [0]}))
