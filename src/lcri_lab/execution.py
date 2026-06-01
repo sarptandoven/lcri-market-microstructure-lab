@@ -1228,6 +1228,145 @@ def queue_position_toxicity_surface(
     return output
 
 
+def queue_position_lcri_tail_fill_residuals(
+    frame: pd.DataFrame,
+    *,
+    lcri_bins: int = 5,
+    regime_col: str | None = "regime",
+    side_col: str = "best_execution_side",
+    lcri_col: str = "lcri",
+    bid_realized_col: str = "bid_realized_fill",
+    ask_realized_col: str = "ask_realized_fill",
+    max_abs_fill_residual: float = 0.20,
+) -> pd.DataFrame:
+    """Audit realized passive fills in the LCRI tails used for execution claims.
+
+    Strong raw LCRI tails can look publishable while the passive order actually
+    sits behind too much queue, or fills only in toxic states. This diagnostic
+    selects the side implied by ``best_execution_side`` and compares predicted
+    passive fill probability with realized fill labels by regime and absolute-LCRI
+    tail bin. The result isolates where tail alpha is being overstated by the
+    queue-position fill model before it reaches demo/release artifacts.
+    """
+    if not isinstance(lcri_bins, int) or isinstance(lcri_bins, bool):
+        raise ValueError("lcri_bins must be an integer")
+    if lcri_bins < 1:
+        raise ValueError("lcri_bins must be at least 1")
+    if not math.isfinite(max_abs_fill_residual):
+        raise ValueError("max_abs_fill_residual must be finite")
+    if max_abs_fill_residual < 0.0:
+        raise ValueError("max_abs_fill_residual must be non-negative")
+
+    required = {
+        side_col,
+        lcri_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        bid_realized_col,
+        ask_realized_col,
+        "execution_adjusted_edge_ticks",
+    }
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(frame, required, "queue position LCRI tail fill residual")
+
+    columns = [
+        "regime",
+        "best_execution_side",
+        "lcri_tail_bin",
+        "rows",
+        "mean_abs_lcri",
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+        "fill_residual",
+        "absolute_fill_residual",
+        "mean_execution_adjusted_edge_ticks",
+        "residual_edge_drag_ticks",
+        "tail_fill_residual_label",
+    ]
+    if frame.empty:
+        output = pd.DataFrame(columns=columns)
+        return output if regime_col is None else output.rename(columns={"regime": regime_col})
+
+    numeric_columns = [
+        lcri_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        bid_realized_col,
+        ask_realized_col,
+        "execution_adjusted_edge_ticks",
+    ]
+    values = _finite_values(frame, numeric_columns, "queue position LCRI tail fill residual")
+    side = frame[side_col].astype(str)
+    tradable = side.isin(["long", "short"])
+    if not bool(tradable.any()):
+        output = pd.DataFrame(columns=columns)
+        return output if regime_col is None else output.rename(columns={"regime": regime_col})
+
+    selected = pd.DataFrame(index=frame.index[tradable])
+    selected_side = side.loc[tradable]
+    selected["regime"] = (
+        frame.loc[tradable, regime_col].astype(str) if regime_col is not None else "all"
+    )
+    selected["best_execution_side"] = selected_side
+    selected["abs_lcri"] = values.loc[tradable, lcri_col].abs()
+    selected["predicted_fill_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_fill_probability"],
+        values.loc[tradable, "ask_fill_probability"],
+    )
+    selected["realized_fill"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, bid_realized_col],
+        values.loc[tradable, ask_realized_col],
+    )
+    selected["execution_adjusted_edge_ticks"] = values.loc[
+        tradable, "execution_adjusted_edge_ticks"
+    ]
+    for column in ["predicted_fill_probability", "realized_fill"]:
+        if not selected[column].between(0.0, 1.0).all():
+            raise ValueError("queue position LCRI tail fill residual probabilities must be in [0, 1]")
+
+    rows: list[dict[str, float | int | str]] = []
+    for (regime, execution_side), side_group in selected.groupby(
+        ["regime", "best_execution_side"], sort=True
+    ):
+        side_group = side_group.copy()
+        side_group["lcri_tail_bin"] = _rank_probability_bins(side_group["abs_lcri"], lcri_bins)
+        for tail_bin, group in side_group.groupby("lcri_tail_bin", sort=True):
+            predicted = float(group["predicted_fill_probability"].mean())
+            realized = float(group["realized_fill"].mean())
+            residual = realized - predicted
+            abs_residual = abs(residual)
+            edge = float(group["execution_adjusted_edge_ticks"].mean())
+            if abs_residual <= max_abs_fill_residual + 1e-12:
+                label = "tail_fill_calibrated"
+            elif residual < 0.0:
+                label = "tail_fill_overstated"
+            else:
+                label = "tail_fill_understated"
+            rows.append(
+                {
+                    "regime": str(regime),
+                    "best_execution_side": str(execution_side),
+                    "lcri_tail_bin": int(tail_bin),
+                    "rows": int(len(group)),
+                    "mean_abs_lcri": float(group["abs_lcri"].mean()),
+                    "mean_predicted_fill_probability": predicted,
+                    "realized_fill_rate": realized,
+                    "fill_residual": residual,
+                    "absolute_fill_residual": abs_residual,
+                    "mean_execution_adjusted_edge_ticks": edge,
+                    "residual_edge_drag_ticks": float(abs_residual * abs(edge)),
+                    "tail_fill_residual_label": label,
+                }
+            )
+    output = pd.DataFrame(rows, columns=columns)
+    if regime_col is not None:
+        output = output.rename(columns={"regime": regime_col})
+    return output
+
+
 def queue_position_fraction_sweep(
     frame: pd.DataFrame,
     *,

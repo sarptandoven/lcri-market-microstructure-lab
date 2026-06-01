@@ -75,6 +75,7 @@ from lcri_lab.execution import (
     queue_position_latency_edge_survival_scorecard,
     queue_position_latency_regime_surface,
     queue_position_latency_release_scorecard,
+    queue_position_lcri_tail_fill_residuals,
     queue_position_path_drawdown_episodes,
     queue_position_path_risk_concentration,
     queue_position_path_risk_release_gate,
@@ -1096,10 +1097,54 @@ def test_queue_position_toxicity_surface_flags_adverse_deep_queue_cells() -> Non
 
 
 def test_queue_position_toxicity_surface_rejects_invalid_inputs() -> None:
-    with pytest.raises(ValueError, match="queue_bins"):
+    with pytest.raises(ValueError, match="queue_bins must be at least 1"):
         queue_position_toxicity_surface(pd.DataFrame(), queue_bins=0)
     with pytest.raises(ValueError, match="missing queue position toxicity surface columns"):
         queue_position_toxicity_surface(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_lcri_tail_fill_residuals_audits_tail_execution_calibration() -> None:
+    frame = pd.DataFrame(
+        {
+            "regime": ["open", "open", "open", "open", "thin", "thin"],
+            "best_execution_side": ["long", "long", "long", "short", "short", "abstain"],
+            "lcri": [-0.2, -1.5, -3.0, 2.0, 4.0, 0.1],
+            "bid_fill_probability": [0.30, 0.80, 0.90, 0.20, 0.10, 0.40],
+            "ask_fill_probability": [0.20, 0.20, 0.10, 0.70, 0.95, 0.50],
+            "bid_realized_fill": [0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+            "ask_realized_fill": [0.0, 0.0, 0.0, 1.0, 0.0, 1.0],
+            "execution_adjusted_edge_ticks": [0.1, 1.2, 1.5, 0.8, -0.4, 0.0],
+        }
+    )
+
+    residuals = queue_position_lcri_tail_fill_residuals(
+        frame,
+        lcri_bins=2,
+        max_abs_fill_residual=0.30,
+    )
+
+    assert residuals["regime"].tolist() == ["open", "open", "open", "thin"]
+    assert residuals["best_execution_side"].tolist() == ["long", "long", "short", "short"]
+    assert residuals["lcri_tail_bin"].tolist() == [1, 2, 1, 1]
+    assert residuals["rows"].tolist() == [2, 1, 1, 1]
+    assert residuals["mean_abs_lcri"].tolist() == pytest.approx([0.85, 3.0, 2.0, 4.0])
+    assert residuals["mean_predicted_fill_probability"].tolist() == pytest.approx([0.55, 0.90, 0.70, 0.95])
+    assert residuals["realized_fill_rate"].tolist() == pytest.approx([0.50, 0.00, 1.00, 0.00])
+    assert residuals["fill_residual"].tolist() == pytest.approx([-0.05, -0.90, 0.30, -0.95])
+    assert residuals["mean_execution_adjusted_edge_ticks"].tolist() == pytest.approx([0.65, 1.50, 0.80, -0.40])
+    assert residuals["tail_fill_residual_label"].tolist() == [
+        "tail_fill_calibrated",
+        "tail_fill_overstated",
+        "tail_fill_calibrated",
+        "tail_fill_overstated",
+    ]
+
+
+def test_queue_position_lcri_tail_fill_residuals_rejects_bad_inputs() -> None:
+    with pytest.raises(ValueError, match="lcri_bins must be at least 1"):
+        queue_position_lcri_tail_fill_residuals(pd.DataFrame(), lcri_bins=0)
+    with pytest.raises(ValueError, match="missing queue position LCRI tail fill residual columns"):
+        queue_position_lcri_tail_fill_residuals(pd.DataFrame({"best_execution_side": ["long"]}))
 
 
 def test_queue_position_fraction_sweep_quantifies_quote_placement_decay() -> None:

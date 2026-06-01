@@ -146,6 +146,7 @@ from lcri_lab.execution import (
     queue_position_latency_edge_survival_scorecard,
     queue_position_latency_regime_surface,
     queue_position_latency_release_scorecard,
+    queue_position_lcri_tail_fill_residuals,
     queue_position_regime_capacity_concentration,
     queue_position_regime_capacity_frontier,
     queue_position_regime_capacity_stability,
@@ -198,6 +199,7 @@ from lcri_lab.reporting import (
     verify_execution_publishability_review_artifacts,
     verify_execution_publishability_release_gate,
     verify_passive_fill_realization_horizon_sweep,
+    verify_queue_position_lcri_tail_fill_residuals,
     verify_passive_fill_event_lifecycle_policy_curve,
     verify_passive_fill_event_policy_stability,
     verify_passive_fill_event_policy_stability_scorecard,
@@ -941,6 +943,10 @@ def run_demo(
     heldout_execution_lcri_quantile_diagnostics = execution_adjusted_lcri_quantile_diagnostics(
         heldout_scored
     )
+    queue_lcri_tail_fill_residuals = queue_position_lcri_tail_fill_residuals(passive_fill_labeled)
+    heldout_queue_lcri_tail_fill_residuals = queue_position_lcri_tail_fill_residuals(
+        heldout_passive_fill_labeled
+    )
     execution_lcri_event_window_attribution = execution_adjusted_lcri_event_window_attribution(scored)
     heldout_execution_lcri_event_window_attribution = execution_adjusted_lcri_event_window_attribution(
         heldout_scored
@@ -1094,6 +1100,8 @@ def run_demo(
         "heldout_execution_adjusted_lcri_regime_attribution.csv",
         "execution_adjusted_lcri_quantile_diagnostics.csv",
         "heldout_execution_adjusted_lcri_quantile_diagnostics.csv",
+        "queue_position_lcri_tail_fill_residuals.csv",
+        "heldout_queue_position_lcri_tail_fill_residuals.csv",
         "execution_adjusted_lcri_event_window_attribution.csv",
         "heldout_execution_adjusted_lcri_event_window_attribution.csv",
         "execution_publishability_review_packet.csv",
@@ -1679,6 +1687,12 @@ def run_demo(
     )
     heldout_execution_lcri_quantile_diagnostics.to_csv(
         output / "heldout_execution_adjusted_lcri_quantile_diagnostics.csv", index=False
+    )
+    queue_lcri_tail_fill_residuals.to_csv(
+        output / "queue_position_lcri_tail_fill_residuals.csv", index=False
+    )
+    heldout_queue_lcri_tail_fill_residuals.to_csv(
+        output / "heldout_queue_position_lcri_tail_fill_residuals.csv", index=False
     )
     execution_lcri_event_window_attribution.to_csv(
         output / "execution_adjusted_lcri_event_window_attribution.csv", index=False
@@ -2714,6 +2728,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_execution_adjusted_lcri_quantile_diagnostics.csv"
             )
             if "heldout_execution_adjusted_lcri_quantile_diagnostics.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_queue_position_lcri_tail_fill_residuals(report_dir)
+            if "queue_position_lcri_tail_fill_residuals.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_queue_position_lcri_tail_fill_residuals(
+                report_dir, "heldout_queue_position_lcri_tail_fill_residuals.csv"
+            )
+            if "heldout_queue_position_lcri_tail_fill_residuals.csv" in manifest_artifacts
             else []
         ),
         *(

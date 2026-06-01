@@ -117,6 +117,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_execution_publishability_review_packet.csv").exists()
     assert (tmp_path / "execution_adjusted_lcri_side_attribution.csv").exists()
     assert (tmp_path / "heldout_execution_adjusted_lcri_side_attribution.csv").exists()
+    assert (tmp_path / "queue_position_lcri_tail_fill_residuals.csv").exists()
+    assert (tmp_path / "heldout_queue_position_lcri_tail_fill_residuals.csv").exists()
     assert (tmp_path / "execution_publishability_release_gate.json").exists()
     assert (tmp_path / "heldout_execution_publishability_release_gate.json").exists()
     assert (tmp_path / "passive_fill_event_windows.csv").exists()
@@ -308,6 +310,24 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     }.issubset(baseline_regime_basis.columns)
     assert baseline_regime_basis["regime"].nunique() >= 2
     release_gate = json.loads((tmp_path / "execution_publishability_release_gate.json").read_text())
+    tail_residuals = pd.read_csv(tmp_path / "queue_position_lcri_tail_fill_residuals.csv")
+    assert {
+        "regime",
+        "best_execution_side",
+        "lcri_tail_bin",
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+        "fill_residual",
+        "tail_fill_residual_label",
+    }.issubset(tail_residuals.columns)
+    assert not tail_residuals.empty
+    assert tail_residuals["mean_predicted_fill_probability"].between(0.0, 1.0).all()
+    assert tail_residuals["realized_fill_rate"].between(0.0, 1.0).all()
+    assert set(tail_residuals["tail_fill_residual_label"]) <= {
+        "tail_fill_calibrated",
+        "tail_fill_overstated",
+        "tail_fill_understated",
+    }
     assert release_gate["decision"] in {"pass", "review", "block"}
     assert release_gate["total_rows"] > 0
     assert "quality_gate_label" in release_gate

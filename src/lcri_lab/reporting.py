@@ -720,6 +720,62 @@ def verify_execution_adjusted_lcri_quantile_diagnostics(
     return errors
 
 
+def verify_queue_position_lcri_tail_fill_residuals(
+    output_dir: Path, artifact: str = "queue_position_lcri_tail_fill_residuals.csv"
+) -> list[str]:
+    """Return errors for queue-position LCRI tail fill calibration residual artifacts."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing queue-position LCRI tail fill residuals: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "regime",
+        "best_execution_side",
+        "lcri_tail_bin",
+        "rows",
+        "mean_abs_lcri",
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+        "fill_residual",
+        "absolute_fill_residual",
+        "mean_execution_adjusted_edge_ticks",
+        "residual_edge_drag_ticks",
+        "tail_fill_residual_label",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete queue-position LCRI tail fill residuals {artifact}: {missing}"]
+
+    numeric_columns = list(required - {"regime", "best_execution_side", "tail_fill_residual_label"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite queue-position LCRI tail residual values in {artifact}")
+    if not numeric["rows"].ge(1.0).all():
+        errors.append(f"non-positive queue-position LCRI tail residual rows in {artifact}")
+    nonnegative_columns = [
+        "lcri_tail_bin",
+        "mean_abs_lcri",
+        "absolute_fill_residual",
+        "residual_edge_drag_ticks",
+    ]
+    if not numeric[nonnegative_columns].ge(0.0).all().all():
+        errors.append(f"negative queue-position LCRI tail residual magnitudes in {artifact}")
+    probability_columns = ["mean_predicted_fill_probability", "realized_fill_rate"]
+    if not numeric[probability_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        errors.append(f"bounded queue-position LCRI tail residual probabilities violated in {artifact}")
+    if not (numeric["absolute_fill_residual"] - numeric["fill_residual"].abs()).abs().le(1e-9).all():
+        errors.append(f"inconsistent queue-position LCRI tail residual magnitudes in {artifact}")
+    if not numeric["residual_edge_drag_ticks"].ge(0.0).all():
+        errors.append(f"negative queue-position LCRI tail residual drag in {artifact}")
+    if frame[["regime", "best_execution_side"]].astype(str).apply(lambda col: col.str.len().eq(0)).any().any():
+        errors.append(f"blank queue-position LCRI tail residual keys in {artifact}")
+    valid_labels = {"tail_fill_calibrated", "tail_fill_overstated", "tail_fill_understated"}
+    if not frame["tail_fill_residual_label"].astype(str).isin(valid_labels).all():
+        errors.append(f"invalid queue-position LCRI tail residual labels in {artifact}")
+    return errors
+
+
 def verify_baseline_tail_lift_diagnostics(
     output_dir: Path, artifact: str = "baseline_tail_lift_diagnostics.csv"
 ) -> list[str]:

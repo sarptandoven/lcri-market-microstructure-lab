@@ -29,6 +29,7 @@ from lcri_lab.reporting import (
     verify_passive_fill_event_policy_stability,
     verify_passive_fill_event_policy_stability_scorecard,
     verify_execution_adjusted_lcri_quantile_diagnostics,
+    verify_queue_position_lcri_tail_fill_residuals,
     verify_figure_artifacts,
     verify_passive_fill_realization_horizon_sweep,
     verify_generalization_fragility_consistency,
@@ -246,6 +247,55 @@ def test_verify_execution_adjusted_lcri_quantile_diagnostics_checks_schema(tmp_p
     errors = verify_execution_adjusted_lcri_quantile_diagnostics(tmp_path)
     assert any("bounded execution-adjusted LCRI quantile probabilities" in error for error in errors)
     assert any("non-positive execution-adjusted LCRI quantile rows" in error for error in errors)
+
+
+def test_verify_queue_position_lcri_tail_fill_residuals_checks_schema_and_bounds(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {
+                "regime": "open",
+                "best_execution_side": "long",
+                "lcri_tail_bin": 1,
+                "rows": 10,
+                "mean_abs_lcri": 2.5,
+                "mean_predicted_fill_probability": 0.80,
+                "realized_fill_rate": 0.55,
+                "fill_residual": -0.25,
+                "absolute_fill_residual": 0.25,
+                "mean_execution_adjusted_edge_ticks": 0.40,
+                "residual_edge_drag_ticks": 0.10,
+                "tail_fill_residual_label": "tail_fill_overstated",
+            }
+        ]
+    ).to_csv(tmp_path / "queue_position_lcri_tail_fill_residuals.csv", index=False)
+
+    assert verify_queue_position_lcri_tail_fill_residuals(tmp_path) == []
+
+    pd.DataFrame(
+        [
+            {
+                "regime": "open",
+                "best_execution_side": "long",
+                "lcri_tail_bin": 1,
+                "rows": 0,
+                "mean_abs_lcri": 2.5,
+                "mean_predicted_fill_probability": 1.20,
+                "realized_fill_rate": -0.10,
+                "fill_residual": -0.25,
+                "absolute_fill_residual": 0.10,
+                "mean_execution_adjusted_edge_ticks": 0.40,
+                "residual_edge_drag_ticks": -0.10,
+                "tail_fill_residual_label": "not_a_label",
+            }
+        ]
+    ).to_csv(tmp_path / "queue_position_lcri_tail_fill_residuals.csv", index=False)
+
+    errors = verify_queue_position_lcri_tail_fill_residuals(tmp_path)
+    assert any("non-positive queue-position LCRI tail residual rows" in error for error in errors)
+    assert any("bounded queue-position LCRI tail residual probabilities" in error for error in errors)
+    assert any("inconsistent queue-position LCRI tail residual magnitudes" in error for error in errors)
+    assert any("negative queue-position LCRI tail residual drag" in error for error in errors)
+    assert any("invalid queue-position LCRI tail residual labels" in error for error in errors)
 
 
 def test_verify_baseline_tail_lift_diagnostics_checks_schema_and_bounds(tmp_path) -> None:
