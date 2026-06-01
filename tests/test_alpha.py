@@ -4,6 +4,7 @@ import pytest
 from lcri_lab.alpha import (
     add_alpha_event_window_regimes,
     add_microstructure_alpha_stack,
+    alpha_event_window_transition_summary,
     alpha_event_drift_gate,
     alpha_event_regime_summary,
     alpha_event_release_review_packet,
@@ -214,6 +215,51 @@ def test_alpha_event_window_regime_summary_surfaces_adverse_pre_event_pockets() 
     assert pre["mean_microstructure_alpha_score"] == pytest.approx(1.25)
     assert pre["mean_forward_return_ticks"] == pytest.approx(-2.0)
     assert pre["adverse_return_share"] == pytest.approx(1.0)
+
+
+def test_alpha_event_window_transition_summary_flags_toxic_pre_to_event_transitions() -> None:
+    labelled = pd.DataFrame(
+        {
+            "symbol": ["A", "A", "A", "A", "B", "B", "B"],
+            "alpha_event_window_regime": [
+                "calm",
+                "pre_event",
+                "event",
+                "post_event",
+                "calm",
+                "pre_event",
+                "event",
+            ],
+            "microstructure_alpha_score": [0.1, 1.0, 3.0, 0.4, 0.2, 0.8, 2.0],
+            "gross_return_ticks": [0.5, 1.0, -3.0, 0.2, 0.1, 0.4, -1.0],
+        }
+    )
+
+    summary = alpha_event_window_transition_summary(labelled, group_cols="symbol")
+    transition = summary.set_index("regime_transition").loc["pre_event->event"]
+
+    assert transition["transitions"] == 2
+    assert transition["transition_share"] == pytest.approx(2.0 / 5.0)
+    assert transition["mean_destination_alpha_score"] == pytest.approx(2.5)
+    assert transition["mean_destination_return_ticks"] == pytest.approx(-2.0)
+    assert transition["adverse_destination_return_share"] == pytest.approx(1.0)
+    assert transition["transition_risk_label"] == "toxic_event_transition"
+
+
+def test_alpha_event_window_transition_summary_respects_group_boundaries() -> None:
+    labelled = pd.DataFrame(
+        {
+            "symbol": ["A", "A", "B", "B"],
+            "alpha_event_window_regime": ["pre_event", "event", "event", "post_event"],
+            "microstructure_alpha_score": [1.0, 2.0, 5.0, 0.5],
+            "gross_return_ticks": [1.0, -1.0, -3.0, 1.0],
+        }
+    )
+
+    summary = alpha_event_window_transition_summary(labelled, group_cols="symbol")
+
+    assert summary["regime_transition"].tolist() == ["pre_event->event", "event->post_event"]
+    assert summary["transitions"].tolist() == [1, 1]
 
 
 def test_add_alpha_event_window_regimes_respects_group_boundaries() -> None:

@@ -428,6 +428,101 @@ def alpha_event_window_regime_summary(
     ).reset_index(drop=True)
 
 
+def alpha_event_window_transition_summary(
+    frame: pd.DataFrame,
+    *,
+    regime_col: str = "alpha_event_window_regime",
+    score_col: str = "microstructure_alpha_score",
+    return_col: str = "gross_return_ticks",
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+) -> pd.DataFrame:
+    """Summarize row-to-row transitions between alpha event-window regimes.
+
+    Row regimes show where alpha-event pressure sits; transitions show whether the
+    path into event states is benign or toxic. The destination row's alpha score
+    and return are used so ``pre_event->event`` cells directly measure the return
+    realized when the event actually fires. Optional grouping prevents transitions
+    from crossing symbol, venue, or session boundaries.
+    """
+    columns = [
+        "from_regime",
+        "to_regime",
+        "regime_transition",
+        "transitions",
+        "transition_share",
+        "mean_destination_alpha_score",
+        "mean_destination_return_ticks",
+        "adverse_destination_return_share",
+        "transition_risk_label",
+    ]
+    grouping_columns = _normalize_group_cols(group_cols)
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    _require_columns(
+        frame,
+        [regime_col, score_col, return_col, *grouping_columns],
+        label="alpha event window transition summary",
+    )
+
+    data = frame[[regime_col, score_col, return_col, *grouping_columns]].copy()
+    for column in [score_col, return_col]:
+        data[column] = data[column].astype(float)
+    _require_finite([data[score_col], data[return_col]], label="alpha event transition inputs")
+
+    transition_frames: list[pd.DataFrame] = []
+    if grouping_columns:
+        grouped = data.groupby(grouping_columns, sort=False, dropna=False)
+    else:
+        grouped = [((), data)]
+    for _, group in grouped:
+        if len(group) < 2:
+            continue
+        transitions = pd.DataFrame(
+            {
+                "from_regime": group[regime_col].astype(str).iloc[:-1].to_numpy(),
+                "to_regime": group[regime_col].astype(str).iloc[1:].to_numpy(),
+                "destination_alpha_score": group[score_col].iloc[1:].to_numpy(dtype=float),
+                "destination_return_ticks": group[return_col].iloc[1:].to_numpy(dtype=float),
+            }
+        )
+        transition_frames.append(transitions)
+    if not transition_frames:
+        return pd.DataFrame(columns=columns)
+
+    transitions = pd.concat(transition_frames, ignore_index=True)
+    transitions["regime_transition"] = transitions["from_regime"] + "->" + transitions["to_regime"]
+    total_transitions = float(len(transitions))
+    rows: list[dict[str, float | int | str]] = []
+    for (from_regime, to_regime, transition), group in transitions.groupby(
+        ["from_regime", "to_regime", "regime_transition"], sort=False
+    ):
+        destination_returns = group["destination_return_ticks"]
+        adverse_share = _safe_divide(float((destination_returns < 0.0).sum()), float(len(group)))
+        mean_return = _finite_mean(destination_returns)
+        rows.append(
+            {
+                "from_regime": str(from_regime),
+                "to_regime": str(to_regime),
+                "regime_transition": str(transition),
+                "transitions": int(len(group)),
+                "transition_share": _safe_divide(float(len(group)), total_transitions),
+                "mean_destination_alpha_score": _finite_mean(group["destination_alpha_score"]),
+                "mean_destination_return_ticks": mean_return,
+                "adverse_destination_return_share": adverse_share,
+                "transition_risk_label": _alpha_event_transition_risk_label(
+                    from_regime=str(from_regime),
+                    to_regime=str(to_regime),
+                    adverse_share=adverse_share,
+                    mean_return=mean_return,
+                ),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns).sort_values(
+        ["adverse_destination_return_share", "mean_destination_return_ticks", "transitions"],
+        ascending=[False, True, False],
+    ).reset_index(drop=True)
+
+
 def alpha_event_regime_summary(events: pd.DataFrame) -> pd.DataFrame:
     """Aggregate alpha event-window drift by event regime."""
     columns = [
@@ -829,6 +924,22 @@ def _validate_event_regime_window(window: int) -> None:
 def _nearest_event_distance(position: int, event_positions: np.ndarray) -> int:
     signed = position - event_positions.astype(int)
     return int(signed[np.argmin(np.abs(signed))])
+
+
+def _alpha_event_transition_risk_label(
+    *,
+    from_regime: str,
+    to_regime: str,
+    adverse_share: float,
+    mean_return: float,
+) -> str:
+    if to_regime == "event" and adverse_share >= 0.50 and mean_return < 0.0:
+        return "toxic_event_transition"
+    if from_regime == "pre_event" and to_regime == "event":
+        return "event_transition_watch"
+    if adverse_share >= 0.50 or mean_return < 0.0:
+        return "adverse_transition_watch"
+    return "benign_transition"
 
 
 def _normalize_group_cols(group_cols: str | list[str] | tuple[str, ...] | None) -> list[str]:
