@@ -7818,6 +7818,117 @@ def queue_position_latency_regime_surface(
     return pd.DataFrame(rows, columns=columns)
 
 
+def queue_position_latency_edge_regime_surface(
+    frame: pd.DataFrame,
+    *,
+    regime_col: str = "passive_fill_event_window_regime",
+    latencies: list[int] | tuple[int, ...] = (0, 1, 2, 5),
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    side_col: str = "best_execution_side",
+    bid_realized_col: str = "bid_realized_fill",
+    ask_realized_col: str = "ask_realized_fill",
+    edge_col: str = "execution_adjusted_edge_ticks",
+    max_realized_edge_decay: float = 0.10,
+) -> pd.DataFrame:
+    """Measure tick-valued latency edge survival inside decision-time regimes."""
+    columns = [
+        regime_col,
+        "latency_steps",
+        "candidates",
+        "long_candidates",
+        "short_candidates",
+        "realized_fill_rate",
+        "mean_decision_edge_ticks",
+        "realized_edge_ticks",
+        "realized_edge_gap_vs_immediate",
+        "edge_survival_ratio",
+        "edge_latency_regime_label",
+    ]
+    if not latencies:
+        raise ValueError("latencies must be a non-empty sequence")
+    if any(not isinstance(latency, int) or isinstance(latency, bool) or latency < 0 for latency in latencies):
+        raise ValueError("latencies must be non-negative integers")
+    if len(set(latencies)) != len(latencies):
+        raise ValueError("latencies must be unique")
+    if not math.isfinite(max_realized_edge_decay) or max_realized_edge_decay < 0.0:
+        raise ValueError("max_realized_edge_decay must be finite and non-negative")
+
+    required = {regime_col, side_col, bid_realized_col, ask_realized_col, edge_col}
+    _require_columns(frame, required, "queue position latency edge regime surface")
+    grouping_columns = _normalize_group_columns(frame, group_cols, "queue position latency edge regime surface group")
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    values = _finite_values(
+        frame,
+        [bid_realized_col, ask_realized_col, edge_col],
+        "queue position latency edge regime surface",
+    )
+    sides = frame[side_col].astype(str)
+    regimes = frame[regime_col].astype(str)
+    tradable = sides.isin({"long", "short"})
+
+    def latency_realized(column: str, latency: int) -> pd.Series:
+        if latency == 0:
+            return values[column]
+        if not grouping_columns:
+            return values[column].shift(-latency)
+        keys = [frame[group_col] for group_col in grouping_columns]
+        return values[column].groupby(keys, sort=False, dropna=False).shift(-latency)
+
+    rows: list[dict[str, float | int | str]] = []
+    for regime in sorted(regimes.unique()):
+        regime_mask = regimes == regime
+        anchor_realized_edge: float | None = None
+        for latency in sorted(latencies):
+            bid_realized = latency_realized(bid_realized_col, latency)
+            ask_realized = latency_realized(ask_realized_col, latency)
+            selected_realized = pd.Series(
+                np.select(
+                    [sides == "long", sides == "short"],
+                    [bid_realized, ask_realized],
+                    default=np.nan,
+                ),
+                index=frame.index,
+            )
+            mask = regime_mask & tradable & selected_realized.notna()
+            candidates = int(mask.sum())
+            if candidates == 0:
+                fill_rate = 0.0
+                mean_edge = 0.0
+                realized_edge = 0.0
+            else:
+                fill_rate = float(selected_realized[mask].mean())
+                mean_edge = float(values.loc[mask, edge_col].mean())
+                realized_edge = float((values.loc[mask, edge_col] * selected_realized[mask]).mean())
+            if anchor_realized_edge is None:
+                anchor_realized_edge = realized_edge
+            edge_gap = realized_edge - anchor_realized_edge
+            if latency == 0:
+                label = "anchor_latency"
+            elif edge_gap < -max_realized_edge_decay:
+                label = "edge_latency_regime_fragile"
+            else:
+                label = "edge_latency_regime_robust"
+            survival_ratio = 0.0 if anchor_realized_edge == 0.0 else realized_edge / anchor_realized_edge
+            rows.append(
+                {
+                    regime_col: str(regime),
+                    "latency_steps": int(latency),
+                    "candidates": candidates,
+                    "long_candidates": int(((sides == "long") & mask).sum()),
+                    "short_candidates": int(((sides == "short") & mask).sum()),
+                    "realized_fill_rate": fill_rate,
+                    "mean_decision_edge_ticks": mean_edge,
+                    "realized_edge_ticks": realized_edge,
+                    "realized_edge_gap_vs_immediate": float(edge_gap),
+                    "edge_survival_ratio": float(survival_ratio),
+                    "edge_latency_regime_label": label,
+                }
+            )
+    return pd.DataFrame(rows, columns=columns)
+
+
 def queue_position_latency_release_scorecard(
     surface: pd.DataFrame,
     *,

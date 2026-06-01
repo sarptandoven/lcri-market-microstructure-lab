@@ -108,6 +108,21 @@ passing review if its fills are concentrated in adverse-selection cells, while
 also showing reviewers whether the block is driven by a broad mild toxicity band
 or a small severe loss pocket.
 
+## Latency edge survival by event regime
+
+`queue_position_latency_edge_regime_surface` extends the aggregate latency edge-survival check into decision-time event-window regimes. It keeps the selected passive side and decision-time execution-adjusted edge fixed, then replays realized selected-side fills from later snapshot latencies inside each symbol/session group. Each regime/latency row reports candidate counts, realized fill rate, mean decision edge, realized edge ticks, edge gap versus immediate queue state, survival ratio, and an `edge_latency_regime_label`.
+
+This catches a publishability failure mode that a fill-rate surface can miss: an event window may retain enough fills after one or two snapshots of latency, but lose the high-edge fills specifically. Reviewers can therefore isolate whether execution-adjusted LCRI survives queue-state staleness in the regimes where the signal claims to be tradable.
+
+```python
+edge_surface = queue_position_latency_edge_regime_surface(
+    execution_frame,
+    regime_col="passive_fill_event_window_regime",
+    group_cols="symbol",
+    latencies=(0, 1, 2, 5),
+)
+```
+
 This changes the research question from:
 
 ```text
@@ -117,7 +132,7 @@ Does residual imbalance predict next-mid direction?
 into:
 
 ```text
-Does residual imbalance remain tradable after visible queue position, passive fill selection, adverse fills, and transaction costs?
+Does residual imbalance remain tradable after visible queue position, passive fill selection, adverse fills, transaction costs, and queue-state latency?
 ```
 
 ## Limitations
