@@ -122,6 +122,7 @@ from lcri_lab.features import (
 from lcri_lab.execution import (
     FillProbabilityConfig,
     add_event_level_realized_fill_proxy,
+    add_event_level_trade_confirmed_fill_proxy,
     add_execution_adjusted_edge,
     add_passive_fill_event_window_regimes,
     add_passive_fill_probabilities,
@@ -234,6 +235,7 @@ __all__ = [
     "FillProbabilityConfig",
     "absorption_regime_metrics",
     "add_event_level_realized_fill_proxy",
+    "add_event_level_trade_confirmed_fill_proxy",
     "add_execution_adjusted_edge",
     "add_passive_fill_event_window_regimes",
     "add_passive_fill_probabilities",

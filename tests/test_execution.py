@@ -3,6 +3,7 @@ import pytest
 
 from lcri_lab.execution import (
     FillProbabilityConfig,
+    add_event_level_trade_confirmed_fill_proxy,
     add_execution_adjusted_edge,
     add_passive_fill_probabilities,
     add_event_level_realized_fill_proxy,
@@ -417,6 +418,95 @@ def test_event_level_realized_fill_proxy_accepts_venue_side_aliases() -> None:
     assert output["ask_event_depletion"].tolist() == pytest.approx([10.0])
     assert output["bid_realized_fill"].tolist() == pytest.approx([1.0])
     assert output["ask_realized_fill"].tolist() == pytest.approx([1.0])
+
+
+def test_event_level_trade_confirmed_fill_proxy_flags_cancel_only_false_fill() -> None:
+    snapshots = pd.DataFrame(
+        {
+            "timestamp": [0.0],
+            "bid_px_1": [100.0],
+            "ask_px_1": [101.0],
+            "bid_queue_ahead": [30.0],
+            "ask_queue_ahead": [30.0],
+        }
+    )
+    events = pd.DataFrame(
+        {
+            "timestamp": [0.25],
+            "event_type": ["cancel"],
+            "side": ["bid"],
+            "price": [100.0],
+            "size": [35.0],
+        }
+    )
+
+    output = add_event_level_trade_confirmed_fill_proxy(snapshots, events, horizon=1.0)
+
+    assert output["bid_event_trade_depletion"].tolist() == pytest.approx([0.0])
+    assert output["bid_event_cancel_depletion"].tolist() == pytest.approx([35.0])
+    assert output["bid_event_total_queue_advance"].tolist() == pytest.approx([35.0])
+    assert output["bid_trade_confirmed_fill"].tolist() == pytest.approx([0.0])
+    assert output["bid_queue_advance_without_trade"].tolist() == pytest.approx([1.0])
+    assert pd.isna(output.loc[0, "bid_trade_confirmed_fill_latency"])
+
+
+def test_event_level_trade_confirmed_fill_proxy_requires_trade_after_queue_clearance() -> None:
+    snapshots = pd.DataFrame(
+        {
+            "timestamp": [0.0, 10.0],
+            "bid_px_1": [100.0, 100.0],
+            "ask_px_1": [101.0, 101.0],
+            "bid_queue_ahead": [30.0, 30.0],
+            "ask_queue_ahead": [30.0, 30.0],
+        }
+    )
+    events = pd.DataFrame(
+        {
+            "timestamp": [0.10, 0.20, 0.40, 10.10, 10.20],
+            "event_type": ["cancel", "cancel", "trade", "trade", "cancel"],
+            "side": ["bid", "bid", "sell", "sell", "bid"],
+            "price": [100.0, 100.0, 100.0, 100.0, 100.0],
+            "size": [20.0, 10.0, 1.0, 1.0, 30.0],
+        }
+    )
+
+    output = add_event_level_trade_confirmed_fill_proxy(snapshots, events, horizon=1.0)
+
+    assert output["bid_trade_confirmed_fill"].tolist() == pytest.approx([1.0, 0.0])
+    assert output["bid_trade_confirmed_fill_latency"].tolist()[0] == pytest.approx(0.40)
+    assert pd.isna(output.loc[1, "bid_trade_confirmed_fill_latency"])
+    assert output["bid_queue_advance_without_trade"].tolist() == pytest.approx([0.0, 1.0])
+
+
+def test_event_level_trade_confirmed_fill_proxy_respects_child_order_clearance_and_groups() -> None:
+    snapshots = pd.DataFrame(
+        {
+            "symbol": ["A", "B"],
+            "timestamp": [0.0, 0.0],
+            "bid_px_1": [100.0, 50.0],
+            "ask_px_1": [101.0, 51.0],
+            "bid_queue_ahead": [20.0, 20.0],
+            "ask_queue_ahead": [20.0, 20.0],
+            "bid_queue_clear_size": [40.0, 40.0],
+            "ask_queue_clear_size": [30.0, 30.0],
+        }
+    )
+    events = pd.DataFrame(
+        {
+            "symbol": ["A", "A", "B", "B"],
+            "timestamp": [0.10, 0.20, 0.10, 0.20],
+            "event_type": ["trade", "trade", "cancel", "trade"],
+            "side": ["sell", "sell", "bid", "sell"],
+            "price": [100.0, 100.0, 50.0, 50.0],
+            "size": [20.0, 19.0, 40.0, 1.0],
+        }
+    )
+
+    output = add_event_level_trade_confirmed_fill_proxy(snapshots, events, horizon=1.0, group_cols="symbol")
+
+    assert output["bid_event_total_queue_advance"].tolist() == pytest.approx([39.0, 41.0])
+    assert output["bid_trade_confirmed_fill"].tolist() == pytest.approx([0.0, 1.0])
+    assert output["bid_trade_confirmed_fill_latency"].tolist()[1] == pytest.approx(0.20)
 
 
 def test_passive_fill_proxy_disagreement_audits_snapshot_vs_event_labels() -> None:

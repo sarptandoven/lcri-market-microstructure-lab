@@ -529,6 +529,193 @@ def add_event_level_realized_fill_proxy(
     return output
 
 
+def add_event_level_trade_confirmed_fill_proxy(
+    snapshots: pd.DataFrame,
+    events: pd.DataFrame,
+    *,
+    horizon: float,
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    timestamp_col: str = "timestamp",
+    event_type_col: str = "event_type",
+    event_side_col: str = "side",
+    event_price_col: str = "price",
+    event_size_col: str = "size",
+    bid_realized_col: str = "bid_trade_confirmed_fill",
+    ask_realized_col: str = "ask_trade_confirmed_fill",
+    trade_event_types: tuple[str, ...] = ("trade",),
+    cancel_event_types: tuple[str, ...] = ("cancel", "delete"),
+    bid_trade_sides: tuple[str, ...] = ("sell", "bid"),
+    ask_trade_sides: tuple[str, ...] = ("buy", "ask"),
+    bid_cancel_sides: tuple[str, ...] = ("bid",),
+    ask_cancel_sides: tuple[str, ...] = ("ask",),
+) -> pd.DataFrame:
+    """Label passive fills only when queue advancement is trade-confirmed.
+
+    ``add_event_level_realized_fill_proxy`` treats both trades and cancels as
+    queue-depleting evidence. This stricter companion separates trade depletion
+    from cancel depletion and only marks a fill when the cumulative same-price
+    queue advance reaches the order's queue threshold on, or before, a confirming
+    trade. Rows whose queue would clear from cancels alone are surfaced through
+    ``*_queue_advance_without_trade`` so execution-adjusted LCRI audits can spot
+    optimistic cancel-only passive-fill labels before publication.
+    """
+    if not math.isfinite(horizon) or horizon <= 0.0:
+        raise ValueError("horizon must be a finite positive value")
+    grouping_columns = _normalize_group_columns(snapshots, group_cols, "event-level trade-confirmed snapshot")
+
+    snapshot_required = {
+        timestamp_col,
+        "bid_px_1",
+        "ask_px_1",
+        "bid_queue_ahead",
+        "ask_queue_ahead",
+        *grouping_columns,
+    }
+    clear_size_columns = {"bid_queue_clear_size", "ask_queue_clear_size"}
+    if clear_size_columns & set(snapshots.columns):
+        snapshot_required.update(clear_size_columns)
+    event_required = {
+        timestamp_col,
+        event_type_col,
+        event_side_col,
+        event_price_col,
+        event_size_col,
+        *grouping_columns,
+    }
+    _require_columns(snapshots, snapshot_required, "event-level trade-confirmed snapshot")
+    _require_columns(events, event_required, "event-level trade-confirmed event")
+
+    output = snapshots.copy()
+    output_columns = [
+        "bid_event_trade_depletion",
+        "ask_event_trade_depletion",
+        "bid_event_cancel_depletion",
+        "ask_event_cancel_depletion",
+        "bid_event_total_queue_advance",
+        "ask_event_total_queue_advance",
+        bid_realized_col,
+        ask_realized_col,
+        "bid_queue_advance_without_trade",
+        "ask_queue_advance_without_trade",
+    ]
+    for column in output_columns:
+        output[column] = pd.Series(0.0, index=snapshots.index)
+    output["bid_trade_confirmed_fill_latency"] = pd.Series(np.nan, index=snapshots.index)
+    output["ask_trade_confirmed_fill_latency"] = pd.Series(np.nan, index=snapshots.index)
+    if snapshots.empty:
+        return output
+
+    snapshot_numeric_columns = [timestamp_col, "bid_px_1", "ask_px_1", "bid_queue_ahead", "ask_queue_ahead"]
+    if clear_size_columns.issubset(snapshot_required):
+        snapshot_numeric_columns.extend(["bid_queue_clear_size", "ask_queue_clear_size"])
+    snapshot_numeric = _finite_values(
+        snapshots,
+        snapshot_numeric_columns,
+        "event-level trade-confirmed snapshot",
+    )
+    event_numeric = _finite_values(
+        events,
+        [timestamp_col, event_price_col, event_size_col],
+        "event-level trade-confirmed event",
+    )
+    snapshot_size_columns = ["bid_queue_ahead", "ask_queue_ahead"]
+    if clear_size_columns.issubset(snapshot_required):
+        snapshot_size_columns.extend(["bid_queue_clear_size", "ask_queue_clear_size"])
+    if (snapshot_numeric[snapshot_size_columns] < 0.0).any().any():
+        raise ValueError("event-level trade-confirmed snapshot queues must be non-negative")
+    if (event_numeric[event_size_col] < 0.0).any():
+        raise ValueError("event-level trade-confirmed event sizes must be non-negative")
+
+    def normalized_aliases(values: tuple[str, ...], label: str) -> set[str]:
+        if not values:
+            raise ValueError(f"{label} must contain at least one alias")
+        aliases = {str(value).lower() for value in values}
+        if any(alias == "" for alias in aliases):
+            raise ValueError(f"{label} aliases must be non-empty")
+        return aliases
+
+    trade_type_aliases = normalized_aliases(trade_event_types, "trade_event_types")
+    cancel_type_aliases = normalized_aliases(cancel_event_types, "cancel_event_types")
+    bid_trade_side_aliases = normalized_aliases(bid_trade_sides, "bid_trade_sides")
+    ask_trade_side_aliases = normalized_aliases(ask_trade_sides, "ask_trade_sides")
+    bid_cancel_side_aliases = normalized_aliases(bid_cancel_sides, "bid_cancel_sides")
+    ask_cancel_side_aliases = normalized_aliases(ask_cancel_sides, "ask_cancel_sides")
+
+    event_types = events[event_type_col].astype(str).str.lower()
+    event_sides = events[event_side_col].astype(str).str.lower()
+    bid_trades = event_types.isin(trade_type_aliases) & event_sides.isin(bid_trade_side_aliases)
+    ask_trades = event_types.isin(trade_type_aliases) & event_sides.isin(ask_trade_side_aliases)
+    bid_cancels = event_types.isin(cancel_type_aliases) & event_sides.isin(bid_cancel_side_aliases)
+    ask_cancels = event_types.isin(cancel_type_aliases) & event_sides.isin(ask_cancel_side_aliases)
+
+    bid_queue = snapshot_numeric["bid_queue_ahead"]
+    ask_queue = snapshot_numeric["ask_queue_ahead"]
+    if {"bid_queue_clear_size", "ask_queue_clear_size"}.issubset(snapshot_numeric.columns):
+        bid_queue = snapshot_numeric["bid_queue_clear_size"]
+        ask_queue = snapshot_numeric["ask_queue_clear_size"]
+
+    def scan_side(row: pd.Series, side: str, threshold: float) -> tuple[float, float, float, float, float]:
+        start = float(row[timestamp_col])
+        event_window = (event_numeric[timestamp_col] > start) & (event_numeric[timestamp_col] <= start + horizon)
+        if grouping_columns:
+            for group_col in grouping_columns:
+                event_window = event_window & (events[group_col] == row[group_col])
+        price_col = "bid_px_1" if side == "bid" else "ask_px_1"
+        at_price = event_numeric[event_price_col] == float(row[price_col])
+        if side == "bid":
+            trade_mask = bid_trades
+            cancel_mask = bid_cancels
+        else:
+            trade_mask = ask_trades
+            cancel_mask = ask_cancels
+        side_events = events.loc[event_window & at_price & (trade_mask | cancel_mask)].copy()
+        if side_events.empty:
+            return 0.0, 0.0, 0.0, 0.0, math.nan
+        side_events = side_events.assign(
+            _event_time=event_numeric.loc[side_events.index, timestamp_col],
+            _event_size=event_numeric.loc[side_events.index, event_size_col],
+            _is_trade=trade_mask.loc[side_events.index].to_numpy(),
+        ).sort_values("_event_time")
+        trade_depletion = 0.0
+        cancel_depletion = 0.0
+        cumulative_advance = 0.0
+        fill_latency = math.nan
+        trade_confirmed = 0.0
+        for event in side_events[["_event_time", "_event_size", "_is_trade"]].to_dict("records"):
+            size = float(event["_event_size"])
+            cumulative_advance += size
+            if bool(event["_is_trade"]):
+                trade_depletion += size
+                if trade_confirmed == 0.0 and (cumulative_advance >= threshold if threshold > 0.0 else cumulative_advance > 0.0):
+                    trade_confirmed = 1.0
+                    fill_latency = float(event["_event_time"]) - start
+            else:
+                cancel_depletion += size
+        total_advance = trade_depletion + cancel_depletion
+        return trade_depletion, cancel_depletion, total_advance, trade_confirmed, fill_latency if trade_confirmed else math.nan
+
+    for index, row in snapshots.iterrows():
+        bid_trade, bid_cancel, bid_total, bid_fill, bid_latency = scan_side(row, "bid", float(bid_queue.loc[index]))
+        ask_trade, ask_cancel, ask_total, ask_fill, ask_latency = scan_side(row, "ask", float(ask_queue.loc[index]))
+        output.loc[index, "bid_event_trade_depletion"] = bid_trade
+        output.loc[index, "bid_event_cancel_depletion"] = bid_cancel
+        output.loc[index, "bid_event_total_queue_advance"] = bid_total
+        output.loc[index, bid_realized_col] = bid_fill
+        output.loc[index, "bid_trade_confirmed_fill_latency"] = bid_latency
+        output.loc[index, "bid_queue_advance_without_trade"] = float(
+            bid_fill == 0.0 and (bid_total >= float(bid_queue.loc[index]) if float(bid_queue.loc[index]) > 0.0 else bid_total > 0.0)
+        )
+        output.loc[index, "ask_event_trade_depletion"] = ask_trade
+        output.loc[index, "ask_event_cancel_depletion"] = ask_cancel
+        output.loc[index, "ask_event_total_queue_advance"] = ask_total
+        output.loc[index, ask_realized_col] = ask_fill
+        output.loc[index, "ask_trade_confirmed_fill_latency"] = ask_latency
+        output.loc[index, "ask_queue_advance_without_trade"] = float(
+            ask_fill == 0.0 and (ask_total >= float(ask_queue.loc[index]) if float(ask_queue.loc[index]) > 0.0 else ask_total > 0.0)
+        )
+    return output
+
+
 def passive_fill_proxy_disagreement(
     frame: pd.DataFrame,
     *,

@@ -183,6 +183,26 @@ scored = model.score_frame(order_book_snapshots)
 
 Persisted models include a `schema_version` field so incompatible artifact changes fail fast.
 
+### Trade-confirmed passive fill labels
+
+When order-level queue messages are available, `add_event_level_trade_confirmed_fill_proxy`
+separates same-price trade depletion from cancel/delete queue advancement. A passive
+fill is only marked after cumulative queue advance reaches the queue-ahead or
+child-order-clearance threshold on a confirming trade; cancel-only queue clears are
+flagged as `*_queue_advance_without_trade` so execution-adjusted LCRI studies do
+not mistake queue movement for a tradable fill.
+
+```python
+from lcri_lab import add_event_level_trade_confirmed_fill_proxy
+
+fills = add_event_level_trade_confirmed_fill_proxy(
+    queued_snapshots,
+    order_events,
+    horizon=0.250,
+    group_cols=("symbol", "session"),
+)
+```
+
 ### Queue-position drawdown episodes
 
 Execution-aware demos can turn a scored passive path into concrete underwater runs
