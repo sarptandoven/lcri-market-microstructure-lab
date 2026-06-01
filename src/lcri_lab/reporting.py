@@ -776,6 +776,100 @@ def verify_queue_position_lcri_tail_fill_residuals(
     return errors
 
 
+def verify_queue_position_path_drawdown_artifacts(
+    output_dir: Path,
+    episodes_artifact: str = "queue_position_path_drawdown_episodes.csv",
+    summary_artifact: str = "queue_position_path_drawdown_summary.json",
+) -> list[str]:
+    """Return errors for queue-position path drawdown release artifacts."""
+    errors: list[str] = []
+    episodes_path = output_dir / episodes_artifact
+    summary_path = output_dir / summary_artifact
+    if not episodes_path.exists():
+        errors.append(f"missing queue-position path drawdown episodes: {episodes_artifact}")
+    if not summary_path.exists():
+        errors.append(f"missing queue-position path drawdown summary: {summary_artifact}")
+    if errors:
+        return errors
+
+    episodes = pd.read_csv(episodes_path)
+    required_episode_columns = {
+        "path_id",
+        "max_drawdown_ticks",
+        "recovery_edge_ticks",
+        "dominant_event_window_regime",
+        "episode_risk_label",
+    }
+    missing_episode_columns = sorted(required_episode_columns - set(episodes.columns))
+    if missing_episode_columns:
+        errors.append(
+            f"incomplete queue-position path drawdown episodes {episodes_artifact}: "
+            f"{missing_episode_columns}"
+        )
+    else:
+        numeric = episodes[["max_drawdown_ticks", "recovery_edge_ticks"]].astype(float)
+        if not np.isfinite(numeric.to_numpy()).all():
+            errors.append(f"non-finite queue-position path drawdown values in {episodes_artifact}")
+        if not numeric.ge(0.0).all().all():
+            errors.append(f"negative queue-position path drawdown magnitudes in {episodes_artifact}")
+        key_columns = ["path_id", "dominant_event_window_regime"]
+        keys = episodes[key_columns]
+        if keys.isna().any().any() or keys.astype(str).apply(lambda col: col.str.strip().eq("")).any().any():
+            errors.append(f"blank queue-position path drawdown keys in {episodes_artifact}")
+        valid_episode_labels = {"path_drawdown_recovered", "path_drawdown_open"}
+        if not episodes["episode_risk_label"].astype(str).isin(valid_episode_labels).all():
+            errors.append(f"invalid queue-position path drawdown labels in {episodes_artifact}")
+
+    summary = json.loads(summary_path.read_text())
+    required_summary_keys = {
+        "episodes",
+        "paths_with_drawdown",
+        "open_episodes",
+        "open_episode_share",
+        "severe_episodes",
+        "severe_episode_share",
+        "mean_drawdown_ticks",
+        "max_drawdown_ticks",
+        "total_drawdown_ticks",
+        "total_recovery_edge_ticks",
+        "recovery_coverage_ratio",
+        "dominant_drawdown_regime",
+        "dominant_regime_drawdown_share",
+        "top_path_id",
+        "top_path_drawdown_share",
+        "drawdown_summary_label",
+        "blocking_reasons",
+        "review_reasons",
+    }
+    missing_summary_keys = sorted(required_summary_keys - set(summary))
+    if missing_summary_keys:
+        errors.append(
+            f"incomplete queue-position path drawdown summary {summary_artifact}: "
+            f"{missing_summary_keys}"
+        )
+    valid_summary_labels = {"queue_drawdown_pass", "queue_drawdown_review", "queue_drawdown_blocked"}
+    if summary.get("drawdown_summary_label") not in valid_summary_labels:
+        errors.append(f"invalid queue-position path drawdown summary label in {summary_artifact}")
+    numeric_summary_keys = sorted(
+        required_summary_keys
+        - {
+            "dominant_drawdown_regime",
+            "top_path_id",
+            "drawdown_summary_label",
+            "blocking_reasons",
+            "review_reasons",
+        }
+    )
+    present_numeric = [key for key in numeric_summary_keys if key in summary]
+    if present_numeric:
+        values = np.array([float(summary[key]) for key in present_numeric], dtype=float)
+        if not np.isfinite(values).all():
+            errors.append(f"non-finite queue-position path drawdown summary values in {summary_artifact}")
+        if (values < 0.0).any():
+            errors.append(f"negative queue-position path drawdown summary values in {summary_artifact}")
+    return errors
+
+
 def verify_baseline_tail_lift_diagnostics(
     output_dir: Path, artifact: str = "baseline_tail_lift_diagnostics.csv"
 ) -> list[str]:

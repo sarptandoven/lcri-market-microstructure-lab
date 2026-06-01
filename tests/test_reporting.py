@@ -30,6 +30,7 @@ from lcri_lab.reporting import (
     verify_passive_fill_event_policy_stability_scorecard,
     verify_execution_adjusted_lcri_quantile_diagnostics,
     verify_queue_position_lcri_tail_fill_residuals,
+    verify_queue_position_path_drawdown_artifacts,
     verify_figure_artifacts,
     verify_passive_fill_realization_horizon_sweep,
     verify_generalization_fragility_consistency,
@@ -296,6 +297,75 @@ def test_verify_queue_position_lcri_tail_fill_residuals_checks_schema_and_bounds
     assert any("inconsistent queue-position LCRI tail residual magnitudes" in error for error in errors)
     assert any("negative queue-position LCRI tail residual drag" in error for error in errors)
     assert any("invalid queue-position LCRI tail residual labels" in error for error in errors)
+
+
+def test_verify_queue_position_path_drawdown_artifacts_checks_summary_and_episodes(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {
+                "path_id": "open",
+                "episode_id": 0,
+                "start_row": 2,
+                "end_row": 4,
+                "trough_row": 3,
+                "episode_rows": 3,
+                "max_drawdown_ticks": 1.4,
+                "recovery_edge_ticks": 0.2,
+                "episode_total_edge_ticks": -0.7,
+                "episode_turnover_events": 1,
+                "dominant_event_window_regime": "event",
+                "episode_risk_label": "path_drawdown_open",
+            }
+        ]
+    ).to_csv(tmp_path / "queue_position_path_drawdown_episodes.csv", index=False)
+    (tmp_path / "queue_position_path_drawdown_summary.json").write_text(
+        json.dumps(
+            {
+                "episodes": 1,
+                "paths_with_drawdown": 1,
+                "open_episodes": 1,
+                "open_episode_share": 1.0,
+                "severe_episodes": 1,
+                "severe_episode_share": 1.0,
+                "mean_drawdown_ticks": 1.4,
+                "max_drawdown_ticks": 1.4,
+                "total_drawdown_ticks": 1.4,
+                "total_recovery_edge_ticks": 0.2,
+                "recovery_coverage_ratio": 0.142857,
+                "dominant_drawdown_regime": "event",
+                "dominant_regime_drawdown_share": 1.0,
+                "top_path_id": "open",
+                "top_path_drawdown_share": 1.0,
+                "drawdown_summary_label": "queue_drawdown_review",
+                "blocking_reasons": "none",
+                "review_reasons": "open_drawdown_share",
+            }
+        )
+    )
+
+    assert verify_queue_position_path_drawdown_artifacts(tmp_path) == []
+
+    pd.DataFrame(
+        [
+            {
+                "path_id": "open",
+                "max_drawdown_ticks": -1.0,
+                "recovery_edge_ticks": -0.2,
+                "dominant_event_window_regime": "",
+                "episode_risk_label": "not_a_label",
+            }
+        ]
+    ).to_csv(tmp_path / "queue_position_path_drawdown_episodes.csv", index=False)
+    (tmp_path / "queue_position_path_drawdown_summary.json").write_text(
+        json.dumps({"episodes": -1, "drawdown_summary_label": "bad_label"})
+    )
+
+    errors = verify_queue_position_path_drawdown_artifacts(tmp_path)
+    assert any("negative queue-position path drawdown magnitudes" in error for error in errors)
+    assert any("blank queue-position path drawdown keys" in error for error in errors)
+    assert any("invalid queue-position path drawdown labels" in error for error in errors)
+    assert any("incomplete queue-position path drawdown summary" in error for error in errors)
+    assert any("invalid queue-position path drawdown summary label" in error for error in errors)
 
 
 def test_verify_baseline_tail_lift_diagnostics_checks_schema_and_bounds(tmp_path) -> None:

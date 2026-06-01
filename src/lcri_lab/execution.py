@@ -9710,6 +9710,154 @@ def queue_position_path_drawdown_episodes(
     )
 
 
+def queue_position_path_drawdown_summary(
+    episodes: pd.DataFrame,
+    *,
+    severe_drawdown_ticks: float = 1.0,
+    max_drawdown_ticks: float = 3.0,
+    max_open_episode_share: float = 0.25,
+    max_severe_episode_share: float = 0.25,
+    max_top_regime_drawdown_share: float = 0.70,
+) -> dict[str, float | int | str]:
+    """Summarize drawdown episodes into a release-facing queue-risk artifact.
+
+    Episode tables are useful for forensic review, but demos and CI need a compact
+    answer to whether queue-position-aware execution risk is clustered, still
+    unrecovered, or dominated by a specific passive-fill event-window regime. This
+    summary preserves those path-dependent failure modes instead of letting them
+    disappear into mean execution-adjusted edge.
+    """
+    for name, value in {
+        "severe_drawdown_ticks": severe_drawdown_ticks,
+        "max_drawdown_ticks": max_drawdown_ticks,
+        "max_open_episode_share": max_open_episode_share,
+        "max_severe_episode_share": max_severe_episode_share,
+        "max_top_regime_drawdown_share": max_top_regime_drawdown_share,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if severe_drawdown_ticks < 0.0:
+        raise ValueError("severe_drawdown_ticks must be non-negative")
+    if max_drawdown_ticks < 0.0:
+        raise ValueError("max_drawdown_ticks must be non-negative")
+    if not 0.0 <= max_open_episode_share <= 1.0:
+        raise ValueError("max_open_episode_share must be in [0, 1]")
+    if not 0.0 <= max_severe_episode_share <= 1.0:
+        raise ValueError("max_severe_episode_share must be in [0, 1]")
+    if not 0.0 <= max_top_regime_drawdown_share <= 1.0:
+        raise ValueError("max_top_regime_drawdown_share must be in [0, 1]")
+
+    required = {
+        "path_id",
+        "max_drawdown_ticks",
+        "recovery_edge_ticks",
+        "dominant_event_window_regime",
+        "episode_risk_label",
+    }
+    missing = sorted(required - set(episodes.columns))
+    if missing:
+        raise ValueError(f"missing queue position path drawdown summary columns: {missing}")
+    if episodes.empty:
+        return {
+            "episodes": 0,
+            "paths_with_drawdown": 0,
+            "open_episodes": 0,
+            "open_episode_share": 0.0,
+            "severe_episodes": 0,
+            "severe_episode_share": 0.0,
+            "mean_drawdown_ticks": 0.0,
+            "max_drawdown_ticks": 0.0,
+            "total_drawdown_ticks": 0.0,
+            "total_recovery_edge_ticks": 0.0,
+            "recovery_coverage_ratio": 0.0,
+            "dominant_drawdown_regime": "none",
+            "dominant_regime_drawdown_share": 0.0,
+            "top_path_id": "none",
+            "top_path_drawdown_share": 0.0,
+            "drawdown_summary_label": "queue_drawdown_pass",
+            "blocking_reasons": "none",
+            "review_reasons": "none",
+        }
+
+    numeric = _finite_values(
+        episodes,
+        ["max_drawdown_ticks", "recovery_edge_ticks"],
+        "queue position path drawdown summary",
+    )
+    if (numeric < 0.0).any().any():
+        raise ValueError("queue position path drawdown summary values must be non-negative")
+
+    drawdown = numeric["max_drawdown_ticks"]
+    recovery = numeric["recovery_edge_ticks"]
+    total_drawdown = float(drawdown.sum())
+    episode_count = int(len(episodes))
+    labels = episodes["episode_risk_label"].astype(str)
+    open_episodes = int((labels == "path_drawdown_open").sum())
+    open_share = float(open_episodes / episode_count)
+    severe_episodes = int((drawdown >= severe_drawdown_ticks).sum())
+    severe_share = float(severe_episodes / episode_count)
+    total_recovery = float(recovery.sum())
+    recovery_ratio = float(total_recovery / total_drawdown) if total_drawdown > 0.0 else 0.0
+
+    paths = episodes["path_id"].astype(str)
+    paths_with_drawdown = int(paths.nunique())
+    path_drawdown = drawdown.groupby(paths).sum()
+    if total_drawdown > 0.0 and not path_drawdown.empty:
+        top_path_id = str(path_drawdown.idxmax())
+        top_path_share = float(path_drawdown.max() / total_drawdown)
+    else:
+        top_path_id = "none"
+        top_path_share = 0.0
+
+    regimes = episodes["dominant_event_window_regime"].astype(str)
+    regime_drawdown = drawdown.groupby(regimes).sum()
+    if total_drawdown > 0.0 and not regime_drawdown.empty:
+        dominant_regime = str(regime_drawdown.idxmax())
+        dominant_regime_share = float(regime_drawdown.max() / total_drawdown)
+    else:
+        dominant_regime = "none"
+        dominant_regime_share = 0.0
+
+    blocking_reasons: list[str] = []
+    if float(drawdown.max()) > max_drawdown_ticks:
+        blocking_reasons.append("max_drawdown")
+    if dominant_regime_share > max_top_regime_drawdown_share:
+        blocking_reasons.append("regime_drawdown_concentration")
+
+    review_reasons: list[str] = []
+    if open_share > max_open_episode_share:
+        review_reasons.append("open_drawdown_share")
+    if severe_share > max_severe_episode_share:
+        review_reasons.append("severe_drawdown_share")
+
+    if blocking_reasons:
+        label = "queue_drawdown_blocked"
+    elif review_reasons:
+        label = "queue_drawdown_review"
+    else:
+        label = "queue_drawdown_pass"
+
+    return {
+        "episodes": episode_count,
+        "paths_with_drawdown": paths_with_drawdown,
+        "open_episodes": open_episodes,
+        "open_episode_share": open_share,
+        "severe_episodes": severe_episodes,
+        "severe_episode_share": severe_share,
+        "mean_drawdown_ticks": float(drawdown.mean()),
+        "max_drawdown_ticks": float(drawdown.max()),
+        "total_drawdown_ticks": total_drawdown,
+        "total_recovery_edge_ticks": total_recovery,
+        "recovery_coverage_ratio": recovery_ratio,
+        "dominant_drawdown_regime": dominant_regime,
+        "dominant_regime_drawdown_share": dominant_regime_share,
+        "top_path_id": top_path_id,
+        "top_path_drawdown_share": top_path_share,
+        "drawdown_summary_label": label,
+        "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
+        "review_reasons": ";".join(review_reasons) if review_reasons else "none",
+    }
+
 
 def queue_position_path_risk_scorecard(
     frame: pd.DataFrame,

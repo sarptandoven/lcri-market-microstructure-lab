@@ -210,17 +210,27 @@ instead of relying only on aggregate drawdown. `queue_position_path_drawdown_epi
 replays non-abstain execution rows, keeps optional session/symbol grouping intact,
 and reports each episode's start/end row, trough row, recovery edge, side-turnover
 count, dominant passive-fill event-window regime, and whether the drawdown recovered
-or remained open.
+or remained open. `queue_position_path_drawdown_summary` condenses those episodes
+into a release-facing artifact that flags unrecovered drawdown share, severe-episode
+share, top path concentration, and passive-fill event-window regimes that dominate
+queue-position losses.
 
 ```python
-from lcri_lab import queue_position_path_drawdown_episodes
+from lcri_lab import queue_position_path_drawdown_episodes, queue_position_path_drawdown_summary
 
 episodes = queue_position_path_drawdown_episodes(
     scored,
     group_cols="session",
     event_window_col="passive_fill_event_window_regime",
 )
+summary = queue_position_path_drawdown_summary(episodes)
 ```
+
+`lcri-lab run-demo` now writes both in-sample and heldout
+`queue_position_path_drawdown_episodes.csv` plus
+`queue_position_path_drawdown_summary.json` artifacts, and `verify-report` checks
+that drawdown magnitudes, open/recovered episode labels, and summary release labels
+remain coherent.
 
 ### Nonlinear regularization audit
 

@@ -147,6 +147,8 @@ from lcri_lab.execution import (
     queue_position_latency_regime_surface,
     queue_position_latency_release_scorecard,
     queue_position_lcri_tail_fill_residuals,
+    queue_position_path_drawdown_episodes,
+    queue_position_path_drawdown_summary,
     queue_position_regime_capacity_concentration,
     queue_position_regime_capacity_frontier,
     queue_position_regime_capacity_stability,
@@ -200,6 +202,7 @@ from lcri_lab.reporting import (
     verify_execution_publishability_release_gate,
     verify_passive_fill_realization_horizon_sweep,
     verify_queue_position_lcri_tail_fill_residuals,
+    verify_queue_position_path_drawdown_artifacts,
     verify_passive_fill_event_lifecycle_policy_curve,
     verify_passive_fill_event_policy_stability,
     verify_passive_fill_event_policy_stability_scorecard,
@@ -947,6 +950,20 @@ def run_demo(
     heldout_queue_lcri_tail_fill_residuals = queue_position_lcri_tail_fill_residuals(
         heldout_passive_fill_labeled
     )
+    queue_path_drawdown_episodes = queue_position_path_drawdown_episodes(
+        scored,
+        group_cols="pressure_memory_decay_state",
+        event_window_col="passive_fill_event_window_regime",
+    )
+    heldout_queue_path_drawdown_episodes = queue_position_path_drawdown_episodes(
+        heldout_scored,
+        group_cols="pressure_memory_decay_state",
+        event_window_col="passive_fill_event_window_regime",
+    )
+    queue_path_drawdown_summary = queue_position_path_drawdown_summary(queue_path_drawdown_episodes)
+    heldout_queue_path_drawdown_summary = queue_position_path_drawdown_summary(
+        heldout_queue_path_drawdown_episodes
+    )
     execution_lcri_event_window_attribution = execution_adjusted_lcri_event_window_attribution(scored)
     heldout_execution_lcri_event_window_attribution = execution_adjusted_lcri_event_window_attribution(
         heldout_scored
@@ -1193,6 +1210,10 @@ def run_demo(
         "heldout_queue_position_expected_value_policy_scorecard.csv",
         "queue_position_expected_value_stress_table.csv",
         "heldout_queue_position_expected_value_stress_table.csv",
+        "queue_position_path_drawdown_episodes.csv",
+        "heldout_queue_position_path_drawdown_episodes.csv",
+        "queue_position_path_drawdown_summary.json",
+        "heldout_queue_position_path_drawdown_summary.json",
         "execution_adjusted_sample.csv",
         "research_summary.md",
         "artifact_coverage_matrix.csv",
@@ -1693,6 +1714,17 @@ def run_demo(
     )
     heldout_queue_lcri_tail_fill_residuals.to_csv(
         output / "heldout_queue_position_lcri_tail_fill_residuals.csv", index=False
+    )
+    queue_path_drawdown_episodes.to_csv(
+        output / "queue_position_path_drawdown_episodes.csv", index=False
+    )
+    heldout_queue_path_drawdown_episodes.to_csv(
+        output / "heldout_queue_position_path_drawdown_episodes.csv", index=False
+    )
+    write_json(output / "queue_position_path_drawdown_summary.json", queue_path_drawdown_summary)
+    write_json(
+        output / "heldout_queue_position_path_drawdown_summary.json",
+        heldout_queue_path_drawdown_summary,
     )
     execution_lcri_event_window_attribution.to_csv(
         output / "execution_adjusted_lcri_event_window_attribution.csv", index=False
@@ -2776,6 +2808,20 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_passive_fill_threshold_policy_curve.csv"
             )
             if "heldout_passive_fill_threshold_policy_curve.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_queue_position_path_drawdown_artifacts(report_dir)
+            if "queue_position_path_drawdown_episodes.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_queue_position_path_drawdown_artifacts(
+                report_dir,
+                "heldout_queue_position_path_drawdown_episodes.csv",
+                "heldout_queue_position_path_drawdown_summary.json",
+            )
+            if "heldout_queue_position_path_drawdown_episodes.csv" in manifest_artifacts
             else []
         ),
         *(

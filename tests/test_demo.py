@@ -200,6 +200,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_queue_position_expected_value_policy_scorecard.csv").exists()
     assert (tmp_path / "queue_position_expected_value_stress_table.csv").exists()
     assert (tmp_path / "heldout_queue_position_expected_value_stress_table.csv").exists()
+    assert (tmp_path / "queue_position_path_drawdown_episodes.csv").exists()
+    assert (tmp_path / "heldout_queue_position_path_drawdown_episodes.csv").exists()
+    assert (tmp_path / "queue_position_path_drawdown_summary.json").exists()
+    assert (tmp_path / "heldout_queue_position_path_drawdown_summary.json").exists()
     assert (tmp_path / "execution_adjusted_sample.csv").exists()
 
     proxy_disagreement = pd.read_csv(tmp_path / "passive_fill_proxy_disagreement.csv")
@@ -364,6 +368,26 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         (tmp_path / "queue_position_calibration_stability_summary.json").read_text()
     )
     assert "queue_calibration_stability_label" in queue_calibration_stability_summary
+    queue_drawdown_summary = json.loads((tmp_path / "queue_position_path_drawdown_summary.json").read_text())
+    assert {
+        "episodes",
+        "paths_with_drawdown",
+        "drawdown_summary_label",
+        "blocking_reasons",
+        "review_reasons",
+    }.issubset(queue_drawdown_summary)
+    assert queue_drawdown_summary["drawdown_summary_label"] in {
+        "queue_drawdown_pass",
+        "queue_drawdown_review",
+        "queue_drawdown_blocked",
+    }
+    queue_drawdown_episodes = pd.read_csv(tmp_path / "queue_position_path_drawdown_episodes.csv")
+    assert {
+        "path_id",
+        "max_drawdown_ticks",
+        "dominant_event_window_regime",
+        "episode_risk_label",
+    }.issubset(queue_drawdown_episodes.columns)
     adverse_policy_columns = set(
         pd.read_csv(tmp_path / "queue_position_adverse_selection_policy_frontier.csv", nrows=1).columns
     )

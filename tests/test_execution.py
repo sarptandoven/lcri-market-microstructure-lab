@@ -78,6 +78,7 @@ from lcri_lab.execution import (
     queue_position_latency_release_scorecard,
     queue_position_lcri_tail_fill_residuals,
     queue_position_path_drawdown_episodes,
+    queue_position_path_drawdown_summary,
     queue_position_path_risk_concentration,
     queue_position_path_risk_release_gate,
     queue_position_path_risk_scorecard,
@@ -4841,3 +4842,80 @@ def test_queue_position_path_drawdown_episodes_ignores_abstains_and_zero_drawdow
         "dominant_event_window_regime",
         "episode_risk_label",
     ]
+
+
+def test_queue_position_path_drawdown_summary_flags_unrecovered_clustered_damage() -> None:
+    episodes = pd.DataFrame(
+        {
+            "path_id": ["A", "A", "B", "C"],
+            "episode_id": [0, 1, 0, 0],
+            "episode_rows": [4, 2, 1, 3],
+            "max_drawdown_ticks": [1.6, 0.4, 2.4, 0.2],
+            "recovery_edge_ticks": [0.3, 0.0, 0.0, 0.5],
+            "episode_total_edge_ticks": [-0.7, -0.4, -2.4, 0.1],
+            "episode_turnover_events": [2, 0, 1, 0],
+            "dominant_event_window_regime": ["event", "event", "post_event", "calm"],
+            "episode_risk_label": [
+                "path_drawdown_recovered",
+                "path_drawdown_open",
+                "path_drawdown_open",
+                "path_drawdown_recovered",
+            ],
+        }
+    )
+
+    summary = queue_position_path_drawdown_summary(
+        episodes,
+        severe_drawdown_ticks=1.0,
+        max_open_episode_share=0.25,
+        max_top_regime_drawdown_share=0.55,
+    )
+
+    assert summary == {
+        "episodes": 4,
+        "paths_with_drawdown": 3,
+        "open_episodes": 2,
+        "open_episode_share": pytest.approx(0.50),
+        "severe_episodes": 2,
+        "severe_episode_share": pytest.approx(0.50),
+        "mean_drawdown_ticks": pytest.approx(1.15),
+        "max_drawdown_ticks": pytest.approx(2.4),
+        "total_drawdown_ticks": pytest.approx(4.6),
+        "total_recovery_edge_ticks": pytest.approx(0.8),
+        "recovery_coverage_ratio": pytest.approx(0.8 / 4.6),
+        "dominant_drawdown_regime": "post_event",
+        "dominant_regime_drawdown_share": pytest.approx(2.4 / 4.6),
+        "top_path_id": "B",
+        "top_path_drawdown_share": pytest.approx(2.4 / 4.6),
+        "drawdown_summary_label": "queue_drawdown_review",
+        "blocking_reasons": "none",
+        "review_reasons": "open_drawdown_share;severe_drawdown_share",
+    }
+
+
+def test_queue_position_path_drawdown_summary_blocks_concentrated_event_damage() -> None:
+    episodes = pd.DataFrame(
+        {
+            "path_id": ["auction", "lunch"],
+            "max_drawdown_ticks": [3.0, 0.5],
+            "recovery_edge_ticks": [0.0, 0.1],
+            "dominant_event_window_regime": ["event", "calm"],
+            "episode_risk_label": ["path_drawdown_open", "path_drawdown_recovered"],
+        }
+    )
+
+    summary = queue_position_path_drawdown_summary(
+        episodes,
+        severe_drawdown_ticks=2.0,
+        max_drawdown_ticks=2.5,
+        max_top_regime_drawdown_share=0.70,
+    )
+
+    assert summary["drawdown_summary_label"] == "queue_drawdown_blocked"
+    assert summary["dominant_drawdown_regime"] == "event"
+    assert summary["blocking_reasons"] == "max_drawdown;regime_drawdown_concentration"
+
+
+def test_queue_position_path_drawdown_summary_rejects_missing_columns() -> None:
+    with pytest.raises(ValueError, match="missing queue position path drawdown summary columns"):
+        queue_position_path_drawdown_summary(pd.DataFrame({"path_id": ["overall"]}))
