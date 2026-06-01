@@ -56,6 +56,8 @@ from lcri_lab.execution import (
     queue_position_toxicity_surface,
     queue_position_fraction_sweep,
     queue_position_expected_value_frontier,
+    queue_position_expected_value_policy_selection,
+    queue_position_expected_value_policy_scorecard,
     queue_position_latency_sensitivity,
     queue_position_regime_fraction_sweep,
 )
@@ -3156,6 +3158,121 @@ def test_queue_position_expected_value_frontier_scores_queue_and_fill_cutoffs() 
     assert calm_broad["policy_label"] == "broad_positive_ev_queue_policy"
     stress_broad = frontier[(frontier["regime"] == "stress") & (frontier["max_queue_share"] == 0.50)].iloc[0]
     assert stress_broad["policy_label"] == "queue_policy_toxicity_review"
+
+
+def test_queue_position_expected_value_policy_selection_picks_best_deployable_policy() -> None:
+    frontier = pd.DataFrame(
+        {
+            "regime": ["open", "open", "close", "close"],
+            "min_fill_probability": [0.50, 0.70, 0.50, 0.70],
+            "max_queue_share": [0.75, 0.50, 0.75, 0.50],
+            "tradable_rows": [10, 10, 8, 8],
+            "candidate_rows": [5, 2, 4, 3],
+            "candidate_share": [0.50, 0.20, 0.50, 0.375],
+            "long_rows": [3, 1, 2, 1],
+            "short_rows": [2, 1, 2, 2],
+            "mean_queue_share": [0.50, 0.25, 0.60, 0.30],
+            "mean_fill_probability": [0.60, 0.78, 0.62, 0.75],
+            "mean_adverse_fill_probability": [0.25, 0.20, 0.30, 0.22],
+            "mean_execution_adjusted_edge_ticks": [0.70, 0.90, 0.20, 0.30],
+            "expected_value_ticks": [0.42, 0.70, 0.12, 0.225],
+            "risk_adjusted_expected_value_ticks": [0.20, 0.44, -0.04, 0.02],
+            "policy_label": ["review", "review", "reject", "review"],
+        }
+    )
+
+    selection = queue_position_expected_value_policy_selection(frontier, min_candidate_share=0.25)
+
+    assert selection.columns.tolist() == [
+        "regime",
+        "selected_min_fill_probability",
+        "selected_max_queue_share",
+        "tradable_rows",
+        "candidate_rows",
+        "candidate_share",
+        "risk_adjusted_expected_value_ticks",
+        "expected_value_ticks",
+        "mean_fill_probability",
+        "mean_queue_share",
+        "mean_adverse_fill_probability",
+        "policy_rank",
+        "selection_label",
+    ]
+    assert selection["regime"].tolist() == ["close", "open"]
+    assert selection["selected_min_fill_probability"].tolist() == pytest.approx([0.70, 0.50])
+    assert selection["selected_max_queue_share"].tolist() == pytest.approx([0.50, 0.75])
+    assert selection["selection_label"].tolist() == ["deployable", "deployable"]
+
+
+def test_queue_position_expected_value_policy_selection_flags_capacity_blockers() -> None:
+    frontier = pd.DataFrame(
+        {
+            "regime": ["all", "all"],
+            "min_fill_probability": [0.50, 0.70],
+            "max_queue_share": [0.75, 0.50],
+            "tradable_rows": [10, 10],
+            "candidate_rows": [1, 0],
+            "candidate_share": [0.10, 0.0],
+            "expected_value_ticks": [0.30, 0.0],
+            "risk_adjusted_expected_value_ticks": [0.20, 0.0],
+            "mean_fill_probability": [0.60, 0.0],
+            "mean_queue_share": [0.40, 0.0],
+            "mean_adverse_fill_probability": [0.20, 0.0],
+        }
+    )
+
+    selection = queue_position_expected_value_policy_selection(frontier, min_candidate_share=0.25)
+
+    assert selection.loc[0, "candidate_rows"] == 1
+    assert selection.loc[0, "selection_label"] == "capacity_constrained"
+
+
+def test_queue_position_expected_value_policy_scorecard_summarizes_deployment_readiness() -> None:
+    selection = pd.DataFrame(
+        {
+            "regime": ["close", "open", "stress"],
+            "selected_min_fill_probability": [0.70, 0.50, 0.80],
+            "selected_max_queue_share": [0.50, 0.75, 0.40],
+            "tradable_rows": [8, 10, 5],
+            "candidate_rows": [3, 5, 1],
+            "candidate_share": [0.375, 0.50, 0.20],
+            "risk_adjusted_expected_value_ticks": [0.02, 0.44, -0.05],
+            "expected_value_ticks": [0.225, 0.70, 0.10],
+            "mean_fill_probability": [0.75, 0.60, 0.81],
+            "mean_queue_share": [0.30, 0.50, 0.20],
+            "mean_adverse_fill_probability": [0.22, 0.25, 0.45],
+            "policy_rank": [1, 2, 3],
+            "selection_label": ["deployable", "deployable", "negative_expected_value"],
+        }
+    )
+
+    scorecard = queue_position_expected_value_policy_scorecard(selection)
+
+    assert scorecard.columns.tolist() == [
+        "regimes",
+        "deployable_regimes",
+        "blocked_regimes",
+        "deployable_share",
+        "capacity_constrained_regimes",
+        "negative_expected_value_regimes",
+        "no_candidate_regimes",
+        "candidate_weighted_share",
+        "candidate_weighted_risk_adjusted_expected_value_ticks",
+        "worst_risk_adjusted_expected_value_ticks",
+        "candidate_weighted_adverse_fill_probability",
+        "readiness_label",
+    ]
+    row = scorecard.iloc[0]
+    assert row["regimes"] == 3
+    assert row["deployable_regimes"] == 2
+    assert row["blocked_regimes"] == 1
+    assert row["deployable_share"] == pytest.approx(2 / 3)
+    assert row["negative_expected_value_regimes"] == 1
+    assert row["candidate_weighted_share"] == pytest.approx((3 * 0.375 + 5 * 0.50 + 1 * 0.20) / 9)
+    assert row["candidate_weighted_risk_adjusted_expected_value_ticks"] == pytest.approx(
+        (3 * 0.02 + 5 * 0.44 + 1 * -0.05) / 9
+    )
+    assert row["readiness_label"] == "mixed_review"
 
 
 def test_queue_position_expected_value_frontier_rejects_invalid_costs_and_missing_columns() -> None:

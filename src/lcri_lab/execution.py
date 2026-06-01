@@ -1886,6 +1886,218 @@ def queue_position_expected_value_frontier(
     return pd.DataFrame(rows)[columns]
 
 
+def queue_position_expected_value_policy_selection(
+    frontier: pd.DataFrame,
+    *,
+    min_candidate_share: float = 0.10,
+    require_positive_ev: bool = True,
+) -> pd.DataFrame:
+    """Select deployable queue-position policies from an expected-value frontier.
+
+    The frontier enumerates many queue/fill cutoffs; this reducer picks one
+    execution policy per regime after enforcing capacity and EV constraints. It
+    still returns the best blocked row so review can separate negative EV from
+    insufficient passive capacity.
+    """
+    columns = [
+        "regime",
+        "selected_min_fill_probability",
+        "selected_max_queue_share",
+        "tradable_rows",
+        "candidate_rows",
+        "candidate_share",
+        "risk_adjusted_expected_value_ticks",
+        "expected_value_ticks",
+        "mean_fill_probability",
+        "mean_queue_share",
+        "mean_adverse_fill_probability",
+        "policy_rank",
+        "selection_label",
+    ]
+    if not math.isfinite(min_candidate_share) or not 0.0 <= min_candidate_share <= 1.0:
+        raise ValueError("min_candidate_share must be finite and in [0.0, 1.0]")
+    if not isinstance(require_positive_ev, bool):
+        raise ValueError("require_positive_ev must be boolean")
+
+    required = {
+        "regime",
+        "min_fill_probability",
+        "max_queue_share",
+        "tradable_rows",
+        "candidate_rows",
+        "candidate_share",
+        "risk_adjusted_expected_value_ticks",
+        "expected_value_ticks",
+        "mean_fill_probability",
+        "mean_queue_share",
+        "mean_adverse_fill_probability",
+    }
+    _require_columns(frontier, required, "queue position expected value policy selection")
+    if frontier.empty:
+        return pd.DataFrame(columns=columns)
+
+    numeric_columns = sorted(required - {"regime"})
+    values = _finite_values(frontier, numeric_columns, "queue position expected value policy selection")
+    share_columns = ["min_fill_probability", "max_queue_share", "candidate_share"]
+    if not values[share_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("queue position expected value policy selection shares must be in [0, 1]")
+    if (values[["tradable_rows", "candidate_rows"]] < 0.0).any().any():
+        raise ValueError("queue position expected value policy selection row counts must be non-negative")
+
+    working = frontier.copy()
+    working[numeric_columns] = values
+    rows: list[dict[str, float | int | str]] = []
+    for regime, group in working.groupby("regime", sort=True):
+        viable = group[group["candidate_share"] >= min_candidate_share]
+        if require_positive_ev:
+            viable = viable[viable["risk_adjusted_expected_value_ticks"] > 0.0]
+        if viable.empty:
+            ranked = group.sort_values(
+                ["candidate_share", "risk_adjusted_expected_value_ticks", "expected_value_ticks"],
+                ascending=[False, False, False],
+            )
+            selected = ranked.iloc[0]
+            if float(selected["candidate_rows"]) <= 0.0:
+                label = "no_candidates"
+            elif float(selected["candidate_share"]) < min_candidate_share:
+                label = "capacity_constrained"
+            elif require_positive_ev and float(selected["risk_adjusted_expected_value_ticks"]) <= 0.0:
+                label = "negative_expected_value"
+            else:
+                label = "review"
+        else:
+            ranked = viable.sort_values(
+                [
+                    "risk_adjusted_expected_value_ticks",
+                    "expected_value_ticks",
+                    "candidate_share",
+                    "mean_fill_probability",
+                    "mean_queue_share",
+                ],
+                ascending=[False, False, False, False, True],
+            )
+            selected = ranked.iloc[0]
+            label = "deployable"
+        rows.append(
+            {
+                "regime": str(regime),
+                "selected_min_fill_probability": float(selected["min_fill_probability"]),
+                "selected_max_queue_share": float(selected["max_queue_share"]),
+                "tradable_rows": int(selected["tradable_rows"]),
+                "candidate_rows": int(selected["candidate_rows"]),
+                "candidate_share": float(selected["candidate_share"]),
+                "risk_adjusted_expected_value_ticks": float(
+                    selected["risk_adjusted_expected_value_ticks"]
+                ),
+                "expected_value_ticks": float(selected["expected_value_ticks"]),
+                "mean_fill_probability": float(selected["mean_fill_probability"]),
+                "mean_queue_share": float(selected["mean_queue_share"]),
+                "mean_adverse_fill_probability": float(selected["mean_adverse_fill_probability"]),
+                "policy_rank": len(rows) + 1,
+                "selection_label": label,
+            }
+        )
+    return pd.DataFrame(rows)[columns]
+
+
+def queue_position_expected_value_policy_scorecard(selection: pd.DataFrame) -> pd.DataFrame:
+    """Summarize selected EV policies into an execution-readiness scorecard.
+
+    ``queue_position_expected_value_policy_selection`` gives one policy per regime.
+    This scorecard compresses those policies into a publishable deployment artifact:
+    how many regimes are deployable, why blocked regimes fail, and the candidate-
+    capacity-weighted EV/toxicity profile of the selected policy set.
+    """
+    columns = [
+        "regimes",
+        "deployable_regimes",
+        "blocked_regimes",
+        "deployable_share",
+        "capacity_constrained_regimes",
+        "negative_expected_value_regimes",
+        "no_candidate_regimes",
+        "candidate_weighted_share",
+        "candidate_weighted_risk_adjusted_expected_value_ticks",
+        "worst_risk_adjusted_expected_value_ticks",
+        "candidate_weighted_adverse_fill_probability",
+        "readiness_label",
+    ]
+    required = {
+        "regime",
+        "candidate_rows",
+        "candidate_share",
+        "risk_adjusted_expected_value_ticks",
+        "mean_adverse_fill_probability",
+        "selection_label",
+    }
+    _require_columns(selection, required, "queue position expected value policy scorecard")
+    if selection.empty:
+        return pd.DataFrame(columns=columns)
+
+    numeric_columns = [
+        "candidate_rows",
+        "candidate_share",
+        "risk_adjusted_expected_value_ticks",
+        "mean_adverse_fill_probability",
+    ]
+    values = _finite_values(
+        selection, numeric_columns, "queue position expected value policy scorecard"
+    )
+    if (values["candidate_rows"] < 0.0).any():
+        raise ValueError("queue position expected value policy scorecard candidate_rows must be non-negative")
+    share_columns = ["candidate_share", "mean_adverse_fill_probability"]
+    if not values[share_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("queue position expected value policy scorecard shares must be in [0, 1]")
+
+    labels = selection["selection_label"].astype(str)
+    deployable = labels == "deployable"
+    regimes = int(len(selection))
+    deployable_regimes = int(deployable.sum())
+    blocked_regimes = regimes - deployable_regimes
+    weights = values["candidate_rows"]
+    weight_total = float(weights.sum())
+    if weight_total > 0.0:
+        candidate_weighted_share = float((values["candidate_share"] * weights).sum() / weight_total)
+        weighted_ev = float(
+            (values["risk_adjusted_expected_value_ticks"] * weights).sum() / weight_total
+        )
+        weighted_adverse = float(
+            (values["mean_adverse_fill_probability"] * weights).sum() / weight_total
+        )
+    else:
+        candidate_weighted_share = 0.0
+        weighted_ev = 0.0
+        weighted_adverse = 0.0
+    worst_ev = float(values["risk_adjusted_expected_value_ticks"].min())
+
+    if deployable_regimes == regimes and weighted_ev > 0.0:
+        readiness_label = "execution_ready"
+    elif deployable_regimes > 0:
+        readiness_label = "mixed_review"
+    else:
+        readiness_label = "not_deployable"
+
+    return pd.DataFrame(
+        [
+            {
+                "regimes": regimes,
+                "deployable_regimes": deployable_regimes,
+                "blocked_regimes": blocked_regimes,
+                "deployable_share": deployable_regimes / regimes,
+                "capacity_constrained_regimes": int((labels == "capacity_constrained").sum()),
+                "negative_expected_value_regimes": int((labels == "negative_expected_value").sum()),
+                "no_candidate_regimes": int((labels == "no_candidates").sum()),
+                "candidate_weighted_share": candidate_weighted_share,
+                "candidate_weighted_risk_adjusted_expected_value_ticks": weighted_ev,
+                "worst_risk_adjusted_expected_value_ticks": worst_ev,
+                "candidate_weighted_adverse_fill_probability": weighted_adverse,
+                "readiness_label": readiness_label,
+            }
+        ],
+        columns=columns,
+    )
+
+
 def queue_position_adverse_selection_policy_frontier(
     frame: pd.DataFrame,
     *,
