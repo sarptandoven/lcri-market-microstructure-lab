@@ -673,6 +673,113 @@ def add_execution_adjusted_edge(
     return output
 
 
+def execution_adjusted_edge_component_attribution(
+    frame: pd.DataFrame,
+    *,
+    group_cols: str | list[str] | tuple[str, ...] | None = "best_execution_side",
+    long_net_col: str = "long_net_return_ticks",
+    short_net_col: str = "short_net_return_ticks",
+) -> pd.DataFrame:
+    """Decompose execution-adjusted edge into raw edge, fill capture, and toxicity drag.
+
+    Queue-aware edge can fail for two distinct reasons: the passive order may not
+    get enough queue clearance to capture the paper edge, or the fills it does get
+    may be adverse-selection fills. This attribution table makes that distinction
+    explicit for release reviews by aggregating the chosen execution side's raw
+    directional edge, fill-captured edge, adverse-selection cost, and residual
+    execution-adjusted edge across sides, regimes, or caller-provided slices.
+    """
+    columns = [
+        *(_normalize_group_columns(frame, group_cols, "execution edge component attribution") if group_cols is not None and not frame.empty else ([group_cols] if isinstance(group_cols, str) else list(group_cols or []))),
+        "rows",
+        "mean_raw_edge_ticks",
+        "mean_fill_captured_edge_ticks",
+        "mean_adverse_selection_cost_ticks",
+        "mean_execution_adjusted_edge_ticks",
+        "mean_fill_shortfall_ticks",
+        "fill_capture_ratio",
+        "adverse_drag_ratio",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    grouping_columns = _normalize_group_columns(frame, group_cols, "execution edge component attribution")
+    required = {
+        "best_execution_side",
+        long_net_col,
+        short_net_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+        "long_fill_adjusted_edge_ticks",
+        "short_fill_adjusted_edge_ticks",
+        "execution_adjusted_edge_ticks",
+    }
+    _require_columns(frame, required, "execution edge component attribution")
+    values = _finite_values(frame, sorted(required - {"best_execution_side"}), "execution edge component attribution")
+
+    side = frame["best_execution_side"].astype(str)
+    raw_edge = _side_probability(side, bid=values[long_net_col], ask=values[short_net_col])
+    fill_captured = _side_probability(
+        side,
+        bid=values["bid_fill_probability"] * values[long_net_col],
+        ask=values["ask_fill_probability"] * values[short_net_col],
+    )
+    adverse_cost = _side_probability(
+        side,
+        bid=values["bid_adverse_fill_probability"] * values[long_net_col].abs(),
+        ask=values["ask_adverse_fill_probability"] * values[short_net_col].abs(),
+    )
+    execution_edge = _side_probability(
+        side,
+        bid=values["long_fill_adjusted_edge_ticks"],
+        ask=values["short_fill_adjusted_edge_ticks"],
+    )
+    if "execution_adjusted_edge_ticks" in values:
+        execution_edge = execution_edge.where(side != "abstain", 0.0)
+
+    state = frame[grouping_columns].copy() if grouping_columns else pd.DataFrame(index=frame.index)
+    state["raw_edge"] = raw_edge
+    state["fill_captured"] = fill_captured
+    state["adverse_cost"] = adverse_cost
+    state["execution_edge"] = execution_edge
+    state["fill_shortfall"] = raw_edge - fill_captured
+
+    if grouping_columns:
+        grouped = state.groupby(grouping_columns, sort=False, dropna=False)
+    else:
+        grouped = [((), state)]
+
+    rows: list[dict[str, float | int | str]] = []
+    for key, group in grouped:
+        if grouping_columns:
+            key_values = key if isinstance(key, tuple) else (key,)
+            row: dict[str, float | int | str] = {
+                column: str(value) for column, value in zip(grouping_columns, key_values)
+            }
+        else:
+            row = {}
+        mean_raw = float(group["raw_edge"].mean())
+        mean_fill = float(group["fill_captured"].mean())
+        mean_adverse = float(group["adverse_cost"].mean())
+        row.update(
+            {
+                "rows": int(len(group)),
+                "mean_raw_edge_ticks": mean_raw,
+                "mean_fill_captured_edge_ticks": mean_fill,
+                "mean_adverse_selection_cost_ticks": mean_adverse,
+                "mean_execution_adjusted_edge_ticks": float(group["execution_edge"].mean()),
+                "mean_fill_shortfall_ticks": float(group["fill_shortfall"].mean()),
+                "fill_capture_ratio": 0.0 if mean_raw == 0.0 else float(mean_fill / mean_raw),
+                "adverse_drag_ratio": 0.0 if mean_raw == 0.0 else float(mean_adverse / abs(mean_raw)),
+            }
+        )
+        rows.append(row)
+
+    return pd.DataFrame(rows, columns=columns)
+
+
 def queue_position_toxicity_surface(
     frame: pd.DataFrame,
     *,

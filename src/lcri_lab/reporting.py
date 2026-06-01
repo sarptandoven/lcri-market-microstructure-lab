@@ -545,6 +545,52 @@ def verify_execution_publishability_review_artifacts(
     return errors
 
 
+def verify_execution_adjusted_edge_component_attribution(
+    output_dir: Path, artifact: str = "execution_adjusted_edge_component_attribution.csv"
+) -> list[str]:
+    """Return errors for raw/fill/toxicity execution edge attribution artifacts."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing execution edge component attribution: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "best_execution_side",
+        "rows",
+        "mean_raw_edge_ticks",
+        "mean_fill_captured_edge_ticks",
+        "mean_adverse_selection_cost_ticks",
+        "mean_execution_adjusted_edge_ticks",
+        "mean_fill_shortfall_ticks",
+        "fill_capture_ratio",
+        "adverse_drag_ratio",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete execution edge component attribution {artifact}: {missing}"]
+
+    numeric_columns = list(required - {"best_execution_side"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    valid_sides = {"long", "short", "abstain"}
+    unknown_sides = sorted(set(frame["best_execution_side"].astype(str)) - valid_sides)
+    if unknown_sides:
+        errors.append(f"unknown execution sides in {artifact}: {unknown_sides}")
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite execution edge component attribution values in {artifact}")
+    if not numeric["rows"].ge(0.0).all():
+        errors.append(f"negative execution edge component counts in {artifact}")
+    nonnegative_columns = [
+        "mean_adverse_selection_cost_ticks",
+        "adverse_drag_ratio",
+    ]
+    if not numeric[nonnegative_columns].ge(0.0).all().all():
+        errors.append(f"negative execution edge component drag values in {artifact}")
+    ratio_columns = ["fill_capture_ratio", "adverse_drag_ratio"]
+    if not numeric[ratio_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        errors.append(f"bounded execution edge component ratios violated in {artifact}")
+    return errors
+
+
 def verify_execution_adjusted_lcri_side_attribution(
     output_dir: Path, artifact: str = "execution_adjusted_lcri_side_attribution.csv"
 ) -> list[str]:

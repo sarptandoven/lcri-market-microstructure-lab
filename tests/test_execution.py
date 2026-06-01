@@ -10,6 +10,7 @@ from lcri_lab.execution import (
     add_queue_position_features,
     add_queue_position_order_size_features,
     add_queue_position_realized_fill_proxy,
+    execution_adjusted_edge_component_attribution,
     execution_adjusted_edge_summary,
     execution_adjusted_lcri_event_window_attribution,
     execution_adjusted_lcri_quantile_diagnostics,
@@ -136,6 +137,35 @@ def test_queue_position_order_size_features_rejects_negative_child_size() -> Non
 
     with pytest.raises(ValueError, match="order sizes must be non-negative"):
         add_queue_position_order_size_features(queued, levels=2, bid_order_size_col="bid_order")
+
+
+def test_execution_adjusted_edge_component_attribution_decomposes_fill_and_adverse_drag() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "short", "abstain"],
+            "long_net_return_ticks": [2.0, -1.0, 3.0],
+            "short_net_return_ticks": [-2.0, 4.0, 1.0],
+            "bid_fill_probability": [0.50, 0.90, 0.20],
+            "ask_fill_probability": [0.10, 0.25, 0.30],
+            "bid_adverse_fill_probability": [0.25, 0.20, 0.10],
+            "ask_adverse_fill_probability": [0.05, 0.10, 0.20],
+            "long_fill_adjusted_edge_ticks": [0.50, -1.10, 0.30],
+            "short_fill_adjusted_edge_ticks": [-0.30, 0.60, 0.10],
+            "execution_adjusted_edge_ticks": [0.50, 0.60, 0.0],
+        }
+    )
+
+    attribution = execution_adjusted_edge_component_attribution(frame)
+
+    assert attribution["best_execution_side"].tolist() == ["long", "short", "abstain"]
+    assert attribution["rows"].tolist() == [1, 1, 1]
+    assert attribution["mean_raw_edge_ticks"].tolist() == pytest.approx([2.0, 4.0, 0.0])
+    assert attribution["mean_fill_captured_edge_ticks"].tolist() == pytest.approx([1.0, 1.0, 0.0])
+    assert attribution["mean_adverse_selection_cost_ticks"].tolist() == pytest.approx([0.5, 0.4, 0.0])
+    assert attribution["mean_execution_adjusted_edge_ticks"].tolist() == pytest.approx([0.5, 0.6, 0.0])
+    assert attribution["mean_fill_shortfall_ticks"].tolist() == pytest.approx([1.0, 3.0, 0.0])
+    assert attribution["fill_capture_ratio"].tolist() == pytest.approx([0.5, 0.25, 0.0])
+    assert attribution["adverse_drag_ratio"].tolist() == pytest.approx([0.25, 0.10, 0.0])
 
 
 def test_queue_position_realized_fill_proxy_uses_visible_depletion_and_price_loss() -> None:

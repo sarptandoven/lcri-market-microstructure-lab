@@ -96,6 +96,11 @@ def test_public_api_exports_execution_adjusted_lcri_side_attribution() -> None:
     assert "execution_adjusted_lcri_side_attribution" in lcri_lab.__all__
 
 
+def test_public_api_exports_execution_adjusted_edge_component_attribution() -> None:
+    assert callable(lcri_lab.execution_adjusted_edge_component_attribution)
+    assert "execution_adjusted_edge_component_attribution" in lcri_lab.__all__
+
+
 def test_public_api_exports_execution_adjusted_lcri_regime_attribution() -> None:
     assert callable(lcri_lab.execution_adjusted_lcri_regime_attribution)
     assert "execution_adjusted_lcri_regime_attribution" in lcri_lab.__all__

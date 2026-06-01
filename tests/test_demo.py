@@ -110,6 +110,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "alpha_event_review_verification_summary.json").exists()
     assert (tmp_path / "execution_adjusted_edge_summary.json").exists()
     assert (tmp_path / "heldout_execution_adjusted_edge_summary.json").exists()
+    assert (tmp_path / "execution_adjusted_edge_component_attribution.csv").exists()
+    assert (tmp_path / "heldout_execution_adjusted_edge_component_attribution.csv").exists()
     assert (tmp_path / "execution_publishability_review_packet.csv").exists()
     assert (tmp_path / "heldout_execution_publishability_review_packet.csv").exists()
     assert (tmp_path / "execution_adjusted_lcri_side_attribution.csv").exists()
@@ -459,6 +461,18 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "dominant_execution_side",
         "review_label",
     }.issubset(execution_lcri_side_columns)
+    edge_component_columns = set(
+        pd.read_csv(tmp_path / "execution_adjusted_edge_component_attribution.csv", nrows=1).columns
+    )
+    assert {
+        "best_execution_side",
+        "mean_raw_edge_ticks",
+        "mean_fill_captured_edge_ticks",
+        "mean_adverse_selection_cost_ticks",
+        "mean_fill_shortfall_ticks",
+        "fill_capture_ratio",
+        "adverse_drag_ratio",
+    }.issubset(edge_component_columns)
     passive_fill_calibration_columns = set(
         pd.read_csv(tmp_path / "passive_fill_calibration_curve.csv", nrows=1).columns
     )

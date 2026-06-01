@@ -96,6 +96,7 @@ from lcri_lab.execution import (
     add_passive_fill_probabilities,
     add_queue_position_features,
     add_queue_position_realized_fill_proxy,
+    execution_adjusted_edge_component_attribution,
     execution_adjusted_edge_summary,
     execution_adjusted_lcri_event_window_attribution,
     execution_adjusted_lcri_quantile_diagnostics,
@@ -187,6 +188,7 @@ from lcri_lab.reporting import (
     verify_generalization_stability_confidence_summary,
     verify_hidden_resiliency_asymmetry_summary,
     verify_adverse_selection_phase_shift_summary,
+    verify_execution_adjusted_edge_component_attribution,
     verify_execution_adjusted_lcri_quantile_diagnostics,
     verify_execution_adjusted_lcri_side_attribution,
     verify_execution_publishability_review_artifacts,
@@ -570,6 +572,10 @@ def run_demo(
         pass
     execution_summary = execution_adjusted_edge_summary(scored)
     heldout_execution_summary = execution_adjusted_edge_summary(heldout_scored)
+    execution_edge_component_attribution = execution_adjusted_edge_component_attribution(scored)
+    heldout_execution_edge_component_attribution = execution_adjusted_edge_component_attribution(
+        heldout_scored
+    )
     execution_publishability_packet = execution_publishability_review_packet(scored)
     heldout_execution_publishability_packet = execution_publishability_review_packet(heldout_scored)
     passive_fill_events = passive_fill_event_window_diagnostics(
@@ -1040,6 +1046,8 @@ def run_demo(
         "alpha_event_review_verification_summary.json",
         "execution_adjusted_edge_summary.json",
         "heldout_execution_adjusted_edge_summary.json",
+        "execution_adjusted_edge_component_attribution.csv",
+        "heldout_execution_adjusted_edge_component_attribution.csv",
         "execution_adjusted_lcri_side_attribution.csv",
         "heldout_execution_adjusted_lcri_side_attribution.csv",
         "execution_adjusted_lcri_regime_attribution.csv",
@@ -1336,6 +1344,12 @@ def run_demo(
     write_json(output / "alpha_event_review_verification_summary.json", alpha_event_verification_summary)
     write_json(output / "execution_adjusted_edge_summary.json", execution_summary)
     write_json(output / "heldout_execution_adjusted_edge_summary.json", heldout_execution_summary)
+    execution_edge_component_attribution.to_csv(
+        output / "execution_adjusted_edge_component_attribution.csv", index=False
+    )
+    heldout_execution_edge_component_attribution.to_csv(
+        output / "heldout_execution_adjusted_edge_component_attribution.csv", index=False
+    )
     execution_publishability_packet.to_csv(
         output / "execution_publishability_review_packet.csv", index=False
     )
@@ -2562,6 +2576,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_execution_publishability_review_packet.csv"
             )
             if "heldout_execution_publishability_review_packet.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_execution_adjusted_edge_component_attribution(report_dir)
+            if "execution_adjusted_edge_component_attribution.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_execution_adjusted_edge_component_attribution(
+                report_dir, "heldout_execution_adjusted_edge_component_attribution.csv"
+            )
+            if "heldout_execution_adjusted_edge_component_attribution.csv" in manifest_artifacts
             else []
         ),
         *(

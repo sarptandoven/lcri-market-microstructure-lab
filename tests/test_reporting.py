@@ -24,6 +24,7 @@ from lcri_lab.reporting import (
     verify_baseline_tail_lift_diagnostics,
     verify_adverse_selection_phase_shift_summary,
     verify_event_level_passive_fill_horizon_sweep,
+    verify_execution_adjusted_edge_component_attribution,
     verify_execution_publishability_review_artifacts,
     verify_passive_fill_event_policy_stability,
     verify_passive_fill_event_policy_stability_scorecard,
@@ -753,6 +754,48 @@ def test_verify_execution_publishability_review_artifacts_checks_heldout_packet(
     )
 
     assert "incomplete execution publishability review packet" in errors[0]
+
+
+def test_verify_execution_adjusted_edge_component_attribution_checks_schema(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {
+                "best_execution_side": "long",
+                "rows": 3,
+                "mean_raw_edge_ticks": 2.0,
+                "mean_fill_captured_edge_ticks": 1.1,
+                "mean_adverse_selection_cost_ticks": 0.3,
+                "mean_execution_adjusted_edge_ticks": 0.8,
+                "mean_fill_shortfall_ticks": 0.9,
+                "fill_capture_ratio": 0.55,
+                "adverse_drag_ratio": 0.15,
+            }
+        ]
+    ).to_csv(tmp_path / "execution_adjusted_edge_component_attribution.csv", index=False)
+
+    assert verify_execution_adjusted_edge_component_attribution(tmp_path) == []
+
+    pd.DataFrame(
+        [
+            {
+                "best_execution_side": "unknown",
+                "rows": -1,
+                "mean_raw_edge_ticks": 2.0,
+                "mean_fill_captured_edge_ticks": 1.1,
+                "mean_adverse_selection_cost_ticks": 0.3,
+                "mean_execution_adjusted_edge_ticks": 0.8,
+                "mean_fill_shortfall_ticks": 0.9,
+                "fill_capture_ratio": 1.5,
+                "adverse_drag_ratio": -0.1,
+            }
+        ]
+    ).to_csv(tmp_path / "execution_adjusted_edge_component_attribution.csv", index=False)
+
+    errors = verify_execution_adjusted_edge_component_attribution(tmp_path)
+
+    assert any("unknown execution sides" in error for error in errors)
+    assert any("negative execution edge component counts" in error for error in errors)
+    assert any("bounded execution edge component ratios violated" in error for error in errors)
 
 
 def test_verify_alpha_event_review_artifacts_checks_packet_consistency(tmp_path) -> None:
