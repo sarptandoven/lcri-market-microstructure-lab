@@ -747,6 +747,133 @@ def baseline_nonlinear_publishability_summary(
     }
 
 
+def baseline_nonlinear_stress_surface(
+    frame: pd.DataFrame,
+    *,
+    train_fraction: float = 0.60,
+    stress_cols: tuple[str, str] = ("spread_ticks", "volatility"),
+    bins: int = 3,
+    ridge: float = 1e-3,
+    min_lift: float = 0.10,
+) -> pd.DataFrame:
+    """Localize where nonlinear liquidity terms improve held-out residual control.
+
+    The headline nonlinear baseline lift can hide a brittle improvement isolated to
+    one stress corner. This surface trains core and full nonlinear bases on the
+    earliest chronological slice, scores the holdout, then bins the holdout by two
+    liquidity stress dimensions. Each cell reports core-vs-nonlinear RMSE lift so
+    release review can verify that convex stress terms help precisely in stressed
+    spread/volatility regions rather than only in benign liquidity.
+    """
+    if not isinstance(bins, int) or isinstance(bins, bool) or bins <= 1:
+        raise ValueError("bins must be an integer greater than 1")
+    if len(stress_cols) != 2:
+        raise ValueError("stress_cols must contain exactly two column names")
+    if stress_cols[0] == stress_cols[1]:
+        raise ValueError("stress_cols must contain two distinct column names")
+    if not math.isfinite(train_fraction) or not 0.0 < train_fraction < 1.0:
+        raise ValueError("train_fraction must be finite and in (0, 1)")
+    if not math.isfinite(ridge) or ridge < 0.0:
+        raise ValueError("ridge must be a finite non-negative value")
+    if not math.isfinite(min_lift):
+        raise ValueError("min_lift must be finite")
+
+    bin_columns = [f"{col}_bin" for col in stress_cols]
+    columns = [
+        "stress_cell",
+        *bin_columns,
+        "rows",
+        "row_share",
+        "core_rmse",
+        "nonlinear_rmse",
+        "rmse_lift_vs_core",
+        "core_residual_mean",
+        "nonlinear_residual_mean",
+        "surface_label",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    required = {"raw_imbalance", *stress_cols}
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise ValueError(f"missing nonlinear stress surface columns: {missing}")
+    y = frame["raw_imbalance"].to_numpy(dtype=float)
+    stress_values = frame[list(stress_cols)].to_numpy(dtype=float)
+    if not np.isfinite(y).all() or not np.isfinite(stress_values).all():
+        raise ValueError("nonlinear stress surface inputs must be finite")
+
+    train_rows = int(len(frame) * train_fraction)
+    if train_rows < 1 or train_rows >= len(frame):
+        raise ValueError("train_fraction leaves no train or test rows")
+
+    x = _design_matrix(frame)
+    core_indexes = list(range(len(feature_columns())))
+    nonlinear_indexes = list(range(len(design_feature_names())))
+
+    def fit_predict(indexes: list[int]) -> np.ndarray:
+        x_basis = x[:, indexes]
+        x_train = x_basis[:train_rows]
+        x_test = x_basis[train_rows:]
+        mean = x_train.mean(axis=0)
+        scale = x_train.std(axis=0)
+        scale[scale == 0.0] = 1.0
+        train_design = np.column_stack([np.ones(train_rows), (x_train - mean) / scale])
+        test_design = np.column_stack([np.ones(len(x_test)), (x_test - mean) / scale])
+        penalty = np.sqrt(ridge) * np.eye(train_design.shape[1])
+        penalty[0, 0] = 0.0
+        coefficients = np.linalg.lstsq(
+            np.vstack([train_design, penalty]),
+            np.concatenate([y[:train_rows], np.zeros(train_design.shape[1])]),
+            rcond=None,
+        )[0]
+        return test_design @ coefficients
+
+    holdout = frame.iloc[train_rows:].copy()
+    holdout_y = y[train_rows:]
+    holdout["core_residual"] = holdout_y - fit_predict(core_indexes)
+    holdout["nonlinear_residual"] = holdout_y - fit_predict(nonlinear_indexes)
+
+    labels = ["low", "medium", "high"] if bins == 3 else [f"bin_{idx + 1}" for idx in range(bins)]
+    for col, bin_col in zip(stress_cols, bin_columns, strict=True):
+        pct = holdout[col].rank(method="first", pct=True).to_numpy(dtype=float)
+        indexes = np.minimum(np.floor(pct * bins).astype(int), bins - 1)
+        holdout[bin_col] = pd.Categorical([labels[idx] for idx in indexes], categories=labels, ordered=True)
+
+    rows: list[dict[str, float | int | str]] = []
+    total_rows = len(holdout)
+    for keys, group in holdout.groupby(bin_columns, observed=True, sort=True):
+        if not isinstance(keys, tuple):
+            keys = (keys,)
+        core_residual = group["core_residual"].to_numpy(dtype=float)
+        nonlinear_residual = group["nonlinear_residual"].to_numpy(dtype=float)
+        core_rmse = float(np.sqrt(np.mean(core_residual**2)))
+        nonlinear_rmse = float(np.sqrt(np.mean(nonlinear_residual**2)))
+        lift = 0.0 if core_rmse <= 0.0 else (core_rmse - nonlinear_rmse) / core_rmse
+        if lift >= min_lift:
+            label = "nonlinear_supported"
+        elif lift < 0.0:
+            label = "nonlinear_fragile"
+        else:
+            label = "neutral"
+        row: dict[str, float | int | str] = {
+            "stress_cell": "|".join(f"{col}={key}" for col, key in zip(stress_cols, keys, strict=True)),
+            "rows": int(len(group)),
+            "row_share": float(len(group) / total_rows),
+            "core_rmse": core_rmse,
+            "nonlinear_rmse": nonlinear_rmse,
+            "rmse_lift_vs_core": float(lift),
+            "core_residual_mean": float(core_residual.mean()),
+            "nonlinear_residual_mean": float(nonlinear_residual.mean()),
+            "surface_label": label,
+        }
+        for bin_col, key in zip(bin_columns, keys, strict=True):
+            row[bin_col] = str(key)
+        rows.append(row)
+
+    return pd.DataFrame(rows, columns=columns)
+
+
 def baseline_component_attribution(frame: pd.DataFrame, baseline: LiquidityBaseline) -> pd.DataFrame:
     """Attribute a fitted baseline's prediction to core, interaction, and nonlinear terms.
 

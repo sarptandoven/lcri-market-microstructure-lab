@@ -7,6 +7,7 @@ from lcri_lab.baseline import (
     baseline_basis_comparison,
     baseline_component_attribution,
     baseline_liquidity_stress_curve,
+    baseline_nonlinear_stress_surface,
     baseline_nonlinear_coefficient_stability,
     baseline_nonlinear_coefficient_stability_summary,
     baseline_nonlinear_regularization_path,
@@ -104,6 +105,55 @@ def test_baseline_component_attribution_exposes_nonlinear_liquidity_dominance() 
         "replenishment_inverse",
     }
     assert attribution["contribution_share"].sum() == pytest.approx(1.0)
+
+
+def test_baseline_nonlinear_stress_surface_localizes_convex_stress_lift() -> None:
+    books = simulate_order_books(SimulationConfig(rows=960, seed=82))
+    features = compute_features(books)
+    features["raw_imbalance"] = (
+        0.14 * features["spread_ticks"].to_numpy(dtype=float) ** 2
+        - 0.34 * features["volatility"].to_numpy(dtype=float) ** 2
+        + 0.22 * features["liquidity_void_ratio"].to_numpy(dtype=float)
+        * features["volatility"].to_numpy(dtype=float)
+    )
+
+    surface = baseline_nonlinear_stress_surface(
+        features,
+        train_fraction=0.55,
+        stress_cols=("spread_ticks", "volatility"),
+        bins=3,
+        ridge=1e-8,
+    )
+    high_stress = surface[(surface["spread_ticks_bin"] == "high") & (surface["volatility_bin"] == "high")]
+
+    assert surface.columns.tolist() == [
+        "stress_cell",
+        "spread_ticks_bin",
+        "volatility_bin",
+        "rows",
+        "row_share",
+        "core_rmse",
+        "nonlinear_rmse",
+        "rmse_lift_vs_core",
+        "core_residual_mean",
+        "nonlinear_residual_mean",
+        "surface_label",
+    ]
+    assert set(surface["surface_label"]) <= {"nonlinear_supported", "neutral", "nonlinear_fragile"}
+    assert surface["row_share"].sum() == pytest.approx(1.0)
+    assert not high_stress.empty
+    assert high_stress.iloc[0]["rmse_lift_vs_core"] > 0.80
+    assert high_stress.iloc[0]["surface_label"] == "nonlinear_supported"
+
+
+def test_baseline_nonlinear_stress_surface_rejects_invalid_configuration() -> None:
+    books = simulate_order_books(SimulationConfig(rows=120, seed=83))
+    features = compute_features(books)
+
+    with pytest.raises(ValueError, match="bins must be an integer greater than 1"):
+        baseline_nonlinear_stress_surface(features, bins=1)
+    with pytest.raises(ValueError, match="stress_cols must contain exactly two column names"):
+        baseline_nonlinear_stress_surface(features, stress_cols=("spread_ticks",))
 
 
 def test_baseline_nonlinear_coefficient_stability_flags_sign_stable_stress_terms() -> None:

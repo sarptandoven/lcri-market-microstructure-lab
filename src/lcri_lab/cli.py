@@ -73,6 +73,7 @@ from lcri_lab.evaluation import (
 )
 from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.baseline import (
+    baseline_nonlinear_stress_surface,
     baseline_regime_basis_comparison,
     baseline_regime_publishability_summary,
     baseline_stress_residual_drift,
@@ -923,6 +924,12 @@ def run_demo(
         feature="liquidity_void_x_volatility",
         train_fraction=train_frac,
     )
+    baseline_nonlinear_surface = baseline_nonlinear_stress_surface(
+        scored,
+        train_fraction=train_frac,
+        stress_cols=("spread_ticks", "volatility"),
+        bins=3,
+    )
 
     artifact_paths = [
         "lcri-model.json",
@@ -934,6 +941,7 @@ def run_demo(
         "baseline_regime_publishability_summary.json",
         "baseline_tail_lift_diagnostics.csv",
         "baseline_stress_residual_drift.csv",
+        "baseline_nonlinear_stress_surface.csv",
         "regime_metrics.csv",
         "heldout_regime_metrics.csv",
         "regime_generalization_gap.csv",
@@ -1166,6 +1174,7 @@ def run_demo(
     )
     baseline_tail_lift.to_csv(output / "baseline_tail_lift_diagnostics.csv", index=False)
     baseline_residual_drift.to_csv(output / "baseline_stress_residual_drift.csv", index=False)
+    baseline_nonlinear_surface.to_csv(output / "baseline_nonlinear_stress_surface.csv", index=False)
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
     heldout_by_regime.to_csv(output / "heldout_regime_metrics.csv", index=False)
     regime_gap.to_csv(output / "regime_generalization_gap.csv", index=False)
