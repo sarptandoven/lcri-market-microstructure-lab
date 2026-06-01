@@ -362,6 +362,7 @@ def test_public_api_exports_execution_adjusted_queue_fill_tools() -> None:
     assert callable(lcri_lab.queue_position_calibration_drift)
     assert callable(lcri_lab.queue_position_calibration_residual_summary)
     assert callable(lcri_lab.queue_position_edge_decay)
+    assert callable(lcri_lab.queue_position_latency_regime_surface)
     assert callable(lcri_lab.queue_position_execution_readiness_scorecard)
     assert callable(lcri_lab.queue_position_execution_quality_gate)
     assert "FillProbabilityConfig" in lcri_lab.__all__
@@ -384,5 +385,6 @@ def test_public_api_exports_execution_adjusted_queue_fill_tools() -> None:
     assert "queue_position_calibration_drift" in lcri_lab.__all__
     assert "queue_position_calibration_residual_summary" in lcri_lab.__all__
     assert "queue_position_edge_decay" in lcri_lab.__all__
+    assert "queue_position_latency_regime_surface" in lcri_lab.__all__
     assert "queue_position_execution_readiness_scorecard" in lcri_lab.__all__
     assert "queue_position_execution_quality_gate" in lcri_lab.__all__

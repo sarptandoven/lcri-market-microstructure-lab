@@ -60,6 +60,7 @@ from lcri_lab.execution import (
     queue_position_expected_value_policy_scorecard,
     queue_position_expected_value_stress_table,
     queue_position_latency_sensitivity,
+    queue_position_latency_regime_surface,
     queue_position_regime_fraction_sweep,
 )
 
@@ -3395,3 +3396,46 @@ def test_execution_adjusted_lcri_event_window_attribution_rejects_missing_regime
         ValueError, match="missing execution-adjusted LCRI event-window attribution columns"
     ):
         execution_adjusted_lcri_event_window_attribution(pd.DataFrame({"lcri": [1.0]}))
+
+
+def test_queue_position_latency_regime_surface_segments_decision_regimes() -> None:
+    frame = pd.DataFrame(
+        {
+            "event_window_regime": ["pre", "pre", "post", "post"],
+            "symbol": ["A", "A", "A", "A"],
+            "best_execution_side": ["long", "short", "long", "abstain"],
+            "bid_fill_probability": [0.70, 0.40, 0.80, 0.10],
+            "ask_fill_probability": [0.20, 0.60, 0.30, 0.10],
+            "bid_realized_fill": [1.0, 0.0, 0.0, 1.0],
+            "ask_realized_fill": [0.0, 1.0, 1.0, 0.0],
+            "execution_adjusted_edge_ticks": [0.50, 0.30, 0.20, -0.10],
+        }
+    )
+
+    surface = queue_position_latency_regime_surface(
+        frame,
+        regime_col="event_window_regime",
+        group_cols="symbol",
+        latencies=(0, 1),
+        max_realized_fill_decay=0.25,
+    )
+
+    assert surface["event_window_regime"].tolist() == ["post", "post", "pre", "pre"]
+    assert surface["latency_steps"].tolist() == [0, 1, 0, 1]
+    assert surface["candidates"].tolist() == [1, 1, 2, 2]
+    assert surface["realized_fill_rate"].tolist() == pytest.approx([0.0, 1.0, 1.0, 0.5])
+    assert surface["realized_fill_gap_vs_immediate"].tolist() == pytest.approx([0.0, 1.0, 0.0, -0.5])
+    assert surface["mean_decision_fill_probability"].tolist() == pytest.approx(
+        [0.8, 0.8, 0.65, 0.65]
+    )
+    assert surface["latency_regime_label"].tolist() == [
+        "anchor_latency",
+        "latency_robust",
+        "anchor_latency",
+        "latency_fragile",
+    ]
+
+
+def test_queue_position_latency_regime_surface_requires_regime_column() -> None:
+    with pytest.raises(ValueError, match="missing queue position latency regime surface columns"):
+        queue_position_latency_regime_surface(pd.DataFrame({"best_execution_side": ["long"]}))

@@ -136,6 +136,7 @@ from lcri_lab.execution import (
     queue_position_fill_calibration_surface,
     queue_position_fill_surface,
     queue_position_fraction_sweep,
+    queue_position_latency_regime_surface,
     queue_position_regime_capacity_concentration,
     queue_position_regime_capacity_frontier,
     queue_position_regime_capacity_stability,
@@ -716,6 +717,10 @@ def run_demo(
         heldout_passive_fill_labeled,
         regime_col="pressure_memory_decay_state",
     )
+    queue_latency_regime_surface = queue_position_latency_regime_surface(passive_fill_labeled)
+    heldout_queue_latency_regime_surface = queue_position_latency_regime_surface(
+        heldout_passive_fill_labeled
+    )
     queue_fraction_sweep = queue_position_fraction_sweep(scored)
     heldout_queue_fraction_sweep = queue_position_fraction_sweep(heldout_scored)
     queue_regime_fraction_sweep = queue_position_regime_fraction_sweep(
@@ -1060,6 +1065,8 @@ def run_demo(
         "heldout_queue_position_fill_surface.csv",
         "queue_position_fill_calibration_surface.csv",
         "heldout_queue_position_fill_calibration_surface.csv",
+        "queue_position_latency_regime_surface.csv",
+        "heldout_queue_position_latency_regime_surface.csv",
         "queue_position_fraction_sweep.csv",
         "heldout_queue_position_fraction_sweep.csv",
         "queue_position_regime_fraction_sweep.csv",
@@ -1423,6 +1430,12 @@ def run_demo(
     )
     heldout_queue_fill_calibration_surface.to_csv(
         output / "heldout_queue_position_fill_calibration_surface.csv", index=False
+    )
+    queue_latency_regime_surface.to_csv(
+        output / "queue_position_latency_regime_surface.csv", index=False
+    )
+    heldout_queue_latency_regime_surface.to_csv(
+        output / "heldout_queue_position_latency_regime_surface.csv", index=False
     )
     queue_fraction_sweep.to_csv(output / "queue_position_fraction_sweep.csv", index=False)
     heldout_queue_fraction_sweep.to_csv(

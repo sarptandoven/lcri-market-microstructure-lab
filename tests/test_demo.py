@@ -153,6 +153,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_queue_position_fill_surface.csv").exists()
     assert (tmp_path / "queue_position_fill_calibration_surface.csv").exists()
     assert (tmp_path / "heldout_queue_position_fill_calibration_surface.csv").exists()
+    assert (tmp_path / "queue_position_latency_regime_surface.csv").exists()
+    assert (tmp_path / "heldout_queue_position_latency_regime_surface.csv").exists()
     assert (tmp_path / "queue_position_fraction_sweep.csv").exists()
     assert (tmp_path / "heldout_queue_position_fraction_sweep.csv").exists()
     assert (tmp_path / "queue_position_regime_fraction_sweep.csv").exists()
@@ -526,6 +528,15 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "edge_decay_ticks",
         "queue_decay_label",
     }.issubset(edge_decay_columns)
+    latency_regime_columns = set(
+        pd.read_csv(tmp_path / "queue_position_latency_regime_surface.csv", nrows=1).columns
+    )
+    assert {
+        "passive_fill_event_window_regime",
+        "latency_steps",
+        "realized_fill_gap_vs_immediate",
+        "latency_regime_label",
+    }.issubset(latency_regime_columns)
     assert metadata_summary["artifacts_with_metadata"] > 0
     assert metadata_summary["total_size_bytes"] > 0
     assert metadata_summary["largest_artifact"] != "none"
@@ -618,6 +629,13 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["heldout_passive_fill_threshold_policy_curve.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["queue_position_fill_surface.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_queue_position_fill_surface.csv"]["size_bytes"] > 0
+    assert manifest["artifact_metadata"]["queue_position_latency_regime_surface.csv"]["size_bytes"] > 0
+    assert (
+        manifest["artifact_metadata"]["heldout_queue_position_latency_regime_surface.csv"][
+            "size_bytes"
+        ]
+        > 0
+    )
     assert manifest["artifact_metadata"]["queue_position_fraction_sweep.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_queue_position_fraction_sweep.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["queue_position_regime_fraction_sweep.csv"]["size_bytes"] > 0

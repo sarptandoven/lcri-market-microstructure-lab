@@ -169,6 +169,10 @@ surfaces without opening every file:
   comparison with queue-depth, edge, tradable-share, and side-stability labels.
 - `queue_position_edge_decay.csv`: regime-level queue-depth decay summary for fill
   rate, calibration error widening, and execution-adjusted edge.
+- `queue_position_latency_regime_surface.csv`: passive-fill event-window x
+  decision-latency surface that keeps the decision side fixed and measures whether
+  realized fills decay when queue decisions are delayed by later snapshots. Heldout
+  runs emit the same schema with a `heldout_` prefix.
 - `lcri_uncertainty_weighted_review_priority.csv`: owner-review queue that
   combines contradiction packet priority with CI coverage width, CI/gate
   disagreement counts, and fragility uncertainty.

@@ -7347,6 +7347,138 @@ def queue_position_latency_sensitivity(
     return pd.DataFrame(rows, columns=columns)
 
 
+def queue_position_latency_regime_surface(
+    frame: pd.DataFrame,
+    *,
+    regime_col: str = "passive_fill_event_window_regime",
+    latencies: list[int] | tuple[int, ...] = (0, 1, 2, 5),
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    side_col: str = "best_execution_side",
+    bid_realized_col: str = "bid_realized_fill",
+    ask_realized_col: str = "ask_realized_fill",
+    edge_col: str = "execution_adjusted_edge_ticks",
+    max_realized_fill_decay: float = 0.10,
+) -> pd.DataFrame:
+    """Measure latency-driven passive-fill decay inside decision-time regimes.
+
+    ``queue_position_latency_sensitivity`` gives one aggregate curve. This surface
+    preserves the regime observed when the quote decision was made (for example a
+    passive-fill event-window label), then replays selected-side realized fills at
+    future snapshot latencies within each symbol/session group. The output is a
+    compact reviewer artifact for spotting regimes where nominal execution alpha
+    only works with zero-latency queue state.
+    """
+    columns = [
+        regime_col,
+        "latency_steps",
+        "candidates",
+        "long_candidates",
+        "short_candidates",
+        "mean_decision_fill_probability",
+        "realized_fill_rate",
+        "realized_fill_gap_vs_immediate",
+        "mean_execution_adjusted_edge_ticks",
+        "latency_regime_label",
+    ]
+    if not latencies:
+        raise ValueError("latencies must be a non-empty sequence")
+    if any(not isinstance(latency, int) or isinstance(latency, bool) or latency < 0 for latency in latencies):
+        raise ValueError("latencies must be non-negative integers")
+    if len(set(latencies)) != len(latencies):
+        raise ValueError("latencies must be unique")
+    if not math.isfinite(max_realized_fill_decay) or max_realized_fill_decay < 0.0:
+        raise ValueError("max_realized_fill_decay must be finite and non-negative")
+
+    required = {
+        regime_col,
+        side_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        bid_realized_col,
+        ask_realized_col,
+        edge_col,
+    }
+    _require_columns(frame, required, "queue position latency regime surface")
+    grouping_columns = _normalize_group_columns(frame, group_cols, "queue position latency regime surface group")
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    values = _finite_values(
+        frame,
+        ["bid_fill_probability", "ask_fill_probability", bid_realized_col, ask_realized_col, edge_col],
+        "queue position latency regime surface",
+    )
+    sides = frame[side_col].astype(str)
+    regimes = frame[regime_col].astype(str)
+    tradable = sides.isin({"long", "short"})
+    decision_fill_probability = pd.Series(
+        np.select(
+            [sides == "long", sides == "short"],
+            [values["bid_fill_probability"], values["ask_fill_probability"]],
+            default=np.nan,
+        ),
+        index=frame.index,
+    )
+
+    def latency_realized(column: str, latency: int) -> pd.Series:
+        if latency == 0:
+            return values[column]
+        if not grouping_columns:
+            return values[column].shift(-latency)
+        keys = [frame[group_col] for group_col in grouping_columns]
+        return values[column].groupby(keys, sort=False, dropna=False).shift(-latency)
+
+    rows: list[dict[str, float | int | str]] = []
+    for regime in sorted(regimes.unique()):
+        regime_mask = regimes == regime
+        anchor_fill_rate: float | None = None
+        for latency in sorted(latencies):
+            bid_realized = latency_realized(bid_realized_col, latency)
+            ask_realized = latency_realized(ask_realized_col, latency)
+            selected_realized = pd.Series(
+                np.select(
+                    [sides == "long", sides == "short"],
+                    [bid_realized, ask_realized],
+                    default=np.nan,
+                ),
+                index=frame.index,
+            )
+            mask = regime_mask & tradable & selected_realized.notna()
+            candidates = int(mask.sum())
+            if candidates == 0:
+                fill_rate = 0.0
+                mean_probability = 0.0
+                mean_edge = 0.0
+            else:
+                fill_rate = float(selected_realized[mask].mean())
+                mean_probability = float(decision_fill_probability[mask].mean())
+                mean_edge = float(values.loc[mask, edge_col].mean())
+            if anchor_fill_rate is None:
+                anchor_fill_rate = fill_rate
+            gap = fill_rate - anchor_fill_rate
+            if latency == 0:
+                label = "anchor_latency"
+            elif gap < -max_realized_fill_decay:
+                label = "latency_fragile"
+            else:
+                label = "latency_robust"
+            rows.append(
+                {
+                    regime_col: str(regime),
+                    "latency_steps": int(latency),
+                    "candidates": candidates,
+                    "long_candidates": int(((sides == "long") & mask).sum()),
+                    "short_candidates": int(((sides == "short") & mask).sum()),
+                    "mean_decision_fill_probability": mean_probability,
+                    "realized_fill_rate": fill_rate,
+                    "realized_fill_gap_vs_immediate": float(gap),
+                    "mean_execution_adjusted_edge_ticks": mean_edge,
+                    "latency_regime_label": label,
+                }
+            )
+    return pd.DataFrame(rows, columns=columns)
+
+
 def execution_publishability_review_packet(frame: pd.DataFrame) -> pd.DataFrame:
     """Aggregate pre/post-execution publishability conflicts for review.
 
