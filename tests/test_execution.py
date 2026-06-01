@@ -29,6 +29,8 @@ from lcri_lab.execution import (
     passive_fill_event_policy_stability_scorecard,
     passive_fill_event_toxicity_scorecard,
     passive_fill_event_window_sensitivity,
+    passive_fill_event_window_transition_matrix,
+    passive_fill_event_window_transition_scorecard,
     passive_fill_event_transition_policy_curve,
     passive_fill_event_transition_scorecard,
     passive_fill_event_transition_summary,
@@ -4263,3 +4265,114 @@ def test_queue_position_path_risk_release_gate_passes_stable_paths() -> None:
 def test_queue_position_path_risk_release_gate_rejects_missing_columns() -> None:
     with pytest.raises(ValueError, match="missing queue position path risk release gate columns"):
         queue_position_path_risk_release_gate(pd.DataFrame({"path_id": ["overall"]}))
+
+
+def test_passive_fill_event_window_transition_matrix_tracks_edge_decay_by_regime_path() -> None:
+    frame = pd.DataFrame(
+        {
+            "session": ["A", "A", "A", "B", "B"],
+            "passive_fill_event_window_regime": ["pre_event", "event", "post_event", "event", "calm"],
+            "passive_fill_event_side": ["long", "long", "long", "short", "none"],
+            "passive_fill_event_toxicity_probability": [0.20, 0.40, 0.80, 0.10, 0.00],
+            "execution_adjusted_edge_ticks": [0.60, 0.20, -0.40, 0.50, 0.10],
+        }
+    )
+
+    matrix = passive_fill_event_window_transition_matrix(frame, group_cols="session")
+
+    assert matrix["from_passive_fill_event_window_regime"].tolist() == [
+        "event",
+        "pre_event",
+        "event",
+    ]
+    assert matrix["to_passive_fill_event_window_regime"].tolist() == [
+        "post_event",
+        "event",
+        "calm",
+    ]
+    assert matrix["rows"].tolist() == [1, 1, 1]
+    assert matrix["transition_share"].tolist() == pytest.approx([1 / 3, 1 / 3, 1 / 3])
+    assert matrix["mean_edge_delta_ticks"].tolist() == pytest.approx([-0.60, -0.40, -0.40])
+    assert matrix["to_negative_edge_share"].tolist() == pytest.approx([1.0, 0.0, 0.0])
+    assert matrix["mean_to_passive_fill_event_toxicity_probability"].tolist() == pytest.approx(
+        [0.80, 0.40, 0.00]
+    )
+    assert matrix["dominant_to_passive_fill_event_side"].tolist() == ["long", "long", "none"]
+
+
+def test_passive_fill_event_window_transition_matrix_respects_group_boundaries() -> None:
+    frame = pd.DataFrame(
+        {
+            "session": ["A", "B"],
+            "passive_fill_event_window_regime": ["pre_event", "post_event"],
+            "passive_fill_event_side": ["long", "short"],
+            "passive_fill_event_toxicity_probability": [0.20, 0.90],
+            "execution_adjusted_edge_ticks": [0.60, -0.40],
+        }
+    )
+
+    matrix = passive_fill_event_window_transition_matrix(frame, group_cols="session")
+
+    assert matrix.empty
+
+
+def test_passive_fill_event_window_transition_scorecard_blocks_toxic_decay_paths() -> None:
+    matrix = pd.DataFrame(
+        {
+            "from_passive_fill_event_window_regime": ["event", "pre_event", "event"],
+            "to_passive_fill_event_window_regime": ["post_event", "event", "calm"],
+            "rows": [18, 10, 2],
+            "transition_share": [0.60, 0.33, 0.07],
+            "mean_from_execution_adjusted_edge_ticks": [0.25, 0.60, 0.15],
+            "mean_to_execution_adjusted_edge_ticks": [-0.30, 0.20, 0.05],
+            "mean_edge_delta_ticks": [-0.55, -0.40, -0.10],
+            "to_negative_edge_share": [0.72, 0.10, 0.00],
+            "mean_to_passive_fill_event_toxicity_probability": [0.81, 0.35, 0.05],
+            "dominant_to_passive_fill_event_side": ["long", "long", "none"],
+        }
+    )
+
+    scorecard = passive_fill_event_window_transition_scorecard(matrix)
+
+    assert scorecard["transition_release_label"] == "block"
+    assert scorecard["worst_transition_path"] == "event->post_event"
+    assert scorecard["worst_path_rows"] == 18
+    assert scorecard["worst_path_transition_share"] == pytest.approx(0.60)
+    assert scorecard["worst_path_mean_edge_delta_ticks"] == pytest.approx(-0.55)
+    assert scorecard["worst_path_to_negative_edge_share"] == pytest.approx(0.72)
+    assert scorecard["worst_path_to_toxicity_probability"] == pytest.approx(0.81)
+    assert scorecard["blocking_reasons"] == "toxic_event_post_event_decay"
+    assert scorecard["review_reasons"] == "none"
+
+
+def test_passive_fill_event_window_transition_scorecard_reviews_moderate_decay() -> None:
+    matrix = pd.DataFrame(
+        {
+            "from_passive_fill_event_window_regime": ["pre_event"],
+            "to_passive_fill_event_window_regime": ["event"],
+            "rows": [12],
+            "transition_share": [1.0],
+            "mean_from_execution_adjusted_edge_ticks": [0.50],
+            "mean_to_execution_adjusted_edge_ticks": [0.18],
+            "mean_edge_delta_ticks": [-0.32],
+            "to_negative_edge_share": [0.25],
+            "mean_to_passive_fill_event_toxicity_probability": [0.62],
+            "dominant_to_passive_fill_event_side": ["short"],
+        }
+    )
+
+    scorecard = passive_fill_event_window_transition_scorecard(matrix)
+
+    assert scorecard["transition_release_label"] == "review"
+    assert scorecard["worst_transition_path"] == "pre_event->event"
+    assert scorecard["blocking_reasons"] == "none"
+    assert scorecard["review_reasons"] == "meaningful_transition_edge_decay"
+
+
+def test_passive_fill_event_window_transition_scorecard_passes_empty_matrix() -> None:
+    scorecard = passive_fill_event_window_transition_scorecard(pd.DataFrame())
+
+    assert scorecard["transition_release_label"] == "pass"
+    assert scorecard["observed_transition_paths"] == 0
+    assert scorecard["total_transition_rows"] == 0
+    assert scorecard["worst_transition_path"] == "none"

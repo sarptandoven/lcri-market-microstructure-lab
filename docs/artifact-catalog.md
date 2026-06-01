@@ -150,6 +150,14 @@ surfaces without opening every file:
 - `passive_fill_event_window_sensitivity.csv`: threshold x window stress surface
   that reruns event-window diagnostics, regime summaries, and toxicity gates to
   separate robust passive-fill toxicity from hyperparameter artifacts.
+- `passive_fill_event_window_transition_matrix.csv`: row-level event-window regime
+  transition matrix for the scored frame, reporting edge decay, next-state
+  toxicity, and negative-edge share for paths such as pre_event→event and
+  event→post_event; heldout runs emit the same schema with a `heldout_` prefix.
+- `passive_fill_event_window_transition_scorecard.json`: compact release gate for
+  the transition matrix that blocks toxic event→post_event decay and otherwise
+  reports worst-path, candidate-weighted edge decay, negative-edge share, and
+  next-state toxicity. Heldout runs emit the same schema with a `heldout_` prefix.
 - `passive_fill_event_transition_summary.csv`: transition-path aggregation of
   passive-fill event toxicity, highlighting boundary states such as calm→thin or
   thin→stress where fills may become adverse despite high predicted fill odds.

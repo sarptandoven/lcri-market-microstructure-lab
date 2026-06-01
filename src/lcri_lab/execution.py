@@ -4940,6 +4940,311 @@ def passive_fill_event_window_regime_summary(
     )
 
 
+def _empty_passive_fill_event_window_transition_matrix() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "from_passive_fill_event_window_regime",
+            "to_passive_fill_event_window_regime",
+            "rows",
+            "transition_share",
+            "mean_from_execution_adjusted_edge_ticks",
+            "mean_to_execution_adjusted_edge_ticks",
+            "mean_edge_delta_ticks",
+            "to_negative_edge_share",
+            "mean_to_passive_fill_event_toxicity_probability",
+            "dominant_to_passive_fill_event_side",
+        ]
+    )
+
+
+def passive_fill_event_window_transition_matrix(
+    frame: pd.DataFrame,
+    *,
+    regime_col: str = "passive_fill_event_window_regime",
+    event_side_col: str = "passive_fill_event_side",
+    toxicity_probability_col: str = "passive_fill_event_toxicity_probability",
+    edge_col: str = "execution_adjusted_edge_ticks",
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+) -> pd.DataFrame:
+    """Summarize one-step passive-fill event-window regime transitions.
+
+    Event-window aggregates can hide the path that produced fragility: pre-event
+    buildup may decay smoothly into events, while event-to-post-event paths often
+    reveal adverse selection after fills become available. This transition matrix
+    keeps the chronology intact by shifting regimes only within optional symbol,
+    venue, or session groups, then reports edge decay, next-state toxicity, and
+    dominant destination side for each observed path.
+    """
+    columns = list(_empty_passive_fill_event_window_transition_matrix().columns)
+    if frame.empty:
+        return _empty_passive_fill_event_window_transition_matrix()
+    grouping_columns = _normalize_group_columns(
+        frame, group_cols, "passive fill event window transition matrix group"
+    )
+    required = {regime_col, event_side_col, toxicity_probability_col, edge_col}
+    _require_columns(frame, required, "passive fill event window transition matrix")
+    values = _finite_values(
+        frame,
+        [toxicity_probability_col, edge_col],
+        "passive fill event window transition matrix",
+    )
+    data = frame[[regime_col, event_side_col]].copy()
+    data[toxicity_probability_col] = values[toxicity_probability_col]
+    data[edge_col] = values[edge_col]
+
+    if grouping_columns:
+        keys = [frame[group_col] for group_col in grouping_columns]
+        data["to_regime"] = data[regime_col].groupby(keys, sort=False, dropna=False).shift(-1)
+        data["to_side"] = data[event_side_col].groupby(keys, sort=False, dropna=False).shift(-1)
+        data["to_toxicity"] = data[toxicity_probability_col].groupby(
+            keys, sort=False, dropna=False
+        ).shift(-1)
+        data["to_edge"] = data[edge_col].groupby(keys, sort=False, dropna=False).shift(-1)
+    else:
+        data["to_regime"] = data[regime_col].shift(-1)
+        data["to_side"] = data[event_side_col].shift(-1)
+        data["to_toxicity"] = data[toxicity_probability_col].shift(-1)
+        data["to_edge"] = data[edge_col].shift(-1)
+
+    transitions = data.dropna(subset=["to_regime", "to_side", "to_toxicity", "to_edge"]).copy()
+    if transitions.empty:
+        return _empty_passive_fill_event_window_transition_matrix()
+    transitions["edge_delta"] = transitions["to_edge"] - transitions[edge_col]
+    total_transitions = float(len(transitions))
+    rows: list[dict[str, float | int | str]] = []
+    for (from_regime, to_regime), group in transitions.groupby([regime_col, "to_regime"], sort=True):
+        side_counts = group["to_side"].astype(str).value_counts()
+        dominant_side = "none" if side_counts.empty else str(side_counts.idxmax())
+        rows.append(
+            {
+                "from_passive_fill_event_window_regime": str(from_regime),
+                "to_passive_fill_event_window_regime": str(to_regime),
+                "rows": int(len(group)),
+                "transition_share": float(len(group)) / total_transitions if total_transitions else 0.0,
+                "mean_from_execution_adjusted_edge_ticks": float(group[edge_col].mean()),
+                "mean_to_execution_adjusted_edge_ticks": float(group["to_edge"].mean()),
+                "mean_edge_delta_ticks": float(group["edge_delta"].mean()),
+                "to_negative_edge_share": float((group["to_edge"] < 0.0).sum()) / float(len(group)),
+                "mean_to_passive_fill_event_toxicity_probability": float(group["to_toxicity"].mean()),
+                "dominant_to_passive_fill_event_side": dominant_side,
+            }
+        )
+    return (
+        pd.DataFrame(rows)[columns]
+        .sort_values(
+            [
+                "to_negative_edge_share",
+                "mean_to_passive_fill_event_toxicity_probability",
+                "mean_edge_delta_ticks",
+                "rows",
+            ],
+            ascending=[False, False, True, False],
+        )
+        .reset_index(drop=True)
+    )
+
+
+def _empty_passive_fill_event_window_transition_scorecard() -> dict[str, float | int | str]:
+    return {
+        "observed_transition_paths": 0,
+        "total_transition_rows": 0,
+        "eligible_transition_paths": 0,
+        "blocked_transition_paths": 0,
+        "review_transition_paths": 0,
+        "worst_transition_path": "none",
+        "worst_path_rows": 0,
+        "worst_path_transition_share": 0.0,
+        "worst_path_mean_edge_delta_ticks": 0.0,
+        "worst_path_to_negative_edge_share": 0.0,
+        "worst_path_to_toxicity_probability": 0.0,
+        "candidate_weighted_mean_edge_delta_ticks": 0.0,
+        "candidate_weighted_to_negative_edge_share": 0.0,
+        "candidate_weighted_to_toxicity_probability": 0.0,
+        "transition_release_label": "pass",
+        "blocking_reasons": "none",
+        "review_reasons": "none",
+    }
+
+
+def passive_fill_event_window_transition_scorecard(
+    transition_matrix: pd.DataFrame,
+    *,
+    min_transition_rows: int = 1,
+    block_event_post_delta_ticks: float = -0.50,
+    block_negative_edge_share: float = 0.60,
+    block_toxicity_probability: float = 0.75,
+    review_edge_delta_ticks: float = -0.25,
+    review_negative_edge_share: float = 0.40,
+    review_toxicity_probability: float = 0.60,
+) -> dict[str, float | int | str]:
+    """Gate event-window transition decay before publishing passive-fill evidence.
+
+    Static event-window buckets can look acceptable while the chronological path
+    from executable rows into post-event rows loses edge immediately. This compact
+    scorecard turns the transition matrix into a release label, emphasizing the
+    economically important event→post_event path while still surfacing broader
+    transition-level edge decay for reviewer triage.
+    """
+    if not isinstance(min_transition_rows, int) or isinstance(min_transition_rows, bool):
+        raise ValueError("min_transition_rows must be a positive integer")
+    if min_transition_rows < 1:
+        raise ValueError("min_transition_rows must be a positive integer")
+    for name, value in {
+        "block_event_post_delta_ticks": block_event_post_delta_ticks,
+        "review_edge_delta_ticks": review_edge_delta_ticks,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    for name, value in {
+        "block_negative_edge_share": block_negative_edge_share,
+        "block_toxicity_probability": block_toxicity_probability,
+        "review_negative_edge_share": review_negative_edge_share,
+        "review_toxicity_probability": review_toxicity_probability,
+    }.items():
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be finite and between 0 and 1")
+    if transition_matrix.empty:
+        return _empty_passive_fill_event_window_transition_scorecard()
+
+    required = {
+        "from_passive_fill_event_window_regime",
+        "to_passive_fill_event_window_regime",
+        "rows",
+        "transition_share",
+        "mean_edge_delta_ticks",
+        "to_negative_edge_share",
+        "mean_to_passive_fill_event_toxicity_probability",
+    }
+    _require_columns(
+        transition_matrix,
+        required,
+        "passive fill event window transition scorecard",
+    )
+    numeric_columns = [
+        "rows",
+        "transition_share",
+        "mean_edge_delta_ticks",
+        "to_negative_edge_share",
+        "mean_to_passive_fill_event_toxicity_probability",
+    ]
+    values = _finite_values(
+        transition_matrix,
+        numeric_columns,
+        "passive fill event window transition scorecard",
+    )
+    if (values["rows"] < 0.0).any():
+        raise ValueError("passive fill event window transition scorecard rows must be non-negative")
+    data = values.copy()
+    data["from_regime"] = transition_matrix["from_passive_fill_event_window_regime"].astype(str)
+    data["to_regime"] = transition_matrix["to_passive_fill_event_window_regime"].astype(str)
+    data["transition_path"] = data["from_regime"] + "->" + data["to_regime"]
+    total_rows = int(data["rows"].sum())
+    if total_rows == 0:
+        scorecard = _empty_passive_fill_event_window_transition_scorecard()
+        scorecard["observed_transition_paths"] = int(len(transition_matrix))
+        return scorecard
+
+    eligible = data[data["rows"] >= float(min_transition_rows)].copy()
+    weights = data["rows"] / float(total_rows)
+    if eligible.empty:
+        scorecard = _empty_passive_fill_event_window_transition_scorecard()
+        scorecard.update(
+            {
+                "observed_transition_paths": int(len(transition_matrix)),
+                "total_transition_rows": total_rows,
+                "candidate_weighted_mean_edge_delta_ticks": float(
+                    (data["mean_edge_delta_ticks"] * weights).sum()
+                ),
+                "candidate_weighted_to_negative_edge_share": float(
+                    (data["to_negative_edge_share"] * weights).sum()
+                ),
+                "candidate_weighted_to_toxicity_probability": float(
+                    (
+                        data["mean_to_passive_fill_event_toxicity_probability"]
+                        * weights
+                    ).sum()
+                ),
+                "transition_release_label": "review",
+                "review_reasons": "insufficient_transition_rows",
+            }
+        )
+        return scorecard
+
+    event_post = eligible[
+        (eligible["from_regime"] == "event") & (eligible["to_regime"] == "post_event")
+    ]
+    toxic_event_post = event_post[
+        (event_post["mean_edge_delta_ticks"] <= block_event_post_delta_ticks)
+        & (event_post["to_negative_edge_share"] >= block_negative_edge_share)
+        & (
+            event_post["mean_to_passive_fill_event_toxicity_probability"]
+            >= block_toxicity_probability
+        )
+    ]
+    review_paths = eligible[
+        (eligible["mean_edge_delta_ticks"] <= review_edge_delta_ticks)
+        | (eligible["to_negative_edge_share"] >= review_negative_edge_share)
+        | (
+            eligible["mean_to_passive_fill_event_toxicity_probability"]
+            >= review_toxicity_probability
+        )
+    ]
+    if not toxic_event_post.empty:
+        worst_idx = toxic_event_post.sort_values(
+            [
+                "mean_edge_delta_ticks",
+                "to_negative_edge_share",
+                "mean_to_passive_fill_event_toxicity_probability",
+                "rows",
+            ],
+            ascending=[True, False, False, False],
+        ).index[0]
+    else:
+        worst_idx = eligible.sort_values(
+            [
+                "to_negative_edge_share",
+                "mean_to_passive_fill_event_toxicity_probability",
+                "mean_edge_delta_ticks",
+                "rows",
+            ],
+            ascending=[False, False, True, False],
+        ).index[0]
+    blocking_reasons = []
+    if not toxic_event_post.empty:
+        blocking_reasons.append("toxic_event_post_event_decay")
+    review_reasons = []
+    if toxic_event_post.empty and not review_paths.empty:
+        review_reasons.append("meaningful_transition_edge_decay")
+    label = "block" if blocking_reasons else "review" if review_reasons else "pass"
+
+    return {
+        "observed_transition_paths": int(len(transition_matrix)),
+        "total_transition_rows": total_rows,
+        "eligible_transition_paths": int(len(eligible)),
+        "blocked_transition_paths": int(len(toxic_event_post)),
+        "review_transition_paths": int(len(review_paths)),
+        "worst_transition_path": str(data.loc[worst_idx, "transition_path"]),
+        "worst_path_rows": int(data.loc[worst_idx, "rows"]),
+        "worst_path_transition_share": float(data.loc[worst_idx, "transition_share"]),
+        "worst_path_mean_edge_delta_ticks": float(data.loc[worst_idx, "mean_edge_delta_ticks"]),
+        "worst_path_to_negative_edge_share": float(data.loc[worst_idx, "to_negative_edge_share"]),
+        "worst_path_to_toxicity_probability": float(
+            data.loc[worst_idx, "mean_to_passive_fill_event_toxicity_probability"]
+        ),
+        "candidate_weighted_mean_edge_delta_ticks": float(
+            (data["mean_edge_delta_ticks"] * weights).sum()
+        ),
+        "candidate_weighted_to_negative_edge_share": float(
+            (data["to_negative_edge_share"] * weights).sum()
+        ),
+        "candidate_weighted_to_toxicity_probability": float(
+            (data["mean_to_passive_fill_event_toxicity_probability"] * weights).sum()
+        ),
+        "transition_release_label": label,
+        "blocking_reasons": ",".join(blocking_reasons) if blocking_reasons else "none",
+        "review_reasons": ",".join(review_reasons) if review_reasons else "none",
+    }
+
 
 def passive_fill_event_window_diagnostics(
     frame: pd.DataFrame,
