@@ -68,6 +68,38 @@ The best positive side becomes `best_execution_side`. If both fill-adjusted edge
 
 These artifacts make the publishability gate execution-aware instead of only probability/cost-aware: reviewers can see whether nominal alpha survives visible queue position and adverse selection, not just whether it predicts direction.
 
+## Passive fill Brier decomposition
+
+`passive_fill_brier_decomposition` converts the calibration curve into a
+publishability-grade probabilistic forecast audit. It reports the Murphy Brier
+components that identify whether a queue-fill model is failing because it is
+miscalibrated, because it has no regime/queue-position resolution beyond the base
+fill rate, or because it truly adds fill-probability skill:
+
+- `reliability`: calibration penalty; lower is better.
+- `resolution`: separation of queue states from the unconditional fill rate;
+  higher is better when reliability is controlled.
+- `uncertainty`: base-rate fill variance.
+- `brier_skill_score`: improvement versus a constant base-fill-rate model.
+- `calibration_quality_label`: compact review label such as
+  `resolved_calibrated_skill`, `resolved_but_needs_calibration`,
+  `miscalibrated_low_skill`, `worse_than_base_rate`, or `low_resolution`.
+
+```python
+curve = passive_fill_calibration_curve(execution_frame, bins=5)
+decomposition = passive_fill_brier_decomposition(curve)
+```
+
+This matters for execution-aware LCRI because a low average calibration error can
+hide a model that merely tracks the unconditional passive fill rate. The Brier
+decomposition forces queue-position-aware fill claims to demonstrate both
+calibration and resolution. The release gate can consume this decomposition via
+`execution_publishability_release_gate(..., fill_brier_decomposition=decomposition)`:
+`worse_than_base_rate` and `miscalibrated_low_skill` block release, while
+`low_resolution`, `resolved_but_needs_calibration`, and `empty` force explicit
+review instead of allowing a nominally execution-aware demo to pass with weak
+queue-fill forecast evidence.
+
 ## Passive fill edge curve
 
 `passive_fill_edge_curve` provides a small calibration surface for API users and research dashboards. It keeps only rows where `best_execution_side` is `long` or `short`, selects the side-appropriate predicted fill probability, adverse-fill probability, and realized net return, then bins tradable rows by predicted fill quality.

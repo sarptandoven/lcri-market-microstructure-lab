@@ -4465,6 +4465,69 @@ def passive_fill_calibration_summary(curve: pd.DataFrame) -> dict[str, float | i
     }
 
 
+def passive_fill_brier_decomposition(curve: pd.DataFrame) -> dict[str, float | int | str]:
+    """Decompose passive-fill Brier loss into calibration and discrimination terms.
+
+    ``passive_fill_calibration_curve`` already reports per-bin Brier loss. This
+    summary adds the Murphy decomposition reviewers expect for publishable
+    probabilistic forecasts: reliability (calibration penalty), resolution
+    (separation of queue states from the base fill rate), uncertainty (base-rate
+    variance), and Brier skill versus a constant base-rate fill model.
+    """
+    if curve.empty:
+        return _empty_passive_fill_brier_decomposition()
+    required = {
+        "rows",
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+        "brier_score",
+    }
+    _require_columns(curve, required, "passive fill brier decomposition")
+    values = _finite_values(
+        curve,
+        ["rows", "mean_predicted_fill_probability", "realized_fill_rate", "brier_score"],
+        "passive fill brier decomposition",
+    )
+    if (values["rows"] < 0.0).any():
+        raise ValueError("passive fill brier decomposition rows must be non-negative")
+    if not values["mean_predicted_fill_probability"].between(0.0, 1.0).all():
+        raise ValueError("passive fill brier decomposition probabilities must be in [0, 1]")
+    if not values["realized_fill_rate"].between(0.0, 1.0).all():
+        raise ValueError("passive fill brier decomposition fill rates must be in [0, 1]")
+    if (values["brier_score"] < 0.0).any():
+        raise ValueError("passive fill brier decomposition brier scores must be non-negative")
+
+    total_rows = int(values["rows"].sum())
+    if total_rows == 0:
+        return _empty_passive_fill_brier_decomposition()
+    weights = values["rows"] / total_rows
+    predicted = values["mean_predicted_fill_probability"]
+    realized = values["realized_fill_rate"]
+    base_fill_rate = float((realized * weights).sum())
+    weighted_brier = float((values["brier_score"] * weights).sum())
+    uncertainty = float(base_fill_rate * (1.0 - base_fill_rate))
+    reliability = float((((predicted - realized) ** 2) * weights).sum())
+    resolution = float((((realized - base_fill_rate) ** 2) * weights).sum())
+    brier_skill = 0.0 if uncertainty == 0.0 else float(1.0 - weighted_brier / uncertainty)
+    decomposition_error = float(weighted_brier - (reliability - resolution + uncertainty))
+    return {
+        "rows": total_rows,
+        "bins": int(len(curve)),
+        "base_fill_rate": base_fill_rate,
+        "weighted_brier_score": weighted_brier,
+        "uncertainty": uncertainty,
+        "reliability": reliability,
+        "resolution": resolution,
+        "brier_skill_score": brier_skill,
+        "brier_decomposition_error": decomposition_error,
+        "calibration_quality_label": _passive_fill_calibration_quality_label(
+            reliability=reliability,
+            resolution=resolution,
+            brier_skill_score=brier_skill,
+        ),
+    }
+
+
 def event_level_passive_fill_horizon_sweep(
     snapshots: pd.DataFrame,
     events: pd.DataFrame,
@@ -7104,6 +7167,35 @@ def _empty_passive_fill_calibration_summary() -> dict[str, float | int | str]:
     }
 
 
+def _empty_passive_fill_brier_decomposition() -> dict[str, float | int | str]:
+    return {
+        "rows": 0,
+        "bins": 0,
+        "base_fill_rate": 0.0,
+        "weighted_brier_score": 0.0,
+        "uncertainty": 0.0,
+        "reliability": 0.0,
+        "resolution": 0.0,
+        "brier_skill_score": 0.0,
+        "brier_decomposition_error": 0.0,
+        "calibration_quality_label": "empty",
+    }
+
+
+def _passive_fill_calibration_quality_label(
+    *, reliability: float, resolution: float, brier_skill_score: float
+) -> str:
+    if brier_skill_score >= 0.20 and reliability <= 0.02 and resolution >= 0.05:
+        return "resolved_calibrated_skill"
+    if brier_skill_score >= 0.05 and resolution > reliability:
+        return "resolved_but_needs_calibration"
+    if reliability >= 0.05:
+        return "miscalibrated_low_skill"
+    if brier_skill_score < 0.0:
+        return "worse_than_base_rate"
+    return "low_resolution"
+
+
 def _empty_passive_fill_realization_horizon_sweep() -> pd.DataFrame:
     return pd.DataFrame(
         columns=[
@@ -7288,6 +7380,7 @@ def execution_publishability_release_gate(
     regime_capacity_stability: dict[str, float | int | str] | None = None,
     lcri_regime_attribution: pd.DataFrame | None = None,
     latency_sensitivity: pd.DataFrame | None = None,
+    fill_brier_decomposition: dict[str, float | int | str] | None = None,
     max_conflict_share: float = 0.25,
     max_high_priority_conflict_share: float = 0.10,
     min_lcri_regime_survival_share: float = 0.50,
@@ -7449,6 +7542,25 @@ def execution_publishability_release_gate(
                 else "queue_latency_robust"
             )
 
+    fill_calibration_label = "fill_calibration_not_evaluated"
+    fill_brier_skill_score = 0.0
+    fill_calibration_reliability = 0.0
+    fill_calibration_resolution = 0.0
+    if fill_brier_decomposition is not None:
+        fill_calibration_label = str(
+            fill_brier_decomposition.get("calibration_quality_label", "fill_calibration_missing_label")
+        )
+        fill_brier_skill_score = float(fill_brier_decomposition.get("brier_skill_score", 0.0))
+        fill_calibration_reliability = float(fill_brier_decomposition.get("reliability", 0.0))
+        fill_calibration_resolution = float(fill_brier_decomposition.get("resolution", 0.0))
+        for metric_name, metric_value in {
+            "fill_brier_skill_score": fill_brier_skill_score,
+            "fill_calibration_reliability": fill_calibration_reliability,
+            "fill_calibration_resolution": fill_calibration_resolution,
+        }.items():
+            if not math.isfinite(metric_value):
+                raise ValueError(f"{metric_name} must be finite")
+
     blocking_reasons: list[str] = []
     review_reasons: list[str] = []
     if total_rows == 0:
@@ -7475,6 +7587,15 @@ def execution_publishability_release_gate(
         blocking_reasons.append(latency_label)
     elif latency_label == "queue_latency_insufficient_evidence":
         review_reasons.append(latency_label)
+    if fill_calibration_label in {"worse_than_base_rate", "miscalibrated_low_skill"}:
+        blocking_reasons.append(fill_calibration_label)
+    elif fill_calibration_label in {
+        "empty",
+        "fill_calibration_missing_label",
+        "low_resolution",
+        "resolved_but_needs_calibration",
+    }:
+        review_reasons.append(fill_calibration_label)
 
     if blocking_reasons:
         decision = "block"
@@ -7511,6 +7632,10 @@ def execution_publishability_release_gate(
         "worst_latency_steps": worst_latency_steps,
         "worst_latency_fill_gap": worst_latency_fill_gap,
         "min_latency_candidate_retention_share": min_latency_retention,
+        "fill_calibration_label": fill_calibration_label,
+        "fill_brier_skill_score": fill_brier_skill_score,
+        "fill_calibration_reliability": fill_calibration_reliability,
+        "fill_calibration_resolution": fill_calibration_resolution,
         "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
         "review_reasons": ";".join(review_reasons) if review_reasons else "none",
         "decision": decision,

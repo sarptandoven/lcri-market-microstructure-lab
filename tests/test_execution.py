@@ -15,6 +15,7 @@ from lcri_lab.execution import (
     execution_adjusted_lcri_event_window_attribution,
     execution_adjusted_lcri_quantile_diagnostics,
     execution_adjusted_lcri_regime_attribution,
+    passive_fill_brier_decomposition,
     passive_fill_calibration_curve,
     passive_fill_calibration_summary,
     passive_fill_event_regime_summary,
@@ -1741,6 +1742,77 @@ def test_passive_fill_calibration_summary_exposes_weighted_fill_error() -> None:
     }
 
 
+def test_passive_fill_brier_decomposition_separates_reliability_and_resolution() -> None:
+    curve = pd.DataFrame(
+        {
+            "regime": ["thin", "thin", "stressed"],
+            "bin": [1, 2, 1],
+            "rows": [2, 3, 5],
+            "mean_predicted_fill_probability": [0.30, 0.80, 0.60],
+            "realized_fill_rate": [0.00, 1.00, 0.40],
+            "calibration_error": [-0.30, 0.20, -0.20],
+            "absolute_calibration_error": [0.30, 0.20, 0.20],
+            "brier_score": [0.10, 0.04, 0.24],
+        }
+    )
+
+    decomposition = passive_fill_brier_decomposition(curve)
+
+    assert decomposition == {
+        "rows": 10,
+        "bins": 3,
+        "base_fill_rate": pytest.approx(0.50),
+        "weighted_brier_score": pytest.approx(0.152),
+        "uncertainty": pytest.approx(0.25),
+        "reliability": pytest.approx(0.05),
+        "resolution": pytest.approx(0.13),
+        "brier_skill_score": pytest.approx(1.0 - 0.152 / 0.25),
+        "brier_decomposition_error": pytest.approx(0.152 - (0.05 - 0.13 + 0.25)),
+        "calibration_quality_label": "resolved_but_needs_calibration",
+    }
+
+
+def test_passive_fill_brier_decomposition_labels_resolved_skill() -> None:
+    curve = pd.DataFrame(
+        {
+            "regime": ["front", "back"],
+            "bin": [1, 2],
+            "rows": [5, 5],
+            "mean_predicted_fill_probability": [0.10, 0.90],
+            "realized_fill_rate": [0.10, 0.90],
+            "calibration_error": [0.00, 0.00],
+            "absolute_calibration_error": [0.00, 0.00],
+            "brier_score": [0.09, 0.09],
+        }
+    )
+
+    decomposition = passive_fill_brier_decomposition(curve)
+
+    assert decomposition["base_fill_rate"] == pytest.approx(0.50)
+    assert decomposition["reliability"] == pytest.approx(0.0)
+    assert decomposition["resolution"] == pytest.approx(0.16)
+    assert decomposition["brier_skill_score"] == pytest.approx(0.64)
+    assert decomposition["calibration_quality_label"] == "resolved_calibrated_skill"
+
+
+def test_passive_fill_brier_decomposition_rejects_negative_rows() -> None:
+    curve = pd.DataFrame(
+        {
+            "regime": ["thin"],
+            "bin": [1],
+            "rows": [-1],
+            "mean_predicted_fill_probability": [0.30],
+            "realized_fill_rate": [0.00],
+            "calibration_error": [-0.30],
+            "absolute_calibration_error": [0.30],
+            "brier_score": [0.10],
+        }
+    )
+
+    with pytest.raises(ValueError, match="brier decomposition rows must be non-negative"):
+        passive_fill_brier_decomposition(curve)
+
+
 def test_queue_position_fill_calibration_surface_bins_by_side_queue_depth() -> None:
     frame = pd.DataFrame(
         {
@@ -3110,6 +3182,73 @@ def test_execution_publishability_release_gate_blocks_latency_fragile_queue_evid
     assert gate["worst_latency_fill_gap"] == pytest.approx(-0.22)
     assert gate["min_latency_candidate_retention_share"] == pytest.approx(0.35)
     assert "queue_latency_fragile" in gate["blocking_reasons"]
+
+
+def test_execution_publishability_release_gate_blocks_bad_fill_calibration_skill() -> None:
+    review_packet = pd.DataFrame(
+        {
+            "publishable_side": ["long"],
+            "best_execution_side": ["long"],
+            "rows": [100],
+            "conflict_rows": [0],
+            "review_priority": [0],
+        }
+    )
+    quality_gate = {"quality_gate_label": "queue_execution_publishable"}
+    capacity_stability = {"capacity_stability_label": "capacity_stable"}
+    fill_brier_decomposition = {
+        "calibration_quality_label": "worse_than_base_rate",
+        "brier_skill_score": -0.12,
+        "reliability": 0.08,
+        "resolution": 0.01,
+    }
+
+    gate = execution_publishability_release_gate(
+        review_packet,
+        quality_gate=quality_gate,
+        capacity_stability=capacity_stability,
+        fill_brier_decomposition=fill_brier_decomposition,
+    )
+
+    assert gate["decision"] == "block"
+    assert gate["passes"] is False
+    assert gate["fill_calibration_label"] == "worse_than_base_rate"
+    assert gate["fill_brier_skill_score"] == pytest.approx(-0.12)
+    assert gate["fill_calibration_reliability"] == pytest.approx(0.08)
+    assert gate["fill_calibration_resolution"] == pytest.approx(0.01)
+    assert "worse_than_base_rate" in gate["blocking_reasons"]
+
+
+def test_execution_publishability_release_gate_reviews_low_resolution_fill_calibration() -> None:
+    review_packet = pd.DataFrame(
+        {
+            "publishable_side": ["long"],
+            "best_execution_side": ["long"],
+            "rows": [100],
+            "conflict_rows": [0],
+            "review_priority": [0],
+        }
+    )
+    quality_gate = {"quality_gate_label": "queue_execution_publishable"}
+    capacity_stability = {"capacity_stability_label": "capacity_stable"}
+    fill_brier_decomposition = {
+        "calibration_quality_label": "low_resolution",
+        "brier_skill_score": 0.01,
+        "reliability": 0.01,
+        "resolution": 0.005,
+    }
+
+    gate = execution_publishability_release_gate(
+        review_packet,
+        quality_gate=quality_gate,
+        capacity_stability=capacity_stability,
+        fill_brier_decomposition=fill_brier_decomposition,
+    )
+
+    assert gate["decision"] == "review"
+    assert gate["passes"] is False
+    assert gate["fill_calibration_label"] == "low_resolution"
+    assert "low_resolution" in gate["review_reasons"]
 
 
 def test_execution_publishability_release_gate_passes_clean_execution_evidence() -> None:
