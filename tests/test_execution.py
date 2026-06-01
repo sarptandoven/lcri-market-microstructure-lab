@@ -71,6 +71,7 @@ from lcri_lab.execution import (
     queue_position_latency_edge_survival_scorecard,
     queue_position_latency_regime_surface,
     queue_position_latency_release_scorecard,
+    queue_position_path_risk_concentration,
     queue_position_path_risk_release_gate,
     queue_position_path_risk_scorecard,
     queue_position_regime_fraction_sweep,
@@ -4189,6 +4190,51 @@ def test_queue_position_path_risk_scorecard_flags_side_flip_churn() -> None:
 def test_queue_position_path_risk_scorecard_rejects_missing_execution_edge() -> None:
     with pytest.raises(ValueError, match="missing queue position path risk columns"):
         queue_position_path_risk_scorecard(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_path_risk_concentration_flags_event_path_crowding() -> None:
+    scorecard = pd.DataFrame(
+        {
+            "path_id": ["macro", "auction", "lunch", "overall"],
+            "tradable_rows": [10, 8, 2, 20],
+            "total_edge_ticks": [9.0, 1.0, -2.0, 8.0],
+            "max_drawdown_ticks": [0.5, 4.0, 0.5, 4.0],
+            "path_risk_label": [
+                "execution_path_stable",
+                "execution_path_fragile",
+                "execution_path_stable",
+                "execution_path_fragile",
+            ],
+        }
+    )
+
+    concentration = queue_position_path_risk_concentration(
+        scorecard,
+        max_top_edge_share=0.70,
+        max_top_drawdown_share=0.70,
+        max_fragile_path_share=0.25,
+    )
+
+    assert concentration == {
+        "paths": 3,
+        "fragile_paths": 1,
+        "fragile_path_share": pytest.approx(1.0 / 3.0),
+        "positive_edge_paths": 2,
+        "drawdown_paths": 3,
+        "top_edge_path_id": "macro",
+        "top_edge_share": pytest.approx(0.90),
+        "edge_concentration_hhi": pytest.approx(0.82),
+        "top_drawdown_path_id": "auction",
+        "top_drawdown_share": pytest.approx(0.80),
+        "drawdown_concentration_hhi": pytest.approx(0.66),
+        "path_concentration_label": "queue_path_concentration_fragile",
+        "review_reasons": "edge_concentration;drawdown_concentration;fragile_path_share",
+    }
+
+
+def test_queue_position_path_risk_concentration_rejects_missing_columns() -> None:
+    with pytest.raises(ValueError, match="missing queue position path concentration columns"):
+        queue_position_path_risk_concentration(pd.DataFrame({"path_id": ["overall"]}))
 
 
 def test_queue_position_path_risk_release_gate_blocks_fragile_execution_paths() -> None:

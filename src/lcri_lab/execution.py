@@ -8896,6 +8896,131 @@ def queue_position_path_risk_scorecard(
     return pd.DataFrame(rows, columns=columns)
 
 
+def queue_position_path_risk_concentration(
+    path_scorecard: pd.DataFrame,
+    *,
+    max_top_edge_share: float = 0.70,
+    max_top_drawdown_share: float = 0.70,
+    max_fragile_path_share: float = 0.25,
+) -> dict[str, float | int | str]:
+    """Audit whether execution path edge and drawdown are concentrated.
+
+    A queue-position policy can pass aggregate path-risk checks while most of its
+    edge comes from one event path or most of its drawdown comes from one fragile
+    session. This release-facing diagnostic excludes the synthetic ``overall`` row
+    and reports edge/drawdown concentration shares plus HHI-style concentration so
+    reviewers can distinguish diversified execution evidence from a crowded path.
+    """
+    for name, value in {
+        "max_top_edge_share": max_top_edge_share,
+        "max_top_drawdown_share": max_top_drawdown_share,
+        "max_fragile_path_share": max_fragile_path_share,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= max_top_edge_share <= 1.0:
+        raise ValueError("max_top_edge_share must be in [0, 1]")
+    if not 0.0 <= max_top_drawdown_share <= 1.0:
+        raise ValueError("max_top_drawdown_share must be in [0, 1]")
+    if not 0.0 <= max_fragile_path_share <= 1.0:
+        raise ValueError("max_fragile_path_share must be in [0, 1]")
+
+    required = {
+        "path_id",
+        "tradable_rows",
+        "total_edge_ticks",
+        "max_drawdown_ticks",
+        "path_risk_label",
+    }
+    missing = sorted(required - set(path_scorecard.columns))
+    if missing:
+        raise ValueError(f"missing queue position path concentration columns: {missing}")
+
+    paths = path_scorecard[path_scorecard["path_id"].astype(str) != "overall"].copy()
+    if paths.empty:
+        return {
+            "paths": 0,
+            "fragile_paths": 0,
+            "fragile_path_share": 0.0,
+            "positive_edge_paths": 0,
+            "drawdown_paths": 0,
+            "top_edge_path_id": "none",
+            "top_edge_share": 0.0,
+            "edge_concentration_hhi": 0.0,
+            "top_drawdown_path_id": "none",
+            "top_drawdown_share": 0.0,
+            "drawdown_concentration_hhi": 0.0,
+            "path_concentration_label": "queue_path_concentration_empty",
+            "review_reasons": "no_paths",
+        }
+
+    numeric = paths[["tradable_rows", "total_edge_ticks", "max_drawdown_ticks"]].astype(float)
+    if not np.isfinite(numeric.to_numpy()).all():
+        raise ValueError("queue position path concentration metrics must be finite")
+    if (numeric[["tradable_rows", "max_drawdown_ticks"]] < 0.0).any().any():
+        raise ValueError("queue position path concentration counts and drawdowns must be non-negative")
+
+    fragile_mask = paths["path_risk_label"].astype(str) == "execution_path_fragile"
+    fragile_paths = int(fragile_mask.sum())
+    path_count = int(len(paths))
+    fragile_path_share = fragile_paths / path_count
+
+    positive_edge = numeric["total_edge_ticks"].clip(lower=0.0)
+    positive_edge_total = float(positive_edge.sum())
+    if positive_edge_total > 0.0:
+        edge_shares = positive_edge / positive_edge_total
+        top_edge_idx = edge_shares.idxmax()
+        top_edge_share = float(edge_shares.loc[top_edge_idx])
+        edge_hhi = float((edge_shares**2).sum())
+        top_edge_path_id = str(paths.loc[top_edge_idx, "path_id"])
+        positive_edge_paths = int((positive_edge > 0.0).sum())
+    else:
+        top_edge_path_id = "none"
+        top_edge_share = 0.0
+        edge_hhi = 0.0
+        positive_edge_paths = 0
+
+    drawdown = numeric["max_drawdown_ticks"]
+    drawdown_total = float(drawdown.sum())
+    if drawdown_total > 0.0:
+        drawdown_shares = drawdown / drawdown_total
+        top_drawdown_idx = drawdown_shares.idxmax()
+        top_drawdown_share = float(drawdown_shares.loc[top_drawdown_idx])
+        drawdown_hhi = float((drawdown_shares**2).sum())
+        top_drawdown_path_id = str(paths.loc[top_drawdown_idx, "path_id"])
+        drawdown_paths = int((drawdown > 0.0).sum())
+    else:
+        top_drawdown_path_id = "none"
+        top_drawdown_share = 0.0
+        drawdown_hhi = 0.0
+        drawdown_paths = 0
+
+    reasons: list[str] = []
+    if top_edge_share > max_top_edge_share:
+        reasons.append("edge_concentration")
+    if top_drawdown_share > max_top_drawdown_share:
+        reasons.append("drawdown_concentration")
+    if fragile_path_share > max_fragile_path_share:
+        reasons.append("fragile_path_share")
+    label = "queue_path_concentration_fragile" if reasons else "queue_path_concentration_diversified"
+
+    return {
+        "paths": path_count,
+        "fragile_paths": fragile_paths,
+        "fragile_path_share": float(fragile_path_share),
+        "positive_edge_paths": positive_edge_paths,
+        "drawdown_paths": drawdown_paths,
+        "top_edge_path_id": top_edge_path_id,
+        "top_edge_share": top_edge_share,
+        "edge_concentration_hhi": edge_hhi,
+        "top_drawdown_path_id": top_drawdown_path_id,
+        "top_drawdown_share": top_drawdown_share,
+        "drawdown_concentration_hhi": drawdown_hhi,
+        "path_concentration_label": label,
+        "review_reasons": ";".join(reasons) if reasons else "none",
+    }
+
+
 def queue_position_path_risk_release_gate(
     path_scorecard: pd.DataFrame,
     *,
