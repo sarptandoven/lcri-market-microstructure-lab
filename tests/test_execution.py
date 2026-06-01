@@ -1391,12 +1391,14 @@ def test_queue_position_execution_readiness_scorecard_blocks_quality_and_capacit
         "quality_gate_label": "queue_execution_blocked",
         "capacity_stability_label": "capacity_fragile",
         "capacity_concentration_label": "capacity_regime_concentrated",
+        "queue_toxicity_label": "not_supplied",
         "blocked_regimes": 2,
         "eligible_regimes": 3,
         "execution_blocker_count": 3,
         "worst_calibration_regime": "stress",
         "worst_decay_regime": "thin",
         "worst_capacity_regime": "stress",
+        "worst_toxicity_regime": "none",
         "weighted_absolute_calibration_error": pytest.approx(0.18),
         "weighted_brier_score": pytest.approx(0.12),
         "max_regime_absolute_calibration_error": pytest.approx(0.31),
@@ -1404,6 +1406,11 @@ def test_queue_position_execution_readiness_scorecard_blocks_quality_and_capacit
         "capacity_edge_gap_ticks": pytest.approx(-0.18),
         "capacity_tradable_share_gap": pytest.approx(-0.09),
         "front_only_or_no_capacity_share": pytest.approx(0.50),
+        "toxic_queue_row_share": pytest.approx(0.0),
+        "toxic_queue_regimes": 0,
+        "worst_toxicity_adverse_to_fill_ratio": pytest.approx(0.0),
+        "worst_toxicity_realized_loss_rate": pytest.approx(0.0),
+        "toxic_queue_mean_edge_ticks": pytest.approx(0.0),
         "dominant_side_changed": True,
         "execution_readiness_label": "execution_not_publishable",
     }
@@ -1432,7 +1439,59 @@ def test_queue_position_execution_readiness_scorecard_labels_publishable() -> No
 
     assert scorecard["execution_blocker_count"] == 0
     assert scorecard["capacity_concentration_label"] == "not_supplied"
+    assert scorecard["queue_toxicity_label"] == "not_supplied"
     assert scorecard["execution_readiness_label"] == "execution_publishable"
+
+
+def test_queue_position_execution_readiness_scorecard_blocks_toxic_queue_fills() -> None:
+    quality_gate = {
+        "quality_gate_label": "queue_execution_publishable",
+        "blocked_regimes": 0,
+        "eligible_regimes": 2,
+        "weighted_absolute_calibration_error": 0.04,
+        "weighted_brier_score": 0.05,
+        "max_regime_absolute_calibration_error": 0.06,
+        "worst_calibration_regime": "open",
+        "worst_decay_regime": "open",
+    }
+    capacity_stability = {
+        "capacity_stability_label": "capacity_stable",
+        "capacity_fraction_gap": -0.02,
+        "capacity_edge_gap_ticks": -0.01,
+        "capacity_tradable_share_gap": -0.01,
+        "dominant_side_changed": False,
+    }
+    toxicity_surface = pd.DataFrame(
+        {
+            "regime": ["open", "stress", "stress"],
+            "rows": [80, 15, 5],
+            "adverse_to_fill_ratio": [0.20, 1.40, 0.90],
+            "realized_loss_rate": [0.10, 0.80, 0.65],
+            "mean_execution_adjusted_edge_ticks": [0.20, -0.30, -0.05],
+            "queue_toxicity_label": [
+                "benign_queue_fill",
+                "toxic_queue_fill",
+                "toxic_queue_fill",
+            ],
+        }
+    )
+
+    scorecard = queue_position_execution_readiness_scorecard(
+        quality_gate,
+        capacity_stability,
+        toxicity_surface=toxicity_surface,
+        max_toxic_queue_row_share=0.10,
+    )
+
+    assert scorecard["execution_blocker_count"] == 1
+    assert scorecard["queue_toxicity_label"] == "toxic_queue_blocked"
+    assert scorecard["toxic_queue_row_share"] == pytest.approx(0.20)
+    assert scorecard["toxic_queue_regimes"] == 1
+    assert scorecard["worst_toxicity_regime"] == "stress"
+    assert scorecard["worst_toxicity_adverse_to_fill_ratio"] == pytest.approx(1.40)
+    assert scorecard["worst_toxicity_realized_loss_rate"] == pytest.approx(0.80)
+    assert scorecard["toxic_queue_mean_edge_ticks"] == pytest.approx(-0.2375)
+    assert scorecard["execution_readiness_label"] == "execution_not_publishable"
 
 
 def test_queue_position_execution_readiness_scorecard_rejects_missing_keys() -> None:

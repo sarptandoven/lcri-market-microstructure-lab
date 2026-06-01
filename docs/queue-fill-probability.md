@@ -98,6 +98,16 @@ A cell is labeled `toxic_queue_fill` when adverse-fill probability is large rela
 toxicity = queue_position_toxicity_surface(execution_frame, queue_bins=5)
 ```
 
+`queue_position_execution_readiness_scorecard` can now consume this surface via
+`toxicity_surface=toxicity`. The readiness gate reports `queue_toxicity_label`,
+`toxic_queue_row_share`, `toxic_queue_regimes`, `worst_toxicity_regime`, worst
+adverse-to-fill/loss-rate severity, and row-weighted toxic-cell execution edge,
+and blocks publication when the toxic-row share exceeds
+`max_toxic_queue_row_share`. That keeps calibrated queue-capacity evidence from
+passing review if its fills are concentrated in adverse-selection cells, while
+also showing reviewers whether the block is driven by a broad mild toxicity band
+or a small severe loss pocket.
+
 This changes the research question from:
 
 ```text

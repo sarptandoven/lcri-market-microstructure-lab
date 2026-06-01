@@ -3864,16 +3864,22 @@ def queue_position_execution_readiness_scorecard(
     quality_gate: dict[str, float | int | str | bool],
     capacity_stability: dict[str, float | int | str | bool],
     capacity_concentration: dict[str, float | int | str] | None = None,
+    *,
+    toxicity_surface: pd.DataFrame | None = None,
+    max_toxic_queue_row_share: float = 0.10,
 ) -> dict[str, float | int | str | bool]:
-    """Combine queue execution quality, stability, and capacity into one release gate.
+    """Combine queue execution quality, stability, toxicity, and capacity into one release gate.
 
     Execution-adjusted LCRI should not be published solely because a fill model is
     calibrated on average. This scorecard joins three orthogonal blockers:
-    side-aware queue calibration quality, out-of-sample capacity stability, and
-    regime concentration of viable passive capacity. The result is a compact
-    artifact for demos/review packets that states whether execution evidence is
-    publishable or still needs queue-model/capacity remediation.
+    side-aware queue calibration quality, out-of-sample capacity stability,
+    adverse-selection toxicity in queue-depth cells, and regime concentration of
+    viable passive capacity. The result is a compact artifact for demos/review
+    packets that states whether execution evidence is publishable or still needs
+    queue-model/capacity remediation.
     """
+    if not math.isfinite(max_toxic_queue_row_share) or not 0.0 <= max_toxic_queue_row_share <= 1.0:
+        raise ValueError("max_toxic_queue_row_share must be in [0, 1]")
     quality_required = {
         "quality_gate_label",
         "blocked_regimes",
@@ -3952,9 +3958,79 @@ def queue_position_execution_readiness_scorecard(
             "capacity_regime_blocked",
         }
 
+    toxicity_label = "not_supplied"
+    toxic_queue_row_share = 0.0
+    toxic_queue_regimes = 0
+    worst_toxicity_regime = "none"
+    worst_toxicity_adverse_to_fill_ratio = 0.0
+    worst_toxicity_realized_loss_rate = 0.0
+    toxic_queue_mean_edge_ticks = 0.0
+    toxicity_blocked = False
+    if toxicity_surface is not None:
+        toxicity_required = {
+            "regime",
+            "rows",
+            "adverse_to_fill_ratio",
+            "realized_loss_rate",
+            "mean_execution_adjusted_edge_ticks",
+            "queue_toxicity_label",
+        }
+        _require_columns(toxicity_surface, toxicity_required, "queue execution readiness toxicity")
+        toxicity_values = _finite_values(
+            toxicity_surface,
+            [
+                "rows",
+                "adverse_to_fill_ratio",
+                "realized_loss_rate",
+                "mean_execution_adjusted_edge_ticks",
+            ],
+            "queue execution readiness toxicity",
+        )
+        if (toxicity_values["rows"] < 0.0).any():
+            raise ValueError("queue execution readiness toxicity rows must be non-negative")
+        if (toxicity_values[["adverse_to_fill_ratio", "realized_loss_rate"]] < 0.0).any().any():
+            raise ValueError("queue execution readiness toxicity rates must be non-negative")
+        total_toxicity_rows = float(toxicity_values["rows"].sum())
+        toxicity_labels = toxicity_surface["queue_toxicity_label"].astype(str)
+        toxic_mask = toxicity_labels == "toxic_queue_fill"
+        toxic_rows = float(toxicity_values.loc[toxic_mask, "rows"].sum())
+        toxic_queue_row_share = toxic_rows / total_toxicity_rows if total_toxicity_rows > 0.0 else 0.0
+        if toxic_rows > 0.0:
+            toxic_values = toxicity_values.loc[toxic_mask]
+            toxic_weights = toxic_values["rows"] / toxic_rows
+            worst_toxicity_adverse_to_fill_ratio = float(
+                toxic_values["adverse_to_fill_ratio"].max()
+            )
+            worst_toxicity_realized_loss_rate = float(toxic_values["realized_loss_rate"].max())
+            toxic_queue_mean_edge_ticks = float(
+                (toxic_values["mean_execution_adjusted_edge_ticks"] * toxic_weights).sum()
+            )
+        toxic_regime_rows = (
+            toxicity_values.assign(regime=toxicity_surface["regime"].astype(str), toxic_rows=0.0)
+            .assign(toxic_rows=lambda data: data["rows"].where(toxic_mask, 0.0))
+            .groupby("regime", sort=True)["toxic_rows"]
+            .sum()
+        )
+        toxic_regime_rows = toxic_regime_rows[toxic_regime_rows > 0.0]
+        toxic_queue_regimes = int(len(toxic_regime_rows))
+        if toxic_queue_regimes:
+            worst_toxicity_regime = str(toxic_regime_rows.idxmax())
+        toxicity_blocked = toxic_queue_row_share > max_toxic_queue_row_share
+        if toxicity_blocked:
+            toxicity_label = "toxic_queue_blocked"
+        elif toxic_queue_regimes:
+            toxicity_label = "toxic_queue_review"
+        else:
+            toxicity_label = "benign_queue_toxicity"
+
     quality_blocked = str(quality_gate["quality_gate_label"]) == "queue_execution_blocked"
     stability_blocked = str(capacity_stability["capacity_stability_label"]) == "capacity_fragile"
-    blocker_count = int(quality_blocked) + int(stability_blocked) + int(concentration_blocked)
+    blocker_count = (
+        int(quality_blocked)
+        + int(stability_blocked)
+        + int(concentration_blocked)
+        + int(toxicity_blocked)
+    )
     if blocker_count > 0:
         readiness_label = "execution_not_publishable"
     elif str(quality_gate["quality_gate_label"]) == "queue_execution_review":
@@ -3966,12 +4042,14 @@ def queue_position_execution_readiness_scorecard(
         "quality_gate_label": str(quality_gate["quality_gate_label"]),
         "capacity_stability_label": str(capacity_stability["capacity_stability_label"]),
         "capacity_concentration_label": concentration_label,
+        "queue_toxicity_label": toxicity_label,
         "blocked_regimes": int(quality_numeric["blocked_regimes"]),
         "eligible_regimes": int(quality_numeric["eligible_regimes"]),
         "execution_blocker_count": blocker_count,
         "worst_calibration_regime": str(quality_gate["worst_calibration_regime"]),
         "worst_decay_regime": str(quality_gate["worst_decay_regime"]),
         "worst_capacity_regime": worst_capacity_regime,
+        "worst_toxicity_regime": worst_toxicity_regime,
         "weighted_absolute_calibration_error": quality_numeric[
             "weighted_absolute_calibration_error"
         ],
@@ -3983,6 +4061,11 @@ def queue_position_execution_readiness_scorecard(
         "capacity_edge_gap_ticks": stability_numeric["capacity_edge_gap_ticks"],
         "capacity_tradable_share_gap": stability_numeric["capacity_tradable_share_gap"],
         "front_only_or_no_capacity_share": front_only_share,
+        "toxic_queue_row_share": toxic_queue_row_share,
+        "toxic_queue_regimes": toxic_queue_regimes,
+        "worst_toxicity_adverse_to_fill_ratio": worst_toxicity_adverse_to_fill_ratio,
+        "worst_toxicity_realized_loss_rate": worst_toxicity_realized_loss_rate,
+        "toxic_queue_mean_edge_ticks": toxic_queue_mean_edge_ticks,
         "dominant_side_changed": bool(capacity_stability["dominant_side_changed"]),
         "execution_readiness_label": readiness_label,
     }
