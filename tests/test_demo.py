@@ -19,6 +19,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "baseline_regime_basis_comparison.csv").exists()
     assert (tmp_path / "baseline_regime_publishability_summary.json").exists()
     assert (tmp_path / "baseline_nonlinear_stress_surface.csv").exists()
+    assert (tmp_path / "baseline_nonlinear_stress_surface_summary.json").exists()
     assert (tmp_path / "regime_metrics.csv").exists()
     assert (tmp_path / "heldout_regime_metrics.csv").exists()
     assert (tmp_path / "regime_generalization_gap.csv").exists()
@@ -217,6 +218,24 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "nonlinear_fragile",
     }
     assert nonlinear_surface["row_share"].sum() == pytest.approx(1.0)
+    nonlinear_surface_summary = json.loads(
+        (tmp_path / "baseline_nonlinear_stress_surface_summary.json").read_text()
+    )
+    assert {
+        "stress_cells",
+        "supported_cells",
+        "fragile_cells",
+        "supported_cell_share",
+        "supported_row_share",
+        "weighted_rmse_lift_vs_core",
+        "worst_cell_lift",
+        "high_stress_cell",
+        "high_stress_lift",
+        "publishable",
+        "review_note",
+    }.issubset(nonlinear_surface_summary)
+    assert nonlinear_surface_summary["stress_cells"] == len(nonlinear_surface)
+    assert nonlinear_surface_summary["review_note"].startswith("nonlinear_")
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
     assert "passes_monotonicity_gate" in monotonicity

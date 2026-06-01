@@ -8,6 +8,7 @@ from lcri_lab.baseline import (
     baseline_component_attribution,
     baseline_liquidity_stress_curve,
     baseline_nonlinear_stress_surface,
+    baseline_nonlinear_stress_surface_summary,
     baseline_nonlinear_coefficient_stability,
     baseline_nonlinear_coefficient_stability_summary,
     baseline_nonlinear_regularization_path,
@@ -156,6 +157,75 @@ def test_baseline_nonlinear_stress_surface_rejects_invalid_configuration() -> No
         baseline_nonlinear_stress_surface(features, bins=1)
     with pytest.raises(ValueError, match="stress_cols must contain exactly two column names"):
         baseline_nonlinear_stress_surface(features, stress_cols=("spread_ticks",))
+
+
+def test_baseline_nonlinear_stress_surface_summary_gates_stress_cell_support() -> None:
+    surface = pd.DataFrame(
+        {
+            "stress_cell": ["low|low", "low|high", "high|low", "high|high"],
+            "spread_ticks_bin": ["low", "low", "high", "high"],
+            "volatility_bin": ["low", "high", "low", "high"],
+            "rows": [50, 50, 50, 100],
+            "row_share": [0.20, 0.20, 0.20, 0.40],
+            "core_rmse": [1.0, 1.0, 1.0, 1.0],
+            "nonlinear_rmse": [0.95, 0.80, 0.85, 0.40],
+            "rmse_lift_vs_core": [0.05, 0.20, 0.15, 0.60],
+            "core_residual_mean": [0.0, 0.0, 0.0, 0.0],
+            "nonlinear_residual_mean": [0.0, 0.0, 0.0, 0.0],
+            "surface_label": [
+                "neutral",
+                "nonlinear_supported",
+                "nonlinear_supported",
+                "nonlinear_supported",
+            ],
+        }
+    )
+
+    summary = baseline_nonlinear_stress_surface_summary(
+        surface,
+        min_supported_cell_share=0.50,
+        min_high_stress_lift=0.25,
+        min_weighted_lift=0.20,
+    )
+
+    assert summary == {
+        "stress_cells": 4,
+        "supported_cells": 3,
+        "fragile_cells": 0,
+        "supported_cell_share": pytest.approx(0.75),
+        "supported_row_share": pytest.approx(0.80),
+        "weighted_rmse_lift_vs_core": pytest.approx(0.32),
+        "worst_cell_lift": pytest.approx(0.05),
+        "high_stress_cell": "high|high",
+        "high_stress_lift": pytest.approx(0.60),
+        "publishable": True,
+        "review_note": "nonlinear_stress_surface_supported",
+    }
+
+
+def test_baseline_nonlinear_stress_surface_summary_blocks_benign_only_lift() -> None:
+    surface = pd.DataFrame(
+        {
+            "stress_cell": ["low|low", "high|high"],
+            "spread_ticks_bin": ["low", "high"],
+            "volatility_bin": ["low", "high"],
+            "rows": [90, 10],
+            "row_share": [0.90, 0.10],
+            "rmse_lift_vs_core": [0.40, -0.10],
+            "surface_label": ["nonlinear_supported", "nonlinear_fragile"],
+        }
+    )
+
+    summary = baseline_nonlinear_stress_surface_summary(surface, min_high_stress_lift=0.0)
+
+    assert summary["publishable"] is False
+    assert summary["high_stress_cell"] == "high|high"
+    assert summary["review_note"] == "nonlinear_high_stress_surface_fragile"
+
+
+def test_baseline_nonlinear_stress_surface_summary_rejects_malformed_input() -> None:
+    with pytest.raises(ValueError, match="missing nonlinear stress surface columns"):
+        baseline_nonlinear_stress_surface_summary(pd.DataFrame({"stress_cell": ["low|low"]}))
 
 
 def test_baseline_residual_liquidity_orthogonality_flags_post_neutralization_leakage() -> None:

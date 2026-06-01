@@ -874,6 +874,103 @@ def baseline_nonlinear_stress_surface(
     return pd.DataFrame(rows, columns=columns)
 
 
+def baseline_nonlinear_stress_surface_summary(
+    surface: pd.DataFrame,
+    *,
+    min_supported_cell_share: float = 0.50,
+    min_high_stress_lift: float = 0.10,
+    min_weighted_lift: float = 0.05,
+) -> dict[str, bool | float | int | str]:
+    """Gate nonlinear baseline lift by stressed-cell localization.
+
+    A nonlinear liquidity basis should not earn publishability from benign-cell
+    improvements alone. This summary turns the cell-level stress surface into a
+    compact review gate: how broad the nonlinear support is, how much row mass it
+    covers, whether the high/high stress corner improves, and whether any stress
+    cell is outright fragile.
+    """
+    for name, value in {
+        "min_supported_cell_share": min_supported_cell_share,
+        "min_high_stress_lift": min_high_stress_lift,
+        "min_weighted_lift": min_weighted_lift,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= min_supported_cell_share <= 1.0:
+        raise ValueError("min_supported_cell_share must be in [0, 1]")
+
+    bin_columns = [column for column in surface.columns if column.endswith("_bin")]
+    required = {"stress_cell", "row_share", "rmse_lift_vs_core", "surface_label", *bin_columns}
+    missing = sorted(required - set(surface.columns))
+    if missing or not bin_columns:
+        raise ValueError(f"missing nonlinear stress surface columns: {missing}")
+    if surface.empty:
+        raise ValueError("nonlinear stress surface must contain at least one cell")
+
+    numeric = surface[["row_share", "rmse_lift_vs_core"]].astype(float)
+    if not np.isfinite(numeric.to_numpy()).all():
+        raise ValueError("nonlinear stress surface metrics must be finite")
+    if (numeric["row_share"] < 0.0).any():
+        raise ValueError("nonlinear stress surface row shares must be non-negative")
+    row_share_sum = float(numeric["row_share"].sum())
+    if row_share_sum <= 0.0:
+        raise ValueError("nonlinear stress surface row shares must sum to a positive value")
+
+    labels = surface["surface_label"].astype(str)
+    supported_mask = labels == "nonlinear_supported"
+    fragile_mask = labels == "nonlinear_fragile"
+    stress_cells = int(len(surface))
+    supported_cells = int(supported_mask.sum())
+    fragile_cells = int(fragile_mask.sum())
+    supported_cell_share = float(supported_cells / stress_cells)
+    supported_row_share = float(numeric.loc[supported_mask, "row_share"].sum() / row_share_sum)
+    weighted_lift = float((numeric["row_share"] * numeric["rmse_lift_vs_core"]).sum() / row_share_sum)
+    worst_cell_lift = float(numeric["rmse_lift_vs_core"].min())
+
+    high_mask = pd.Series(True, index=surface.index)
+    for column in bin_columns:
+        high_mask &= surface[column].astype(str).str.lower().eq("high")
+    if high_mask.any():
+        high_row = surface.loc[high_mask].iloc[0]
+    else:
+        high_row = surface.assign(_stress_rank=_stress_bin_rank(surface, bin_columns)).sort_values(
+            ["_stress_rank", "row_share"], ascending=[False, False]
+        ).iloc[0]
+    high_stress_cell = str(high_row["stress_cell"])
+    high_stress_lift = float(high_row["rmse_lift_vs_core"])
+    high_stress_label = str(high_row["surface_label"])
+
+    publishable = bool(
+        supported_cell_share >= min_supported_cell_share
+        and weighted_lift >= min_weighted_lift
+        and high_stress_lift >= min_high_stress_lift
+        and high_stress_label != "nonlinear_fragile"
+        and fragile_cells == 0
+    )
+    if publishable:
+        review_note = "nonlinear_stress_surface_supported"
+    elif high_stress_lift < min_high_stress_lift or high_stress_label == "nonlinear_fragile":
+        review_note = "nonlinear_high_stress_surface_fragile"
+    elif fragile_cells > 0:
+        review_note = "nonlinear_stress_surface_fragile_cells"
+    else:
+        review_note = "nonlinear_stress_surface_under_supported"
+
+    return {
+        "stress_cells": stress_cells,
+        "supported_cells": supported_cells,
+        "fragile_cells": fragile_cells,
+        "supported_cell_share": supported_cell_share,
+        "supported_row_share": supported_row_share,
+        "weighted_rmse_lift_vs_core": weighted_lift,
+        "worst_cell_lift": worst_cell_lift,
+        "high_stress_cell": high_stress_cell,
+        "high_stress_lift": high_stress_lift,
+        "publishable": publishable,
+        "review_note": review_note,
+    }
+
+
 def baseline_component_attribution(frame: pd.DataFrame, baseline: LiquidityBaseline) -> pd.DataFrame:
     """Attribute a fitted baseline's prediction to core, interaction, and nonlinear terms.
 
@@ -2104,6 +2201,19 @@ def baseline_nonlinear_coefficient_stability(
         ascending=[False, False, True],
         ignore_index=True,
     )
+
+
+def _stress_bin_rank(surface: pd.DataFrame, bin_columns: list[str]) -> pd.Series:
+    rank_map = {"low": 0.0, "medium": 1.0, "high": 2.0}
+    ranks = pd.Series(0.0, index=surface.index)
+    for column in bin_columns:
+        labels = surface[column].astype(str).str.lower()
+        mapped = labels.map(rank_map)
+        if mapped.isna().any():
+            fallback = pd.Series(pd.factorize(labels, sort=True)[0], index=surface.index, dtype=float)
+            mapped = mapped.fillna(fallback)
+        ranks = ranks + mapped.astype(float)
+    return ranks
 
 
 def _component_for_feature(feature: str) -> str:
