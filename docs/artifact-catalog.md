@@ -187,6 +187,14 @@ surfaces without opening every file:
   latency surface with candidate-weighted fill decay, fragile-candidate share,
   worst regime/latency pointer, and `pass`/`review`/`block` decision labels.
   Heldout runs emit the same schema with a `heldout_` prefix.
+- `queue_position_path_risk_scorecard.csv`: grouped and overall execution-path
+  risk surface for queue-aware policies, including tradable rows, cumulative
+  execution-adjusted edge, peak-to-trough drawdown, hit rate, side-flip turnover,
+  and stable/fragile path labels.
+- `queue_position_path_risk_release_gate.json`: compact release gate that blocks
+  execution-aware demos when fragile paths concentrate, overall drawdown breaches,
+  aggregate execution-adjusted edge is insufficient, or side-flip churn is too
+  high; emits worst-path pointer plus `pass`/`review`/`block` labels.
 - `lcri_uncertainty_weighted_review_priority.csv`: owner-review queue that
   combines contradiction packet priority with CI coverage width, CI/gate
   disagreement counts, and fragility uncertainty.

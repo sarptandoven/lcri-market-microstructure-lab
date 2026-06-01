@@ -69,6 +69,7 @@ from lcri_lab.execution import (
     queue_position_latency_edge_survival_scorecard,
     queue_position_latency_regime_surface,
     queue_position_latency_release_scorecard,
+    queue_position_path_risk_release_gate,
     queue_position_path_risk_scorecard,
     queue_position_regime_fraction_sweep,
 )
@@ -4186,3 +4187,79 @@ def test_queue_position_path_risk_scorecard_flags_side_flip_churn() -> None:
 def test_queue_position_path_risk_scorecard_rejects_missing_execution_edge() -> None:
     with pytest.raises(ValueError, match="missing queue position path risk columns"):
         queue_position_path_risk_scorecard(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_path_risk_release_gate_blocks_fragile_execution_paths() -> None:
+    scorecard = pd.DataFrame(
+        {
+            "path_id": ["am", "pm", "overnight", "overall"],
+            "rows": [4, 4, 4, 12],
+            "tradable_rows": [4, 4, 4, 12],
+            "abstain_rows": [0, 0, 0, 0],
+            "mean_edge_ticks": [0.25, -0.25, 0.10, 0.03],
+            "total_edge_ticks": [1.0, -1.0, 0.4, 0.4],
+            "max_drawdown_ticks": [0.5, 3.0, 1.0, 3.2],
+            "hit_rate": [0.75, 0.25, 0.50, 0.50],
+            "turnover_events": [1, 3, 1, 5],
+            "turnover_rate": [0.25, 0.75, 0.25, 5.0 / 12.0],
+            "path_risk_label": [
+                "execution_path_stable",
+                "execution_path_fragile",
+                "execution_path_stable",
+                "execution_path_fragile",
+            ],
+        }
+    )
+
+    gate = queue_position_path_risk_release_gate(
+        scorecard,
+        max_fragile_path_share=0.25,
+        max_overall_drawdown_ticks=2.0,
+        min_overall_total_edge_ticks=1.0,
+    )
+
+    assert gate == {
+        "paths": 3,
+        "fragile_paths": 1,
+        "fragile_path_share": pytest.approx(1.0 / 3.0),
+        "total_tradable_rows": 12,
+        "overall_total_edge_ticks": pytest.approx(0.4),
+        "overall_max_drawdown_ticks": pytest.approx(3.2),
+        "overall_turnover_rate": pytest.approx(5.0 / 12.0),
+        "worst_path_id": "pm",
+        "worst_path_risk_label": "execution_path_fragile",
+        "path_risk_release_decision": "block",
+        "path_risk_release_label": "queue_path_risk_release_blocked",
+        "blocking_reasons": "fragile_path_share;overall_drawdown;overall_total_edge",
+        "review_reasons": "none",
+    }
+
+
+def test_queue_position_path_risk_release_gate_passes_stable_paths() -> None:
+    scorecard = pd.DataFrame(
+        {
+            "path_id": ["am", "overall"],
+            "rows": [4, 4],
+            "tradable_rows": [4, 4],
+            "abstain_rows": [0, 0],
+            "mean_edge_ticks": [0.25, 0.25],
+            "total_edge_ticks": [1.0, 1.0],
+            "max_drawdown_ticks": [0.2, 0.2],
+            "hit_rate": [0.75, 0.75],
+            "turnover_events": [1, 1],
+            "turnover_rate": [0.25, 0.25],
+            "path_risk_label": ["execution_path_stable", "execution_path_stable"],
+        }
+    )
+
+    gate = queue_position_path_risk_release_gate(scorecard)
+
+    assert gate["path_risk_release_decision"] == "pass"
+    assert gate["path_risk_release_label"] == "queue_path_risk_release_pass"
+    assert gate["blocking_reasons"] == "none"
+    assert gate["review_reasons"] == "none"
+
+
+def test_queue_position_path_risk_release_gate_rejects_missing_columns() -> None:
+    with pytest.raises(ValueError, match="missing queue position path risk release gate columns"):
+        queue_position_path_risk_release_gate(pd.DataFrame({"path_id": ["overall"]}))
