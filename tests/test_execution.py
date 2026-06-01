@@ -62,6 +62,8 @@ from lcri_lab.execution import (
     queue_position_fill_surface,
     queue_position_toxicity_surface,
     queue_position_fraction_sweep,
+    queue_position_order_size_capacity_frontier,
+    queue_position_order_size_sweep,
     queue_position_expected_value_frontier,
     queue_position_expected_value_policy_selection,
     queue_position_expected_value_policy_scorecard,
@@ -1043,6 +1045,117 @@ def test_queue_position_fraction_sweep_rejects_invalid_fractions() -> None:
         queue_position_fraction_sweep(_book_frame(), fractions=[])
     with pytest.raises(ValueError, match="queue_position_fraction"):
         queue_position_fraction_sweep(_book_frame(), fractions=[-0.1])
+
+
+def test_queue_position_order_size_sweep_quantifies_child_order_capacity_decay() -> None:
+    frame = add_queue_position_features(
+        _book_frame().assign(
+            lcri_probability=[0.25, 0.75],
+            long_net_return_ticks=[1.0, 1.5],
+            short_net_return_ticks=[1.5, 1.0],
+        ),
+        levels=2,
+        queue_position_fraction=0.25,
+    )
+
+    sweep = queue_position_order_size_sweep(
+        frame,
+        order_size_fractions=[0.0, 0.2, 0.4],
+        levels=2,
+        fill_config=FillProbabilityConfig(adverse_selection_scale=0.25),
+    )
+
+    assert sweep["order_size_fraction"].tolist() == pytest.approx([0.0, 0.2, 0.4])
+    assert sweep["rows"].tolist() == [2, 2, 2]
+    assert sweep["mean_bid_child_order_size"].is_monotonic_increasing
+    assert sweep["mean_ask_child_order_size"].is_monotonic_increasing
+    assert sweep["mean_bid_queue_clear_share"].is_monotonic_increasing
+    assert sweep["mean_ask_queue_clear_share"].is_monotonic_increasing
+    assert sweep["mean_bid_fill_probability"].is_monotonic_decreasing
+    assert sweep["mean_ask_fill_probability"].is_monotonic_decreasing
+    assert sweep["mean_execution_adjusted_edge_ticks"].iloc[0] > sweep[
+        "mean_execution_adjusted_edge_ticks"
+    ].iloc[-1]
+    assert sweep["tradable_share"].between(0.0, 1.0).all()
+    assert set(sweep["dominant_execution_side"]).issubset({"long", "short", "none"})
+
+
+def test_queue_position_order_size_sweep_rejects_invalid_order_size_fractions() -> None:
+    with pytest.raises(ValueError, match="order_size_fractions"):
+        queue_position_order_size_sweep(_book_frame(), order_size_fractions=[])
+    with pytest.raises(ValueError, match="order_size_fraction"):
+        queue_position_order_size_sweep(_book_frame(), order_size_fractions=[-0.1])
+
+
+def test_queue_position_order_size_capacity_frontier_identifies_max_viable_child_size() -> None:
+    sweep = pd.DataFrame(
+        {
+            "order_size_fraction": [0.0, 0.1, 0.25, 0.5],
+            "rows": [20, 20, 20, 20],
+            "mean_execution_adjusted_edge_ticks": [0.42, 0.31, 0.12, -0.04],
+            "tradable_share": [0.90, 0.76, 0.54, 0.30],
+            "dominant_execution_side": ["long", "long", "short", "short"],
+        }
+    )
+
+    frontier = queue_position_order_size_capacity_frontier(
+        sweep,
+        min_edge_ticks=0.10,
+        min_tradable_share=0.50,
+    )
+
+    assert frontier["rows"] == 4
+    assert frontier["viable_rows"] == 3
+    assert frontier["minimum_order_size_fraction"] == pytest.approx(0.0)
+    assert frontier["max_viable_order_size_fraction"] == pytest.approx(0.25)
+    assert frontier["minimum_size_mean_execution_adjusted_edge_ticks"] == pytest.approx(0.42)
+    assert frontier["max_viable_mean_execution_adjusted_edge_ticks"] == pytest.approx(0.12)
+    assert frontier["edge_decay_to_capacity_ticks"] == pytest.approx(0.30)
+    assert frontier["minimum_size_tradable_share"] == pytest.approx(0.90)
+    assert frontier["max_viable_tradable_share"] == pytest.approx(0.54)
+    assert frontier["tradable_share_decay_to_capacity"] == pytest.approx(0.36)
+    assert frontier["dominant_execution_side_at_capacity"] == "short"
+    assert frontier["order_size_capacity_label"] == "child_order_capacity_constrained"
+
+
+def test_queue_position_order_size_capacity_frontier_marks_no_viable_capacity() -> None:
+    frontier = queue_position_order_size_capacity_frontier(
+        pd.DataFrame(
+            {
+                "order_size_fraction": [0.1, 0.2],
+                "rows": [10, 10],
+                "mean_execution_adjusted_edge_ticks": [-0.02, -0.05],
+                "tradable_share": [0.20, 0.10],
+                "dominant_execution_side": ["none", "none"],
+            }
+        ),
+        min_edge_ticks=0.0,
+        min_tradable_share=0.50,
+    )
+
+    assert frontier["rows"] == 2
+    assert frontier["viable_rows"] == 0
+    assert frontier["minimum_order_size_fraction"] == pytest.approx(0.1)
+    assert frontier["minimum_size_mean_execution_adjusted_edge_ticks"] == pytest.approx(-0.02)
+    assert frontier["minimum_size_tradable_share"] == pytest.approx(0.20)
+    assert frontier["order_size_capacity_label"] == "no_viable_child_order_capacity"
+
+
+def test_queue_position_order_size_capacity_frontier_rejects_invalid_inputs() -> None:
+    with pytest.raises(ValueError, match="order size capacity frontier fractions"):
+        queue_position_order_size_capacity_frontier(
+            pd.DataFrame(
+                {
+                    "order_size_fraction": [-0.1],
+                    "rows": [1],
+                    "mean_execution_adjusted_edge_ticks": [0.1],
+                    "tradable_share": [1.0],
+                    "dominant_execution_side": ["long"],
+                }
+            )
+        )
+    with pytest.raises(ValueError, match="min_tradable_share"):
+        queue_position_order_size_capacity_frontier(pd.DataFrame(), min_tradable_share=1.1)
 
 
 def test_queue_position_regime_fraction_sweep_keeps_state_capacity_auditable() -> None:

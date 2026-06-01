@@ -1124,6 +1124,195 @@ def queue_position_fraction_sweep(
     return pd.DataFrame(rows)[list(_empty_queue_position_fraction_sweep().columns)]
 
 
+def queue_position_order_size_sweep(
+    frame: pd.DataFrame,
+    *,
+    order_size_fractions: list[float] | tuple[float, ...] = (0.0, 0.05, 0.10, 0.25, 0.50),
+    levels: int = 5,
+    fill_config: FillProbabilityConfig | None = None,
+    pressure_col: str = "lcri",
+    signal_col: str = "lcri",
+    probability_col: str = "lcri_probability",
+    long_net_col: str = "long_net_return_ticks",
+    short_net_col: str = "short_net_return_ticks",
+) -> pd.DataFrame:
+    """Stress-test passive execution capacity across child order sizes.
+
+    Queue placement alone can overstate deployability: a passive order that looks
+    fillable for a token child size may lose its execution-adjusted edge once the
+    strategy scales displayed quantity. This sweep keeps the existing queue-ahead
+    assumption fixed, increases child order size as a fraction of best displayed
+    size, and recomputes fill odds plus execution-adjusted edge for each size.
+    """
+    if isinstance(order_size_fractions, (str, bytes)):
+        raise ValueError("order_size_fractions must be a non-empty sequence of finite values")
+    order_size_fractions = list(order_size_fractions)
+    if not order_size_fractions:
+        raise ValueError("order_size_fractions must be a non-empty sequence")
+    for fraction in order_size_fractions:
+        if not math.isfinite(float(fraction)):
+            raise ValueError("order_size_fraction values must be finite")
+        if float(fraction) < 0.0:
+            raise ValueError("order_size_fraction values must be non-negative")
+    if frame.empty:
+        return _empty_queue_position_order_size_sweep()
+
+    rows: list[dict[str, float | int | str]] = []
+    for fraction in order_size_fractions:
+        sized = add_queue_position_order_size_features(
+            frame,
+            levels=levels,
+            order_size_fraction=float(fraction),
+        )
+        filled = add_passive_fill_probabilities(
+            sized,
+            config=fill_config,
+            pressure_col=pressure_col,
+        )
+        executed = add_execution_adjusted_edge(
+            filled,
+            signal_col=signal_col,
+            probability_col=probability_col,
+            long_net_col=long_net_col,
+            short_net_col=short_net_col,
+        )
+        summary = execution_adjusted_edge_summary(executed)
+        rows_count = int(summary["rows"])
+        abstain_rows = int(summary["abstain_rows"])
+        rows.append(
+            {
+                "order_size_fraction": float(fraction),
+                "rows": rows_count,
+                "mean_bid_child_order_size": float(executed["bid_child_order_size"].mean()),
+                "mean_ask_child_order_size": float(executed["ask_child_order_size"].mean()),
+                "mean_bid_queue_clear_share": float(executed["bid_queue_clear_share"].mean()),
+                "mean_ask_queue_clear_share": float(executed["ask_queue_clear_share"].mean()),
+                "mean_bid_fill_probability": float(summary["mean_bid_fill_probability"]),
+                "mean_ask_fill_probability": float(summary["mean_ask_fill_probability"]),
+                "mean_fill_probability_imbalance": float(
+                    executed["fill_probability_imbalance"].mean()
+                ),
+                "mean_bid_adverse_fill_probability": float(
+                    executed["bid_adverse_fill_probability"].mean()
+                ),
+                "mean_ask_adverse_fill_probability": float(
+                    executed["ask_adverse_fill_probability"].mean()
+                ),
+                "mean_execution_adjusted_edge_ticks": float(
+                    summary["mean_execution_adjusted_edge_ticks"]
+                ),
+                "tradable_share": float(summary["tradable_share"]),
+                "abstain_share": float(abstain_rows / rows_count) if rows_count else 0.0,
+                "dominant_execution_side": str(summary["dominant_execution_side"]),
+            }
+        )
+    return pd.DataFrame(rows)[list(_empty_queue_position_order_size_sweep().columns)]
+
+
+def queue_position_order_size_capacity_frontier(
+    sweep: pd.DataFrame,
+    *,
+    min_edge_ticks: float = 0.0,
+    min_tradable_share: float = 0.50,
+) -> dict[str, float | int | str]:
+    """Find the largest child-order size that preserves executable LCRI edge.
+
+    ``queue_position_order_size_sweep`` isolates scale capacity at a fixed queue
+    placement. This reducer converts that decay curve into a publishable frontier:
+    the largest child order, as a fraction of best displayed size, that still
+    satisfies execution-adjusted edge and tradability gates.
+    """
+    if not math.isfinite(min_edge_ticks):
+        raise ValueError("min_edge_ticks must be finite")
+    if not math.isfinite(min_tradable_share):
+        raise ValueError("min_tradable_share must be finite")
+    if not 0.0 <= min_tradable_share <= 1.0:
+        raise ValueError("min_tradable_share must be in [0.0, 1.0]")
+
+    empty = _empty_queue_position_order_size_capacity_frontier()
+    if sweep.empty:
+        return empty
+
+    required = {
+        "order_size_fraction",
+        "rows",
+        "mean_execution_adjusted_edge_ticks",
+        "tradable_share",
+        "dominant_execution_side",
+    }
+    _require_columns(sweep, required, "queue position order size capacity frontier")
+    values = _finite_values(
+        sweep,
+        [
+            "order_size_fraction",
+            "rows",
+            "mean_execution_adjusted_edge_ticks",
+            "tradable_share",
+        ],
+        "queue position order size capacity frontier",
+    )
+    if (values["order_size_fraction"] < 0.0).any():
+        raise ValueError("queue position order size capacity frontier fractions must be non-negative")
+    if (values["rows"] < 0.0).any():
+        raise ValueError("queue position order size capacity frontier rows must be non-negative")
+    if not values["tradable_share"].between(0.0, 1.0).all():
+        raise ValueError("queue position order size capacity frontier tradable shares must be in [0, 1]")
+
+    data = values.copy()
+    data["dominant_execution_side"] = sweep["dominant_execution_side"].astype(str)
+    data = data.sort_values("order_size_fraction", ignore_index=True)
+    minimum = data.iloc[0]
+    viable = data[
+        (data["mean_execution_adjusted_edge_ticks"] >= min_edge_ticks)
+        & (data["tradable_share"] >= min_tradable_share)
+    ]
+
+    if viable.empty:
+        result = empty.copy()
+        result.update(
+            {
+                "rows": int(len(data)),
+                "minimum_order_size_fraction": float(minimum["order_size_fraction"]),
+                "minimum_size_mean_execution_adjusted_edge_ticks": float(
+                    minimum["mean_execution_adjusted_edge_ticks"]
+                ),
+                "minimum_size_tradable_share": float(minimum["tradable_share"]),
+                "order_size_capacity_label": "no_viable_child_order_capacity",
+            }
+        )
+        return result
+
+    capacity = viable.iloc[-1]
+    edge_decay = float(
+        minimum["mean_execution_adjusted_edge_ticks"]
+        - capacity["mean_execution_adjusted_edge_ticks"]
+    )
+    tradable_decay = float(minimum["tradable_share"] - capacity["tradable_share"])
+    max_size = float(capacity["order_size_fraction"])
+    return {
+        "rows": int(len(data)),
+        "viable_rows": int(len(viable)),
+        "minimum_order_size_fraction": float(minimum["order_size_fraction"]),
+        "max_viable_order_size_fraction": max_size,
+        "minimum_size_mean_execution_adjusted_edge_ticks": float(
+            minimum["mean_execution_adjusted_edge_ticks"]
+        ),
+        "max_viable_mean_execution_adjusted_edge_ticks": float(
+            capacity["mean_execution_adjusted_edge_ticks"]
+        ),
+        "edge_decay_to_capacity_ticks": edge_decay,
+        "minimum_size_tradable_share": float(minimum["tradable_share"]),
+        "max_viable_tradable_share": float(capacity["tradable_share"]),
+        "tradable_share_decay_to_capacity": tradable_decay,
+        "dominant_execution_side_at_capacity": str(capacity["dominant_execution_side"]),
+        "order_size_capacity_label": _queue_order_size_capacity_label(
+            max_size=max_size,
+            edge_decay=edge_decay,
+            tradable_decay=tradable_decay,
+        ),
+    }
+
+
 def queue_position_regime_fraction_sweep(
     frame: pd.DataFrame,
     *,
@@ -7121,6 +7310,28 @@ def _empty_queue_position_fraction_sweep() -> pd.DataFrame:
     )
 
 
+def _empty_queue_position_order_size_sweep() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "order_size_fraction",
+            "rows",
+            "mean_bid_child_order_size",
+            "mean_ask_child_order_size",
+            "mean_bid_queue_clear_share",
+            "mean_ask_queue_clear_share",
+            "mean_bid_fill_probability",
+            "mean_ask_fill_probability",
+            "mean_fill_probability_imbalance",
+            "mean_bid_adverse_fill_probability",
+            "mean_ask_adverse_fill_probability",
+            "mean_execution_adjusted_edge_ticks",
+            "tradable_share",
+            "abstain_share",
+            "dominant_execution_side",
+        ]
+    )
+
+
 def _empty_queue_position_capacity_frontier() -> dict[str, float | int | str]:
     return {
         "rows": 0,
@@ -7135,6 +7346,23 @@ def _empty_queue_position_capacity_frontier() -> dict[str, float | int | str]:
         "tradable_share_decay_to_capacity": 0.0,
         "dominant_execution_side_at_capacity": "none",
         "capacity_label": "empty_sweep",
+    }
+
+
+def _empty_queue_position_order_size_capacity_frontier() -> dict[str, float | int | str]:
+    return {
+        "rows": 0,
+        "viable_rows": 0,
+        "minimum_order_size_fraction": 0.0,
+        "max_viable_order_size_fraction": 0.0,
+        "minimum_size_mean_execution_adjusted_edge_ticks": 0.0,
+        "max_viable_mean_execution_adjusted_edge_ticks": 0.0,
+        "edge_decay_to_capacity_ticks": 0.0,
+        "minimum_size_tradable_share": 0.0,
+        "max_viable_tradable_share": 0.0,
+        "tradable_share_decay_to_capacity": 0.0,
+        "dominant_execution_side_at_capacity": "none",
+        "order_size_capacity_label": "empty_sweep",
     }
 
 
@@ -7168,6 +7396,14 @@ def _queue_capacity_label(*, max_fraction: float, edge_decay: float, tradable_de
     if max_fraction >= 0.50:
         return "queue_capacity_constrained"
     return "front_queue_only_capacity"
+
+
+def _queue_order_size_capacity_label(*, max_size: float, edge_decay: float, tradable_decay: float) -> str:
+    if max_size >= 0.50 and edge_decay <= 0.25 and tradable_decay <= 0.15:
+        return "large_child_order_resilient_capacity"
+    if max_size >= 0.20:
+        return "child_order_capacity_constrained"
+    return "small_child_order_only_capacity"
 
 
 def _queue_regime_capacity_brittleness_label(
