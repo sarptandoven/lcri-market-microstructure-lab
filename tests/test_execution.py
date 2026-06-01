@@ -58,6 +58,7 @@ from lcri_lab.execution import (
     queue_position_expected_value_frontier,
     queue_position_expected_value_policy_selection,
     queue_position_expected_value_policy_scorecard,
+    queue_position_expected_value_stress_table,
     queue_position_latency_sensitivity,
     queue_position_regime_fraction_sweep,
 )
@@ -3280,6 +3281,73 @@ def test_queue_position_expected_value_frontier_rejects_invalid_costs_and_missin
         queue_position_expected_value_frontier(pd.DataFrame(), adverse_selection_cost_ticks=-0.1)
     with pytest.raises(ValueError, match="missing queue position expected value frontier columns"):
         queue_position_expected_value_frontier(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_expected_value_stress_table_haircuts_selected_policies() -> None:
+    selection = pd.DataFrame(
+        {
+            "regime": ["calm", "event"],
+            "selected_min_fill_probability": [0.60, 0.80],
+            "selected_max_queue_share": [0.50, 0.25],
+            "candidate_rows": [10, 4],
+            "candidate_share": [0.50, 0.20],
+            "expected_value_ticks": [0.60, 0.32],
+            "risk_adjusted_expected_value_ticks": [0.42, 0.08],
+            "mean_fill_probability": [0.75, 0.80],
+            "mean_queue_share": [0.20, 0.25],
+            "mean_adverse_fill_probability": [0.10, 0.30],
+            "selection_label": ["deployable", "deployable"],
+        }
+    )
+
+    stressed = queue_position_expected_value_stress_table(
+        selection,
+        stress_scenarios={"base": (0.0, 0.0), "latency_hit": (0.25, 0.10)},
+        adverse_selection_cost_ticks=0.50,
+        queue_drag_cost_ticks=0.25,
+        min_candidate_share=0.25,
+        min_stressed_expected_value_ticks=0.10,
+    )
+
+    assert stressed.columns.tolist() == [
+        "scenario",
+        "regime",
+        "fill_probability_haircut",
+        "adverse_fill_probability_uplift",
+        "candidate_rows",
+        "candidate_share",
+        "stressed_fill_probability",
+        "stressed_adverse_fill_probability",
+        "implied_edge_ticks",
+        "stressed_expected_value_ticks",
+        "expected_value_decay_ticks",
+        "stress_label",
+    ]
+    calm_latency = stressed[(stressed["scenario"] == "latency_hit") & (stressed["regime"] == "calm")].iloc[0]
+    event_latency = stressed[(stressed["scenario"] == "latency_hit") & (stressed["regime"] == "event")].iloc[0]
+    assert calm_latency["stressed_fill_probability"] == pytest.approx(0.75 * 0.75)
+    assert calm_latency["stressed_expected_value_ticks"] == pytest.approx(0.80 * 0.75 * 0.75 - 0.20 * 0.50 - 0.20 * 0.25)
+    assert calm_latency["stress_label"] == "stress_robust"
+    assert event_latency["stress_label"] == "capacity_or_ev_fragile"
+
+
+def test_queue_position_expected_value_stress_table_rejects_invalid_scenarios() -> None:
+    selection = pd.DataFrame(
+        {
+            "regime": ["all"],
+            "candidate_rows": [1],
+            "candidate_share": [1.0],
+            "expected_value_ticks": [0.2],
+            "mean_fill_probability": [0.5],
+            "mean_queue_share": [0.2],
+            "mean_adverse_fill_probability": [0.1],
+        }
+    )
+
+    with pytest.raises(ValueError, match="stress_scenarios values must be"):
+        queue_position_expected_value_stress_table(selection, stress_scenarios={"bad": (1.2, 0.0)})
+    with pytest.raises(ValueError, match="stress_scenarios values must be"):
+        queue_position_expected_value_stress_table(selection, stress_scenarios={"bad": 0.25})
 
 
 def test_execution_adjusted_lcri_event_window_attribution_flags_high_lcri_event_fragility() -> None:

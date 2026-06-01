@@ -129,6 +129,10 @@ from lcri_lab.execution import (
     queue_position_capacity_stability,
     queue_position_edge_decay,
     queue_position_execution_quality_gate,
+    queue_position_expected_value_frontier,
+    queue_position_expected_value_policy_scorecard,
+    queue_position_expected_value_policy_selection,
+    queue_position_expected_value_stress_table,
     queue_position_fill_calibration_surface,
     queue_position_fill_surface,
     queue_position_fraction_sweep,
@@ -806,6 +810,38 @@ def run_demo(
         max_mean_adverse_fill_probability=0.40,
         max_toxicity_filtered_share=0.75,
     )
+    queue_expected_value_frontier = queue_position_expected_value_frontier(
+        scored,
+        regime_col="pressure_memory_decay_state",
+    )
+    heldout_queue_expected_value_frontier = queue_position_expected_value_frontier(
+        heldout_scored,
+        regime_col="pressure_memory_decay_state",
+    )
+    queue_expected_value_policy_selection = queue_position_expected_value_policy_selection(
+        queue_expected_value_frontier,
+        min_candidate_share=0.05,
+    )
+    heldout_queue_expected_value_policy_selection = queue_position_expected_value_policy_selection(
+        heldout_queue_expected_value_frontier,
+        min_candidate_share=0.05,
+    )
+    queue_expected_value_policy_scorecard = queue_position_expected_value_policy_scorecard(
+        queue_expected_value_policy_selection
+    )
+    heldout_queue_expected_value_policy_scorecard = queue_position_expected_value_policy_scorecard(
+        heldout_queue_expected_value_policy_selection
+    )
+    queue_expected_value_stress_table = queue_position_expected_value_stress_table(
+        queue_expected_value_policy_selection,
+        min_candidate_share=0.05,
+        min_stressed_expected_value_ticks=0.0,
+    )
+    heldout_queue_expected_value_stress_table = queue_position_expected_value_stress_table(
+        heldout_queue_expected_value_policy_selection,
+        min_candidate_share=0.05,
+        min_stressed_expected_value_ticks=0.0,
+    )
     queue_execution_quality_gate = queue_position_execution_quality_gate(
         queue_fill_surface,
         queue_edge_decay,
@@ -1047,6 +1083,14 @@ def run_demo(
         "heldout_queue_position_adverse_selection_policy_frontier.csv",
         "queue_position_adverse_selection_policy_summary.json",
         "heldout_queue_position_adverse_selection_policy_summary.json",
+        "queue_position_expected_value_frontier.csv",
+        "heldout_queue_position_expected_value_frontier.csv",
+        "queue_position_expected_value_policy_selection.csv",
+        "heldout_queue_position_expected_value_policy_selection.csv",
+        "queue_position_expected_value_policy_scorecard.csv",
+        "heldout_queue_position_expected_value_policy_scorecard.csv",
+        "queue_position_expected_value_stress_table.csv",
+        "heldout_queue_position_expected_value_stress_table.csv",
         "execution_adjusted_sample.csv",
         "research_summary.md",
         "artifact_coverage_matrix.csv",
@@ -1442,6 +1486,30 @@ def run_demo(
     write_json(
         output / "heldout_queue_position_adverse_selection_policy_summary.json",
         heldout_queue_adverse_policy_summary,
+    )
+    queue_expected_value_frontier.to_csv(
+        output / "queue_position_expected_value_frontier.csv", index=False
+    )
+    heldout_queue_expected_value_frontier.to_csv(
+        output / "heldout_queue_position_expected_value_frontier.csv", index=False
+    )
+    queue_expected_value_policy_selection.to_csv(
+        output / "queue_position_expected_value_policy_selection.csv", index=False
+    )
+    heldout_queue_expected_value_policy_selection.to_csv(
+        output / "heldout_queue_position_expected_value_policy_selection.csv", index=False
+    )
+    queue_expected_value_policy_scorecard.to_csv(
+        output / "queue_position_expected_value_policy_scorecard.csv", index=False
+    )
+    heldout_queue_expected_value_policy_scorecard.to_csv(
+        output / "heldout_queue_position_expected_value_policy_scorecard.csv", index=False
+    )
+    queue_expected_value_stress_table.to_csv(
+        output / "queue_position_expected_value_stress_table.csv", index=False
+    )
+    heldout_queue_expected_value_stress_table.to_csv(
+        output / "heldout_queue_position_expected_value_stress_table.csv", index=False
     )
     execution_lcri_side_attribution.to_csv(
         output / "execution_adjusted_lcri_side_attribution.csv", index=False

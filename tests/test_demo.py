@@ -176,6 +176,14 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_queue_position_adverse_selection_policy_frontier.csv").exists()
     assert (tmp_path / "queue_position_adverse_selection_policy_summary.json").exists()
     assert (tmp_path / "heldout_queue_position_adverse_selection_policy_summary.json").exists()
+    assert (tmp_path / "queue_position_expected_value_frontier.csv").exists()
+    assert (tmp_path / "heldout_queue_position_expected_value_frontier.csv").exists()
+    assert (tmp_path / "queue_position_expected_value_policy_selection.csv").exists()
+    assert (tmp_path / "heldout_queue_position_expected_value_policy_selection.csv").exists()
+    assert (tmp_path / "queue_position_expected_value_policy_scorecard.csv").exists()
+    assert (tmp_path / "heldout_queue_position_expected_value_policy_scorecard.csv").exists()
+    assert (tmp_path / "queue_position_expected_value_stress_table.csv").exists()
+    assert (tmp_path / "heldout_queue_position_expected_value_stress_table.csv").exists()
     assert (tmp_path / "execution_adjusted_sample.csv").exists()
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
@@ -297,6 +305,41 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     )
     assert heldout_adverse_policy_summary["policies"] > 0
     assert "policy_summary_label" in heldout_adverse_policy_summary
+    ev_frontier_columns = set(
+        pd.read_csv(tmp_path / "queue_position_expected_value_frontier.csv", nrows=1).columns
+    )
+    assert {
+        "regime",
+        "min_fill_probability",
+        "max_queue_share",
+        "candidate_share",
+        "expected_value_ticks",
+        "risk_adjusted_expected_value_ticks",
+        "policy_label",
+    }.issubset(ev_frontier_columns)
+    ev_selection_columns = set(
+        pd.read_csv(tmp_path / "queue_position_expected_value_policy_selection.csv", nrows=1).columns
+    )
+    assert {
+        "selected_min_fill_probability",
+        "selected_max_queue_share",
+        "selection_label",
+    }.issubset(ev_selection_columns)
+    ev_scorecard_columns = set(
+        pd.read_csv(tmp_path / "queue_position_expected_value_policy_scorecard.csv", nrows=1).columns
+    )
+    assert {"deployable_share", "readiness_label"}.issubset(ev_scorecard_columns)
+    ev_stress = pd.read_csv(tmp_path / "queue_position_expected_value_stress_table.csv")
+    assert {
+        "scenario",
+        "regime",
+        "stressed_expected_value_ticks",
+        "expected_value_decay_ticks",
+        "stress_label",
+    }.issubset(ev_stress.columns)
+    assert set(ev_stress["scenario"]) >= {"base", "latency_haircut", "toxicity_haircut"}
+    heldout_ev_stress = pd.read_csv(tmp_path / "heldout_queue_position_expected_value_stress_table.csv")
+    assert set(heldout_ev_stress["scenario"]) >= {"base", "latency_haircut", "toxicity_haircut"}
     heldout_release_gate = json.loads(
         (tmp_path / "heldout_execution_publishability_release_gate.json").read_text()
     )

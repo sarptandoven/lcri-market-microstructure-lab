@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -2096,6 +2097,149 @@ def queue_position_expected_value_policy_scorecard(selection: pd.DataFrame) -> p
         ],
         columns=columns,
     )
+
+
+def queue_position_expected_value_stress_table(
+    selection: pd.DataFrame,
+    *,
+    stress_scenarios: dict[str, Any] | None = None,
+    adverse_selection_cost_ticks: float = 0.50,
+    queue_drag_cost_ticks: float = 0.25,
+    min_candidate_share: float = 0.10,
+    min_stressed_expected_value_ticks: float = 0.0,
+) -> pd.DataFrame:
+    """Stress selected queue-position EV policies for latency/toxicity haircuts.
+
+    ``queue_position_expected_value_policy_selection`` chooses the best policy under
+    observed fill, adverse-fill, and queue-share estimates. This table asks whether
+    those choices survive realistic degradation: lower passive fill rates after
+    latency or queue-priority loss, and higher adverse-selection probability when
+    quotes are filled by toxic flow. It derives the selected policy's implied gross
+    edge from ``expected_value_ticks / mean_fill_probability`` and re-prices it
+    under each scenario so a publishability packet can distinguish robust policies
+    from ones that only work at optimistic queue assumptions.
+    """
+    columns = [
+        "scenario",
+        "regime",
+        "fill_probability_haircut",
+        "adverse_fill_probability_uplift",
+        "candidate_rows",
+        "candidate_share",
+        "stressed_fill_probability",
+        "stressed_adverse_fill_probability",
+        "implied_edge_ticks",
+        "stressed_expected_value_ticks",
+        "expected_value_decay_ticks",
+        "stress_label",
+    ]
+    if stress_scenarios is None:
+        stress_scenarios = {
+            "base": (0.0, 0.0),
+            "latency_haircut": (0.15, 0.05),
+            "toxicity_haircut": (0.25, 0.10),
+        }
+    if not stress_scenarios:
+        raise ValueError("stress_scenarios must be a non-empty mapping")
+    for name, value in {
+        "adverse_selection_cost_ticks": adverse_selection_cost_ticks,
+        "queue_drag_cost_ticks": queue_drag_cost_ticks,
+        "min_candidate_share": min_candidate_share,
+        "min_stressed_expected_value_ticks": min_stressed_expected_value_ticks,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if adverse_selection_cost_ticks < 0.0:
+        raise ValueError("adverse_selection_cost_ticks must be non-negative")
+    if queue_drag_cost_ticks < 0.0:
+        raise ValueError("queue_drag_cost_ticks must be non-negative")
+    if not 0.0 <= min_candidate_share <= 1.0:
+        raise ValueError("min_candidate_share must be in [0.0, 1.0]")
+
+    required = {
+        "regime",
+        "candidate_rows",
+        "candidate_share",
+        "expected_value_ticks",
+        "mean_fill_probability",
+        "mean_queue_share",
+        "mean_adverse_fill_probability",
+    }
+    _require_columns(selection, required, "queue position expected value stress table")
+    if selection.empty:
+        return pd.DataFrame(columns=columns)
+
+    numeric_columns = sorted(required - {"regime"})
+    values = _finite_values(selection, numeric_columns, "queue position expected value stress table")
+    if (values[["candidate_rows", "mean_queue_share"]] < 0.0).any().any():
+        raise ValueError("queue position expected value stress table counts and queue shares must be non-negative")
+    probability_columns = ["candidate_share", "mean_fill_probability", "mean_adverse_fill_probability"]
+    if not values[probability_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("queue position expected value stress table probabilities must be in [0, 1]")
+
+    parsed_scenarios: list[tuple[str, float, float]] = []
+    for scenario, settings in stress_scenarios.items():
+        if isinstance(settings, (str, bytes)):
+            raise ValueError("stress_scenarios values must be (fill_haircut, adverse_uplift) pairs")
+        try:
+            fill_haircut_raw, adverse_uplift_raw = settings
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "stress_scenarios values must be (fill_haircut, adverse_uplift) pairs"
+            ) from exc
+        fill_haircut = float(fill_haircut_raw)
+        adverse_uplift = float(adverse_uplift_raw)
+        if (
+            not math.isfinite(fill_haircut)
+            or not math.isfinite(adverse_uplift)
+            or not 0.0 <= fill_haircut <= 1.0
+            or not 0.0 <= adverse_uplift <= 1.0
+        ):
+            raise ValueError("stress_scenarios values must be finite probabilities in [0.0, 1.0]")
+        parsed_scenarios.append((str(scenario), fill_haircut, adverse_uplift))
+
+    working = selection.copy()
+    working[numeric_columns] = values
+    rows: list[dict[str, float | int | str]] = []
+    for scenario, fill_haircut, adverse_uplift in parsed_scenarios:
+        for _, row in working.iterrows():
+            mean_fill = float(row["mean_fill_probability"])
+            implied_edge = float(row["expected_value_ticks"]) / mean_fill if mean_fill > 0.0 else 0.0
+            stressed_fill = mean_fill * (1.0 - fill_haircut)
+            stressed_adverse = min(1.0, float(row["mean_adverse_fill_probability"]) + adverse_uplift)
+            stressed_ev = (
+                implied_edge * stressed_fill
+                - stressed_adverse * adverse_selection_cost_ticks
+                - float(row["mean_queue_share"]) * queue_drag_cost_ticks
+            )
+            expected_value_decay = float(row["expected_value_ticks"]) - stressed_ev
+            capacity_ok = float(row["candidate_share"]) >= min_candidate_share
+            ev_ok = stressed_ev >= min_stressed_expected_value_ticks
+            if capacity_ok and ev_ok:
+                stress_label = "stress_robust"
+            elif not capacity_ok and ev_ok:
+                stress_label = "capacity_fragile"
+            elif capacity_ok and not ev_ok:
+                stress_label = "expected_value_fragile"
+            else:
+                stress_label = "capacity_or_ev_fragile"
+            rows.append(
+                {
+                    "scenario": scenario,
+                    "regime": str(row["regime"]),
+                    "fill_probability_haircut": fill_haircut,
+                    "adverse_fill_probability_uplift": adverse_uplift,
+                    "candidate_rows": int(row["candidate_rows"]),
+                    "candidate_share": float(row["candidate_share"]),
+                    "stressed_fill_probability": stressed_fill,
+                    "stressed_adverse_fill_probability": stressed_adverse,
+                    "implied_edge_ticks": implied_edge,
+                    "stressed_expected_value_ticks": stressed_ev,
+                    "expected_value_decay_ticks": expected_value_decay,
+                    "stress_label": stress_label,
+                }
+            )
+    return pd.DataFrame(rows, columns=columns)
 
 
 def queue_position_adverse_selection_policy_frontier(
