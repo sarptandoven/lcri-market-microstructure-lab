@@ -72,6 +72,7 @@ from lcri_lab.execution import (
     queue_position_latency_edge_survival_scorecard,
     queue_position_latency_regime_surface,
     queue_position_latency_release_scorecard,
+    queue_position_path_drawdown_episodes,
     queue_position_path_risk_concentration,
     queue_position_path_risk_release_gate,
     queue_position_path_risk_scorecard,
@@ -4477,3 +4478,71 @@ def test_passive_fill_event_window_transition_scorecard_passes_empty_matrix() ->
     assert scorecard["observed_transition_paths"] == 0
     assert scorecard["total_transition_rows"] == 0
     assert scorecard["worst_transition_path"] == "none"
+
+
+def test_queue_position_path_drawdown_episodes_identifies_underwater_runs() -> None:
+    frame = pd.DataFrame(
+        {
+            "session": ["A", "A", "A", "A", "A", "A", "B", "B"],
+            "best_execution_side": ["long", "long", "short", "short", "short", "long", "long", "long"],
+            "execution_adjusted_edge_ticks": [1.0, -0.4, -0.8, 0.3, 1.1, -0.2, 0.5, -0.1],
+            "passive_fill_event_window_regime": [
+                "calm",
+                "event",
+                "event",
+                "post_event",
+                "post_event",
+                "calm",
+                "pre_event",
+                "event",
+            ],
+        }
+    )
+
+    episodes = queue_position_path_drawdown_episodes(
+        frame,
+        group_cols="session",
+        event_window_col="passive_fill_event_window_regime",
+    )
+
+    assert episodes["path_id"].tolist() == ["A", "A", "B"]
+    assert episodes["episode_start_row"].tolist() == [1, 5, 7]
+    assert episodes["episode_end_row"].tolist() == [4, 5, 7]
+    assert episodes["trough_row"].tolist() == [2, 5, 7]
+    assert episodes["episode_rows"].tolist() == [4, 1, 1]
+    assert episodes["max_drawdown_ticks"].tolist() == pytest.approx([1.2, 0.2, 0.1])
+    assert episodes["recovery_edge_ticks"].tolist() == pytest.approx([1.4, 0.0, 0.0])
+    assert episodes["episode_turnover_events"].tolist() == [1, 0, 0]
+    assert episodes["dominant_event_window_regime"].tolist() == ["event", "calm", "event"]
+    assert episodes["episode_risk_label"].tolist() == [
+        "path_drawdown_recovered",
+        "path_drawdown_open",
+        "path_drawdown_open",
+    ]
+
+
+def test_queue_position_path_drawdown_episodes_ignores_abstains_and_zero_drawdown() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["abstain", "long", "long", "abstain"],
+            "execution_adjusted_edge_ticks": [-10.0, 0.2, 0.1, -5.0],
+        }
+    )
+
+    episodes = queue_position_path_drawdown_episodes(frame)
+
+    assert episodes.empty
+    assert episodes.columns.tolist() == [
+        "path_id",
+        "episode_id",
+        "episode_start_row",
+        "episode_end_row",
+        "trough_row",
+        "episode_rows",
+        "max_drawdown_ticks",
+        "recovery_edge_ticks",
+        "episode_total_edge_ticks",
+        "episode_turnover_events",
+        "dominant_event_window_regime",
+        "episode_risk_label",
+    ]

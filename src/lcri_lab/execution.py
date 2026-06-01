@@ -8888,6 +8888,129 @@ def queue_position_latency_release_scorecard(
     }
 
 
+def queue_position_path_drawdown_episodes(
+    frame: pd.DataFrame,
+    *,
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    side_col: str = "best_execution_side",
+    edge_col: str = "execution_adjusted_edge_ticks",
+    event_window_col: str | None = None,
+) -> pd.DataFrame:
+    """Extract path-level drawdown episodes for queue-position execution policies.
+
+    Aggregate path-risk scorecards can show that a passive execution policy has an
+    unacceptable drawdown, but not where the underwater run starts, whether it is
+    still open, which side churn occurred inside it, or which passive-fill event
+    window dominates the damage. This helper replays executed non-abstain rows in
+    chronological order and emits one row per contiguous underwater episode so a
+    publishability review can inspect concrete execution failure windows rather
+    than only summary drawdown scalars.
+    """
+    grouping_columns = _normalize_group_columns(frame, group_cols, "queue position path drawdown group")
+    required = {side_col, edge_col, *grouping_columns}
+    if event_window_col is not None:
+        required.add(event_window_col)
+    columns = [
+        "path_id",
+        "episode_id",
+        "episode_start_row",
+        "episode_end_row",
+        "trough_row",
+        "episode_rows",
+        "max_drawdown_ticks",
+        "recovery_edge_ticks",
+        "episode_total_edge_ticks",
+        "episode_turnover_events",
+        "dominant_event_window_regime",
+        "episode_risk_label",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    _require_columns(frame, required, "queue position path drawdown episodes")
+    values = _finite_values(frame, [edge_col], "queue position path drawdown episodes")
+    sides = frame[side_col].astype(str)
+    row_positions = pd.Series(range(len(frame)), index=frame.index)
+
+    def dominant_event(path: pd.DataFrame) -> str:
+        if event_window_col is None:
+            return "none"
+        events = path[event_window_col].astype(str)
+        if events.empty:
+            return "none"
+        counts: dict[str, int] = {}
+        for event in events:
+            counts[event] = counts.get(event, 0) + 1
+        return max(counts, key=lambda event: counts[event])
+
+    def path_episode_rows(path: pd.DataFrame, path_id: str) -> list[dict[str, float | int | str]]:
+        executed = path.loc[sides.loc[path.index] != "abstain"]
+        if executed.empty:
+            return []
+        executed_edges = values.loc[executed.index, edge_col]
+        executed_sides = sides.loc[executed.index]
+        cumulative = executed_edges.cumsum()
+        running_peak = cumulative.cummax().clip(lower=0.0)
+        drawdown = running_peak - cumulative
+
+        rows: list[dict[str, float | int | str]] = []
+        in_episode = False
+        start_pos = 0
+        episode_id = 0
+        for pos, drawdown_value in enumerate(drawdown.to_numpy()):
+            if drawdown_value > 0.0 and not in_episode:
+                in_episode = True
+                start_pos = pos
+            is_last = pos == len(drawdown) - 1
+            if in_episode and (drawdown_value <= 0.0 or is_last):
+                end_pos = pos
+                episode = executed.iloc[start_pos : end_pos + 1]
+                episode_drawdown = drawdown.iloc[start_pos : end_pos + 1]
+                episode_edges = executed_edges.loc[episode.index]
+                episode_sides = executed_sides.loc[episode.index]
+                trough_label = episode_drawdown.idxmax()
+                trough_position = episode.index.get_loc(trough_label)
+                recovery_edge = float(episode_edges.iloc[trough_position + 1 :].sum())
+                side_changes = episode_sides.ne(episode_sides.shift()).iloc[1:]
+                rows.append(
+                    {
+                        "path_id": path_id,
+                        "episode_id": episode_id,
+                        "episode_start_row": int(row_positions.loc[episode.index[0]]),
+                        "episode_end_row": int(row_positions.loc[episode.index[-1]]),
+                        "trough_row": int(row_positions.loc[trough_label]),
+                        "episode_rows": int(len(episode)),
+                        "max_drawdown_ticks": float(episode_drawdown.max()),
+                        "recovery_edge_ticks": recovery_edge,
+                        "episode_total_edge_ticks": float(episode_edges.sum()),
+                        "episode_turnover_events": int(side_changes.sum()),
+                        "dominant_event_window_regime": dominant_event(episode),
+                        "episode_risk_label": "path_drawdown_open"
+                        if is_last and drawdown_value > 0.0
+                        else "path_drawdown_recovered",
+                    }
+                )
+                episode_id += 1
+                in_episode = False
+        return rows
+
+    rows: list[dict[str, float | int | str]] = []
+    if grouping_columns:
+        groupby_arg: str | list[str] = grouping_columns[0] if len(grouping_columns) == 1 else grouping_columns
+        for key, group in frame.groupby(groupby_arg, sort=True, dropna=False):
+            if isinstance(key, tuple):
+                path_id = "|".join(str(part) for part in key)
+            else:
+                path_id = str(key)
+            rows.extend(path_episode_rows(group, path_id))
+    else:
+        rows.extend(path_episode_rows(frame, "overall"))
+
+    return pd.DataFrame(rows, columns=columns).sort_values(
+        ["max_drawdown_ticks", "path_id", "episode_id"], ascending=[False, True, True], ignore_index=True
+    )
+
+
+
 def queue_position_path_risk_scorecard(
     frame: pd.DataFrame,
     *,

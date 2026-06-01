@@ -183,6 +183,25 @@ scored = model.score_frame(order_book_snapshots)
 
 Persisted models include a `schema_version` field so incompatible artifact changes fail fast.
 
+### Queue-position drawdown episodes
+
+Execution-aware demos can turn a scored passive path into concrete underwater runs
+instead of relying only on aggregate drawdown. `queue_position_path_drawdown_episodes`
+replays non-abstain execution rows, keeps optional session/symbol grouping intact,
+and reports each episode's start/end row, trough row, recovery edge, side-turnover
+count, dominant passive-fill event-window regime, and whether the drawdown recovered
+or remained open.
+
+```python
+from lcri_lab import queue_position_path_drawdown_episodes
+
+episodes = queue_position_path_drawdown_episodes(
+    scored,
+    group_cols="session",
+    event_window_col="passive_fill_event_window_regime",
+)
+```
+
 ### Nonlinear regularization audit
 
 API users can test whether nonlinear liquidity-neutralization lift survives across a
