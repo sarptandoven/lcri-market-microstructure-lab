@@ -151,6 +151,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_passive_fill_calibration_summary.json").exists()
     assert (tmp_path / "passive_fill_realization_horizon_sweep.csv").exists()
     assert (tmp_path / "heldout_passive_fill_realization_horizon_sweep.csv").exists()
+    assert (tmp_path / "passive_fill_proxy_disagreement.csv").exists()
+    assert (tmp_path / "heldout_passive_fill_proxy_disagreement.csv").exists()
     assert (tmp_path / "passive_fill_threshold_policy_curve.csv").exists()
     assert (tmp_path / "heldout_passive_fill_threshold_policy_curve.csv").exists()
     assert (tmp_path / "queue_position_fill_surface.csv").exists()
@@ -197,6 +199,18 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "queue_position_expected_value_stress_table.csv").exists()
     assert (tmp_path / "heldout_queue_position_expected_value_stress_table.csv").exists()
     assert (tmp_path / "execution_adjusted_sample.csv").exists()
+
+    proxy_disagreement = pd.read_csv(tmp_path / "passive_fill_proxy_disagreement.csv")
+    assert proxy_disagreement["side"].tolist() == ["bid", "ask", "all"]
+    assert set(proxy_disagreement["review_label"]) <= {
+        "proxy_event_aligned",
+        "proxy_event_false_positive_bias",
+        "proxy_event_false_negative_bias",
+        "proxy_event_disagreement",
+    }
+    assert proxy_disagreement["disagreement_rate"].between(0.0, 1.0).all()
+    heldout_proxy_disagreement = pd.read_csv(tmp_path / "heldout_passive_fill_proxy_disagreement.csv")
+    assert heldout_proxy_disagreement["side"].tolist() == ["bid", "ask", "all"]
 
     nonlinear_surface = pd.read_csv(tmp_path / "baseline_nonlinear_stress_surface.csv")
     assert nonlinear_surface.columns.tolist() == [

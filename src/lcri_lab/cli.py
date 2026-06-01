@@ -123,6 +123,7 @@ from lcri_lab.execution import (
     passive_fill_event_window_sensitivity,
     passive_fill_event_window_transition_matrix,
     passive_fill_event_window_transition_scorecard,
+    passive_fill_proxy_disagreement,
     passive_fill_realization_horizon_sweep,
     passive_fill_threshold_policy_curve,
     queue_position_adverse_selection_policy_frontier,
@@ -695,6 +696,28 @@ def run_demo(
         heldout_scored,
         horizon=passive_fill_horizon,
     )
+    passive_fill_event_labeled = add_queue_position_realized_fill_proxy(
+        passive_fill_labeled,
+        horizon=1,
+        bid_realized_col="bid_event_fill",
+        ask_realized_col="ask_event_fill",
+    )
+    heldout_passive_fill_event_labeled = add_queue_position_realized_fill_proxy(
+        heldout_passive_fill_labeled,
+        horizon=1,
+        bid_realized_col="bid_event_fill",
+        ask_realized_col="ask_event_fill",
+    )
+    passive_fill_proxy_audit = passive_fill_proxy_disagreement(
+        passive_fill_event_labeled,
+        snapshot_cols=("bid_realized_fill", "ask_realized_fill"),
+        event_cols=("bid_event_fill", "ask_event_fill"),
+    )
+    heldout_passive_fill_proxy_audit = passive_fill_proxy_disagreement(
+        heldout_passive_fill_event_labeled,
+        snapshot_cols=("bid_realized_fill", "ask_realized_fill"),
+        event_cols=("bid_event_fill", "ask_event_fill"),
+    )
     passive_fill_calibration = passive_fill_calibration_curve(
         passive_fill_labeled,
         regime_col="pressure_memory_decay_state",
@@ -1115,6 +1138,8 @@ def run_demo(
         "heldout_passive_fill_calibration_summary.json",
         "passive_fill_realization_horizon_sweep.csv",
         "heldout_passive_fill_realization_horizon_sweep.csv",
+        "passive_fill_proxy_disagreement.csv",
+        "heldout_passive_fill_proxy_disagreement.csv",
         "passive_fill_threshold_policy_curve.csv",
         "heldout_passive_fill_threshold_policy_curve.csv",
         "queue_position_fill_surface.csv",
@@ -1502,6 +1527,10 @@ def run_demo(
     heldout_passive_fill_horizon_sweep.to_csv(
         output / "heldout_passive_fill_realization_horizon_sweep.csv", index=False
     )
+    passive_fill_proxy_audit.to_csv(output / "passive_fill_proxy_disagreement.csv", index=False)
+    heldout_passive_fill_proxy_audit.to_csv(
+        output / "heldout_passive_fill_proxy_disagreement.csv", index=False
+    )
     passive_fill_threshold_policy.to_csv(
         output / "passive_fill_threshold_policy_curve.csv", index=False
     )
@@ -1798,6 +1827,8 @@ def run_demo(
         heldout_execution_publishability_gate=heldout_execution_publishability_gate,
         passive_fill_horizon_sweep=passive_fill_horizon_sweep,
         heldout_passive_fill_horizon_sweep=heldout_passive_fill_horizon_sweep,
+        passive_fill_proxy_audit=passive_fill_proxy_audit,
+        heldout_passive_fill_proxy_audit=heldout_passive_fill_proxy_audit,
         queue_fill_surface=queue_fill_surface,
         heldout_queue_fill_surface=heldout_queue_fill_surface,
         queue_fraction_sweep=queue_fraction_sweep,
@@ -2037,6 +2068,8 @@ def _append_execution_adjusted_summary(
     heldout_execution_publishability_gate: dict[str, float | int | str | bool],
     passive_fill_horizon_sweep: pd.DataFrame,
     heldout_passive_fill_horizon_sweep: pd.DataFrame,
+    passive_fill_proxy_audit: pd.DataFrame,
+    heldout_passive_fill_proxy_audit: pd.DataFrame,
     queue_fill_surface: pd.DataFrame,
     heldout_queue_fill_surface: pd.DataFrame,
     queue_fraction_sweep: pd.DataFrame,
@@ -2085,6 +2118,10 @@ def _append_execution_adjusted_summary(
     passive_horizon_lines = _passive_fill_horizon_sweep_lines(passive_fill_horizon_sweep)
     heldout_passive_horizon_lines = _passive_fill_horizon_sweep_lines(
         heldout_passive_fill_horizon_sweep
+    )
+    passive_proxy_audit_lines = _passive_fill_proxy_disagreement_lines(passive_fill_proxy_audit)
+    heldout_passive_proxy_audit_lines = _passive_fill_proxy_disagreement_lines(
+        heldout_passive_fill_proxy_audit
     )
     queue_surface_lines = _queue_position_fill_surface_lines(queue_fill_surface)
     heldout_queue_surface_lines = _queue_position_fill_surface_lines(heldout_queue_fill_surface)
@@ -2177,6 +2214,14 @@ def _append_execution_adjusted_summary(
         "## Heldout passive-fill realization horizon sweep",
         "",
         *heldout_passive_horizon_lines,
+        "",
+        "## Passive-fill proxy disagreement audit",
+        "",
+        *passive_proxy_audit_lines,
+        "",
+        "## Heldout passive-fill proxy disagreement audit",
+        "",
+        *heldout_passive_proxy_audit_lines,
         "",
         "## Queue-position fill calibration surface",
         "",
@@ -2363,6 +2408,24 @@ def _passive_fill_horizon_sweep_lines(sweep: pd.DataFrame) -> list[str]:
             f"brier={row['weighted_brier_score']:.3f}, "
             f"brier_gap={row['brier_score_gap_vs_shortest']:.3f}, "
             f"label={row['horizon_stability_label']}"
+        )
+    return rows
+
+
+def _passive_fill_proxy_disagreement_lines(audit: pd.DataFrame) -> list[str]:
+    if audit.empty:
+        return ["- no passive-fill proxy disagreement observations"]
+    rows = []
+    for row in audit.to_dict("records"):
+        rows.append(
+            "- "
+            f"{row['side']}: rows={int(row['rows'])}, "
+            f"snapshot_fill={row['snapshot_fill_rate']:.3f}, "
+            f"event_fill={row['event_fill_rate']:.3f}, "
+            f"disagreement={row['disagreement_rate']:.3f}, "
+            f"fp={row['false_positive_rate']:.3f}, "
+            f"fn={row['false_negative_rate']:.3f}, "
+            f"label={row['review_label']}"
         )
     return rows
 

@@ -529,6 +529,102 @@ def add_event_level_realized_fill_proxy(
     return output
 
 
+def passive_fill_proxy_disagreement(
+    frame: pd.DataFrame,
+    *,
+    snapshot_cols: tuple[str, ...] = ("bid_snapshot_fill", "ask_snapshot_fill"),
+    event_cols: tuple[str, ...] = ("bid_event_fill", "ask_event_fill"),
+    sides: tuple[str, ...] = ("bid", "ask"),
+    max_disagreement_rate: float = 0.10,
+) -> pd.DataFrame:
+    """Audit snapshot passive-fill labels against event-level queue depletion labels.
+
+    Snapshot depletion proxies are useful when only L2 snapshots are available, but
+    they can overstate fills when cancellations move displayed size without queue
+    priority reaching the child order, or understate fills that happen and refill
+    between snapshots. This diagnostic compares paired snapshot/event realized-fill
+    labels by side plus an aggregate row, making the proxy's censoring bias explicit
+    before using it for queue-position calibration or execution-adjusted LCRI.
+    """
+    if len(snapshot_cols) != len(event_cols) or len(snapshot_cols) != len(sides):
+        raise ValueError("snapshot_cols, event_cols, and sides must have the same length")
+    if not snapshot_cols:
+        raise ValueError("at least one fill-label column pair is required")
+    if not math.isfinite(max_disagreement_rate) or not 0.0 <= max_disagreement_rate <= 1.0:
+        raise ValueError("max_disagreement_rate must be finite and in [0, 1]")
+    required = set(snapshot_cols) | set(event_cols)
+    _require_columns(frame, required, "passive fill proxy disagreement")
+
+    columns = [
+        "side",
+        "rows",
+        "snapshot_fill_rate",
+        "event_fill_rate",
+        "agreement_rate",
+        "disagreement_rate",
+        "false_positive_rate",
+        "false_negative_rate",
+        "precision",
+        "recall",
+        "snapshot_event_fill_bias",
+        "review_label",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    values = _finite_values(frame, sorted(required), "passive fill proxy disagreement")
+    if not values.apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("passive fill proxy disagreement fill labels must be in [0, 1]")
+
+    def summarize(side: str, snapshot: pd.Series, event: pd.Series) -> dict[str, float | int | str]:
+        snapshot_bool = snapshot >= 0.5
+        event_bool = event >= 0.5
+        rows = int(len(snapshot_bool))
+        true_positive = snapshot_bool & event_bool
+        false_positive = snapshot_bool & ~event_bool
+        false_negative = ~snapshot_bool & event_bool
+        disagreement = false_positive | false_negative
+        snapshot_positive = int(snapshot_bool.sum())
+        event_positive = int(event_bool.sum())
+        precision = 1.0 if snapshot_positive == 0 else float(true_positive.sum() / snapshot_positive)
+        recall = 1.0 if event_positive == 0 else float(true_positive.sum() / event_positive)
+        false_positive_rate = float(false_positive.mean())
+        false_negative_rate = float(false_negative.mean())
+        disagreement_rate = float(disagreement.mean())
+        bias = float(snapshot_bool.mean() - event_bool.mean())
+        if disagreement_rate <= max_disagreement_rate:
+            label = "proxy_event_aligned"
+        elif false_positive_rate > false_negative_rate:
+            label = "proxy_event_false_positive_bias"
+        elif false_negative_rate > false_positive_rate:
+            label = "proxy_event_false_negative_bias"
+        else:
+            label = "proxy_event_disagreement"
+        return {
+            "side": side,
+            "rows": rows,
+            "snapshot_fill_rate": float(snapshot_bool.mean()),
+            "event_fill_rate": float(event_bool.mean()),
+            "agreement_rate": float(1.0 - disagreement_rate),
+            "disagreement_rate": disagreement_rate,
+            "false_positive_rate": false_positive_rate,
+            "false_negative_rate": false_negative_rate,
+            "precision": precision,
+            "recall": recall,
+            "snapshot_event_fill_bias": bias,
+            "review_label": label,
+        }
+
+    rows = [
+        summarize(side, values[snapshot_col], values[event_col])
+        for side, snapshot_col, event_col in zip(sides, snapshot_cols, event_cols, strict=True)
+    ]
+    stacked_snapshot = pd.concat([values[column] for column in snapshot_cols], ignore_index=True)
+    stacked_event = pd.concat([values[column] for column in event_cols], ignore_index=True)
+    rows.append(summarize("all", stacked_snapshot, stacked_event))
+    return pd.DataFrame(rows, columns=columns)
+
+
 def add_passive_fill_probabilities(
     frame: pd.DataFrame,
     *,

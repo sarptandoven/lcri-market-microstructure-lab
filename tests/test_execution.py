@@ -6,6 +6,7 @@ from lcri_lab.execution import (
     add_execution_adjusted_edge,
     add_passive_fill_probabilities,
     add_event_level_realized_fill_proxy,
+    passive_fill_proxy_disagreement,
     add_passive_fill_event_window_regimes,
     add_queue_position_features,
     add_queue_position_order_size_features,
@@ -413,6 +414,60 @@ def test_event_level_realized_fill_proxy_accepts_venue_side_aliases() -> None:
     assert output["ask_event_depletion"].tolist() == pytest.approx([10.0])
     assert output["bid_realized_fill"].tolist() == pytest.approx([1.0])
     assert output["ask_realized_fill"].tolist() == pytest.approx([1.0])
+
+
+def test_passive_fill_proxy_disagreement_audits_snapshot_vs_event_labels() -> None:
+    frame = pd.DataFrame(
+        {
+            "bid_snapshot_fill": [1.0, 1.0, 0.0, 0.0],
+            "bid_event_fill": [1.0, 0.0, 1.0, 0.0],
+            "ask_snapshot_fill": [0.0, 1.0, 0.0, 1.0],
+            "ask_event_fill": [0.0, 1.0, 0.0, 0.0],
+        }
+    )
+
+    audit = passive_fill_proxy_disagreement(
+        frame,
+        snapshot_cols=("bid_snapshot_fill", "ask_snapshot_fill"),
+        event_cols=("bid_event_fill", "ask_event_fill"),
+        max_disagreement_rate=0.20,
+    )
+    by_side = audit.set_index("side")
+
+    assert audit.columns.tolist() == [
+        "side",
+        "rows",
+        "snapshot_fill_rate",
+        "event_fill_rate",
+        "agreement_rate",
+        "disagreement_rate",
+        "false_positive_rate",
+        "false_negative_rate",
+        "precision",
+        "recall",
+        "snapshot_event_fill_bias",
+        "review_label",
+    ]
+    assert by_side.loc["bid", "disagreement_rate"] == pytest.approx(0.50)
+    assert by_side.loc["bid", "false_positive_rate"] == pytest.approx(0.25)
+    assert by_side.loc["bid", "false_negative_rate"] == pytest.approx(0.25)
+    assert by_side.loc["bid", "precision"] == pytest.approx(0.50)
+    assert by_side.loc["bid", "recall"] == pytest.approx(0.50)
+    assert by_side.loc["bid", "review_label"] == "proxy_event_disagreement"
+    assert by_side.loc["ask", "snapshot_event_fill_bias"] == pytest.approx(0.25)
+    assert by_side.loc["ask", "review_label"] == "proxy_event_false_positive_bias"
+    assert by_side.loc["all", "rows"] == 8
+    assert by_side.loc["all", "disagreement_rate"] == pytest.approx(3 / 8)
+
+
+def test_passive_fill_proxy_disagreement_rejects_non_binary_labels() -> None:
+    with pytest.raises(ValueError, match=r"fill labels must be in \[0, 1\]"):
+        passive_fill_proxy_disagreement(
+            pd.DataFrame({"snapshot": [0.0, 1.2], "event": [0.0, 1.0]}),
+            snapshot_cols=("snapshot",),
+            event_cols=("event",),
+            sides=("bid",),
+        )
 
 
 def test_passive_fill_probabilities_move_with_pressure_and_queue() -> None:
