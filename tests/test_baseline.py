@@ -14,6 +14,8 @@ from lcri_lab.baseline import (
     baseline_nonlinear_regularization_summary,
     baseline_nonlinear_publishability_summary,
     baseline_regime_basis_comparison,
+    baseline_residual_liquidity_orthogonality,
+    baseline_residual_liquidity_orthogonality_summary,
     baseline_regime_publishability_summary,
     baseline_regime_tail_lift_diagnostics,
     baseline_regime_tail_lift_summary,
@@ -154,6 +156,78 @@ def test_baseline_nonlinear_stress_surface_rejects_invalid_configuration() -> No
         baseline_nonlinear_stress_surface(features, bins=1)
     with pytest.raises(ValueError, match="stress_cols must contain exactly two column names"):
         baseline_nonlinear_stress_surface(features, stress_cols=("spread_ticks",))
+
+
+def test_baseline_residual_liquidity_orthogonality_flags_post_neutralization_leakage() -> None:
+    books = simulate_order_books(SimulationConfig(rows=640, seed=91))
+    features = compute_features(books)
+    features["imbalance_residual"] = (
+        0.85 * features["spread_ticks"].to_numpy(dtype=float)
+        - 0.65 * features["volatility"].to_numpy(dtype=float)
+        + np.linspace(-0.03, 0.03, len(features))
+    )
+
+    diagnostics = baseline_residual_liquidity_orthogonality(
+        features,
+        feature_cols=["spread_ticks", "volatility", "liquidity_score"],
+        max_abs_correlation=0.10,
+    )
+    by_feature = diagnostics.set_index("feature")
+
+    assert diagnostics.columns.tolist() == [
+        "feature",
+        "component",
+        "rows",
+        "residual_mean",
+        "feature_mean",
+        "correlation",
+        "abs_correlation",
+        "slope",
+        "r_squared",
+        "orthogonality_label",
+    ]
+    assert by_feature.loc["spread_ticks", "component"] == "core"
+    assert by_feature.loc["spread_ticks", "abs_correlation"] > 0.10
+    assert by_feature.loc["spread_ticks", "orthogonality_label"] == "residual_liquidity_leakage"
+    assert diagnostics["abs_correlation"].is_monotonic_decreasing
+
+
+def test_baseline_residual_liquidity_orthogonality_summary_gates_release() -> None:
+    diagnostics = pd.DataFrame(
+        {
+            "feature": ["spread_ticks", "volatility", "liquidity_score"],
+            "component": ["core", "core", "core"],
+            "rows": [100, 100, 100],
+            "residual_mean": [0.0, 0.0, 0.0],
+            "feature_mean": [1.0, 2.0, 3.0],
+            "correlation": [0.04, -0.08, 0.21],
+            "abs_correlation": [0.04, 0.08, 0.21],
+            "slope": [0.01, -0.02, 0.10],
+            "r_squared": [0.0016, 0.0064, 0.0441],
+            "orthogonality_label": [
+                "orthogonal",
+                "orthogonal",
+                "residual_liquidity_leakage",
+            ],
+        }
+    )
+
+    summary = baseline_residual_liquidity_orthogonality_summary(
+        diagnostics,
+        max_abs_correlation=0.10,
+    )
+
+    assert summary == {
+        "features": 3,
+        "orthogonal_features": 2,
+        "leaking_features": 1,
+        "orthogonal_feature_share": pytest.approx(2 / 3),
+        "max_abs_correlation": pytest.approx(0.21),
+        "mean_abs_correlation": pytest.approx(0.11),
+        "worst_feature": "liquidity_score",
+        "publishable": False,
+        "review_note": "baseline_residual_liquidity_leakage",
+    }
 
 
 def test_baseline_nonlinear_coefficient_stability_flags_sign_stable_stress_terms() -> None:
