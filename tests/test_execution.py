@@ -41,6 +41,7 @@ from lcri_lab.execution import (
     execution_publishability_release_gate,
     execution_publishability_review_packet,
     passive_fill_edge_curve,
+    passive_fill_realization_hazard_curve,
     passive_fill_realization_horizon_sweep,
     passive_fill_threshold_policy_curve,
     queue_position_adverse_selection_policy_frontier,
@@ -860,6 +861,52 @@ def test_passive_fill_realization_horizon_sweep_rejects_invalid_horizons() -> No
         passive_fill_realization_horizon_sweep(pd.DataFrame(), horizons=[])
     with pytest.raises(ValueError, match="horizon values must be positive integers"):
         passive_fill_realization_horizon_sweep(pd.DataFrame(), horizons=[1, 0])
+
+
+def test_passive_fill_realization_hazard_curve_attributes_immediate_vs_delayed_fills() -> None:
+    frame = pd.DataFrame(
+        {
+            "session": ["am", "am", "am", "pm", "pm", "pm"],
+            "bid_px_1": [100.0, 100.0, 99.0, 200.0, 200.0, 200.0],
+            "ask_px_1": [101.0, 101.0, 102.0, 201.0, 201.0, 201.0],
+            "bid_sz_1": [100.0, 85.0, 120.0, 90.0, 75.0, 75.0],
+            "ask_sz_1": [80.0, 70.0, 90.0, 70.0, 68.0, 68.0],
+            "bid_queue_ahead": [40.0, 40.0, 40.0, 30.0, 30.0, 30.0],
+            "ask_queue_ahead": [30.0, 30.0, 30.0, 20.0, 20.0, 20.0],
+            "best_execution_side": ["long", "short", "long", "long", "short", "abstain"],
+            "bid_fill_probability": [0.60, 0.20, 0.80, 0.50, 0.10, 0.40],
+            "ask_fill_probability": [0.30, 0.70, 0.40, 0.20, 0.90, 0.40],
+        }
+    )
+
+    curve = passive_fill_realization_hazard_curve(
+        frame,
+        horizons=[1, 2],
+        group_cols="session",
+        regime_col="session",
+    )
+
+    assert curve["session"].tolist() == ["am", "am", "pm", "pm"]
+    assert curve["horizon"].tolist() == [1, 2, 1, 2]
+    assert curve["eligible_rows"].tolist() == [3, 3, 2, 2]
+    assert curve["cumulative_realized_fill_rate"].tolist() == pytest.approx([1.0 / 3.0, 2.0 / 3.0, 0.0, 0.0])
+    assert curve["incremental_realized_fill_rate"].tolist() == pytest.approx([1.0 / 3.0, 1.0 / 3.0, 0.0, 0.0])
+    assert curve["conditional_fill_hazard"].tolist() == pytest.approx([1.0 / 3.0, 0.5, 0.0, 0.0])
+    assert curve["mean_selected_fill_probability"].tolist() == pytest.approx([0.70, 0.70, 0.70, 0.70])
+    assert curve["timing_slippage_vs_prediction"].tolist() == pytest.approx([-0.3666666667, -0.0333333333, -0.70, -0.70])
+    assert curve["horizon_timing_label"].tolist() == [
+        "under_realized",
+        "near_prediction",
+        "under_realized",
+        "under_realized",
+    ]
+
+
+def test_passive_fill_realization_hazard_curve_rejects_invalid_horizons() -> None:
+    with pytest.raises(ValueError, match="horizons must be a non-empty sequence"):
+        passive_fill_realization_hazard_curve(pd.DataFrame(), horizons=[])
+    with pytest.raises(ValueError, match="horizon values must be positive integers"):
+        passive_fill_realization_hazard_curve(pd.DataFrame(), horizons=[1, 0])
 
 
 def test_passive_fill_edge_curve_bins_execution_quality_by_predicted_fill() -> None:

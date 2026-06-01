@@ -5331,6 +5331,144 @@ def passive_fill_realization_horizon_sweep(
     return pd.DataFrame(rows)[list(_empty_passive_fill_realization_horizon_sweep().columns)]
 
 
+def _passive_fill_hazard_label(slippage: float, tolerance: float) -> str:
+    if slippage > tolerance:
+        return "over_realized"
+    if slippage < -tolerance:
+        return "under_realized"
+    return "near_prediction"
+
+
+def passive_fill_realization_hazard_curve(
+    frame: pd.DataFrame,
+    *,
+    horizons: list[int] | tuple[int, ...] = (1, 2, 3, 5),
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    side_col: str = "best_execution_side",
+    regime_col: str | None = None,
+    tolerance: float = 0.05,
+) -> pd.DataFrame:
+    """Measure when queue-position passive fills materialize across horizons.
+
+    The calibration sweep reports cumulative quality at each horizon. This curve
+    decomposes that cumulative rate into incremental realized fills and a
+    conditional fill hazard by optional regime, making delayed-fill dependence
+    explicit before LCRI edges are called executable.
+    """
+    if isinstance(horizons, (str, bytes)):
+        raise ValueError("horizons must be a non-empty sequence of positive integers")
+    horizons = list(horizons)
+    if not horizons:
+        raise ValueError("horizons must be a non-empty sequence")
+    for horizon in horizons:
+        if not isinstance(horizon, int) or isinstance(horizon, bool) or horizon < 1:
+            raise ValueError("horizon values must be positive integers")
+    if len(set(horizons)) != len(horizons):
+        raise ValueError("horizon values must be unique")
+    if not math.isfinite(tolerance) or tolerance < 0.0:
+        raise ValueError("tolerance must be finite and non-negative")
+
+    required = {side_col, "bid_fill_probability", "ask_fill_probability"}
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(frame, required, "passive fill realization hazard curve")
+    values = _finite_values(
+        frame,
+        ["bid_fill_probability", "ask_fill_probability"],
+        "passive fill realization hazard curve",
+    )
+    side = frame[side_col].astype(str)
+    eligible = side.isin(["long", "short"])
+    selected_probability = pd.Series(
+        np.select(
+            [side == "long", side == "short"],
+            [values["bid_fill_probability"], values["ask_fill_probability"]],
+            default=0.0,
+        ),
+        index=frame.index,
+        dtype=float,
+    )
+    regime_name = regime_col or "regime"
+    regime_values = frame[regime_col].astype(str) if regime_col is not None else pd.Series("all", index=frame.index)
+
+    cumulative_by_horizon: dict[int, pd.Series] = {}
+    for horizon in sorted(horizons):
+        realized = add_queue_position_realized_fill_proxy(
+            frame,
+            horizon=horizon,
+            group_cols=group_cols,
+            bid_realized_col="_hazard_bid_realized_fill",
+            ask_realized_col="_hazard_ask_realized_fill",
+        )
+        realized_values = _finite_values(
+            realized,
+            ["_hazard_bid_realized_fill", "_hazard_ask_realized_fill"],
+            "passive fill realization hazard curve",
+        )
+        cumulative_by_horizon[horizon] = pd.Series(
+            np.select(
+                [side == "long", side == "short"],
+                [
+                    realized_values["_hazard_bid_realized_fill"],
+                    realized_values["_hazard_ask_realized_fill"],
+                ],
+                default=0.0,
+            ),
+            index=frame.index,
+            dtype=float,
+        )
+
+    rows: list[dict[str, float | int | str]] = []
+    working = pd.DataFrame(
+        {
+            regime_name: regime_values,
+            "eligible": eligible,
+            "selected_probability": selected_probability,
+        },
+        index=frame.index,
+    )
+    regimes = working.loc[eligible, regime_name].drop_duplicates().tolist()
+    for regime in regimes:
+        mask = eligible & (working[regime_name] == regime)
+        eligible_rows = int(mask.sum())
+        previous_rate = 0.0
+        for horizon in sorted(horizons):
+            cumulative_rate = float(cumulative_by_horizon[horizon].loc[mask].mean()) if eligible_rows else 0.0
+            incremental = max(0.0, cumulative_rate - previous_rate)
+            survival = max(0.0, 1.0 - previous_rate)
+            hazard = incremental / survival if survival > 0.0 else 0.0
+            predicted = float(working.loc[mask, "selected_probability"].mean()) if eligible_rows else 0.0
+            slippage = cumulative_rate - predicted
+            rows.append(
+                {
+                    regime_name: str(regime),
+                    "horizon": int(horizon),
+                    "eligible_rows": eligible_rows,
+                    "mean_selected_fill_probability": predicted,
+                    "cumulative_realized_fill_rate": cumulative_rate,
+                    "incremental_realized_fill_rate": incremental,
+                    "conditional_fill_hazard": hazard,
+                    "survival_rate_entering_horizon": survival,
+                    "timing_slippage_vs_prediction": slippage,
+                    "horizon_timing_label": _passive_fill_hazard_label(slippage, tolerance),
+                }
+            )
+            previous_rate = cumulative_rate
+    columns = [
+        regime_name,
+        "horizon",
+        "eligible_rows",
+        "mean_selected_fill_probability",
+        "cumulative_realized_fill_rate",
+        "incremental_realized_fill_rate",
+        "conditional_fill_hazard",
+        "survival_rate_entering_horizon",
+        "timing_slippage_vs_prediction",
+        "horizon_timing_label",
+    ]
+    return pd.DataFrame(rows, columns=columns)
+
+
 def add_passive_fill_event_window_regimes(
     frame: pd.DataFrame,
     *,
