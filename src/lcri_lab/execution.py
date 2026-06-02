@@ -9517,6 +9517,7 @@ def execution_publishability_release_gate(
     capacity_stability: dict[str, float | int | str | bool] | None = None,
     regime_capacity_stability: dict[str, float | int | str] | None = None,
     lcri_regime_attribution: pd.DataFrame | None = None,
+    lcri_event_window_scorecard: dict[str, float | int | str] | None = None,
     latency_sensitivity: pd.DataFrame | None = None,
     fill_brier_decomposition: dict[str, float | int | str] | None = None,
     path_risk_scorecard: pd.DataFrame | None = None,
@@ -9643,6 +9644,80 @@ def execution_publishability_release_gate(
                 if weak_lcri_regime_sides
                 else "lcri_regime_execution_preserved"
             )
+
+    lcri_event_window_label = "lcri_event_window_not_evaluated"
+    lcri_event_window_decision = "pass"
+    lcri_event_window_high_lcri_rows = 0
+    lcri_event_window_toxic_high_lcri_row_share = 0.0
+    lcri_event_window_event_toxic_high_lcri_row_share = 0.0
+    lcri_event_window_signal_survival_ratio = 0.0
+    lcri_event_window_fill_adverse_spread = 0.0
+    worst_lcri_event_window_regime = "none"
+    worst_lcri_event_window_bucket = "none"
+    worst_lcri_event_window_label = "none"
+    lcri_event_window_blocking_reasons = "none"
+    lcri_event_window_review_reasons = "none"
+    if lcri_event_window_scorecard is not None:
+        required_event_window_keys = {
+            "high_lcri_rows",
+            "toxic_high_lcri_row_share",
+            "event_toxic_high_lcri_row_share",
+            "weighted_high_lcri_signal_survival_ratio",
+            "weighted_high_lcri_fill_adverse_spread",
+            "worst_event_window_regime",
+            "worst_event_window_bucket",
+            "worst_event_window_label",
+            "release_decision",
+            "release_label",
+            "blocking_reasons",
+            "review_reasons",
+        }
+        missing_event_window_keys = sorted(required_event_window_keys - set(lcri_event_window_scorecard))
+        if missing_event_window_keys:
+            raise ValueError(
+                "missing execution publishability LCRI event-window scorecard keys: "
+                f"{missing_event_window_keys}"
+            )
+        lcri_event_window_label = str(lcri_event_window_scorecard["release_label"])
+        lcri_event_window_decision = str(lcri_event_window_scorecard["release_decision"])
+        if lcri_event_window_decision not in {"pass", "review", "block"}:
+            raise ValueError("execution publishability LCRI event-window decision is invalid")
+        lcri_event_window_high_lcri_rows = int(lcri_event_window_scorecard["high_lcri_rows"])
+        lcri_event_window_toxic_high_lcri_row_share = float(
+            lcri_event_window_scorecard["toxic_high_lcri_row_share"]
+        )
+        lcri_event_window_event_toxic_high_lcri_row_share = float(
+            lcri_event_window_scorecard["event_toxic_high_lcri_row_share"]
+        )
+        lcri_event_window_signal_survival_ratio = float(
+            lcri_event_window_scorecard["weighted_high_lcri_signal_survival_ratio"]
+        )
+        lcri_event_window_fill_adverse_spread = float(
+            lcri_event_window_scorecard["weighted_high_lcri_fill_adverse_spread"]
+        )
+        for metric_name, metric_value in {
+            "lcri_event_window_high_lcri_rows": float(lcri_event_window_high_lcri_rows),
+            "lcri_event_window_toxic_high_lcri_row_share": lcri_event_window_toxic_high_lcri_row_share,
+            "lcri_event_window_event_toxic_high_lcri_row_share": lcri_event_window_event_toxic_high_lcri_row_share,
+            "lcri_event_window_signal_survival_ratio": lcri_event_window_signal_survival_ratio,
+            "lcri_event_window_fill_adverse_spread": lcri_event_window_fill_adverse_spread,
+        }.items():
+            if not math.isfinite(metric_value):
+                raise ValueError(f"{metric_name} must be finite")
+        if lcri_event_window_high_lcri_rows < 0:
+            raise ValueError("execution publishability LCRI event-window counts must be non-negative")
+        for metric_name, metric_value in {
+            "lcri_event_window_toxic_high_lcri_row_share": lcri_event_window_toxic_high_lcri_row_share,
+            "lcri_event_window_event_toxic_high_lcri_row_share": lcri_event_window_event_toxic_high_lcri_row_share,
+            "lcri_event_window_signal_survival_ratio": lcri_event_window_signal_survival_ratio,
+        }.items():
+            if not 0.0 <= metric_value <= 1.0:
+                raise ValueError(f"{metric_name} must be in [0, 1]")
+        worst_lcri_event_window_regime = str(lcri_event_window_scorecard["worst_event_window_regime"])
+        worst_lcri_event_window_bucket = str(lcri_event_window_scorecard["worst_event_window_bucket"])
+        worst_lcri_event_window_label = str(lcri_event_window_scorecard["worst_event_window_label"])
+        lcri_event_window_blocking_reasons = str(lcri_event_window_scorecard["blocking_reasons"])
+        lcri_event_window_review_reasons = str(lcri_event_window_scorecard["review_reasons"])
 
     latency_label = "queue_latency_not_evaluated"
     worst_latency_steps = 0
@@ -9789,6 +9864,14 @@ def execution_publishability_release_gate(
         review_reasons.append(regime_capacity_label)
     if lcri_regime_label == "lcri_regime_execution_not_preserved":
         blocking_reasons.append(lcri_regime_label)
+    if lcri_event_window_decision == "block":
+        blocking_reasons.append(lcri_event_window_label)
+        if lcri_event_window_blocking_reasons != "none":
+            blocking_reasons.append(lcri_event_window_blocking_reasons)
+    elif lcri_event_window_decision == "review":
+        review_reasons.append(lcri_event_window_label)
+        if lcri_event_window_review_reasons != "none":
+            review_reasons.append(lcri_event_window_review_reasons)
     if latency_label == "queue_latency_fragile":
         blocking_reasons.append(latency_label)
     elif latency_label == "queue_latency_insufficient_evidence":
@@ -9838,6 +9921,15 @@ def execution_publishability_release_gate(
         "worst_lcri_side": worst_lcri_side,
         "min_lcri_execution_survival_share": min_lcri_survival,
         "max_lcri_execution_conflict_share": max_lcri_conflict,
+        "lcri_event_window_release_label": lcri_event_window_label,
+        "lcri_event_window_high_lcri_rows": lcri_event_window_high_lcri_rows,
+        "lcri_event_window_toxic_high_lcri_row_share": lcri_event_window_toxic_high_lcri_row_share,
+        "lcri_event_window_event_toxic_high_lcri_row_share": lcri_event_window_event_toxic_high_lcri_row_share,
+        "lcri_event_window_signal_survival_ratio": lcri_event_window_signal_survival_ratio,
+        "lcri_event_window_fill_adverse_spread": lcri_event_window_fill_adverse_spread,
+        "worst_lcri_event_window_regime": worst_lcri_event_window_regime,
+        "worst_lcri_event_window_bucket": worst_lcri_event_window_bucket,
+        "worst_lcri_event_window_label": worst_lcri_event_window_label,
         "latency_sensitivity_label": latency_label,
         "worst_latency_steps": worst_latency_steps,
         "worst_latency_fill_gap": worst_latency_fill_gap,

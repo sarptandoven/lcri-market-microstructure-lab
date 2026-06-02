@@ -3649,6 +3649,112 @@ def test_execution_publishability_release_gate_blocks_lcri_regime_survival_loss(
     assert "lcri_regime_execution_not_preserved" in gate["blocking_reasons"]
 
 
+def test_execution_publishability_release_gate_blocks_lcri_event_window_toxicity() -> None:
+    review_packet = pd.DataFrame(
+        {
+            "publishable_side": ["long"],
+            "best_execution_side": ["long"],
+            "rows": [100],
+            "conflict_rows": [0],
+            "review_priority": [0],
+        }
+    )
+    event_window_scorecard = {
+        "high_lcri_rows": 40,
+        "toxic_high_lcri_row_share": 0.50,
+        "event_toxic_high_lcri_row_share": 0.75,
+        "weighted_high_lcri_signal_survival_ratio": 0.25,
+        "weighted_high_lcri_fill_adverse_spread": -0.10,
+        "worst_event_window_regime": "event",
+        "worst_event_window_bucket": "high_abs_lcri",
+        "worst_event_window_label": "high_lcri_event_toxicity",
+        "release_decision": "block",
+        "release_label": "execution_lcri_event_window_blocked",
+        "blocking_reasons": "event_toxic_high_lcri_share;low_signal_survival",
+        "review_reasons": "none",
+    }
+
+    gate = execution_publishability_release_gate(
+        review_packet,
+        quality_gate={"quality_gate_label": "queue_execution_publishable"},
+        capacity_stability={"capacity_stability_label": "capacity_stable"},
+        lcri_event_window_scorecard=event_window_scorecard,
+    )
+
+    assert gate["decision"] == "block"
+    assert gate["passes"] is False
+    assert "execution_lcri_event_window_blocked" in gate["blocking_reasons"]
+    assert "event_toxic_high_lcri_share" in gate["blocking_reasons"]
+    assert gate["lcri_event_window_release_label"] == "execution_lcri_event_window_blocked"
+    assert gate["lcri_event_window_high_lcri_rows"] == 40
+    assert gate["lcri_event_window_toxic_high_lcri_row_share"] == pytest.approx(0.50)
+    assert gate["lcri_event_window_event_toxic_high_lcri_row_share"] == pytest.approx(0.75)
+    assert gate["lcri_event_window_signal_survival_ratio"] == pytest.approx(0.25)
+    assert gate["lcri_event_window_fill_adverse_spread"] == pytest.approx(-0.10)
+    assert gate["worst_lcri_event_window_regime"] == "event"
+    assert gate["worst_lcri_event_window_bucket"] == "high_abs_lcri"
+    assert gate["worst_lcri_event_window_label"] == "high_lcri_event_toxicity"
+
+
+def test_execution_publishability_release_gate_reviews_lcri_event_window_evidence_gap() -> None:
+    review_packet = pd.DataFrame(
+        {
+            "publishable_side": ["long"],
+            "best_execution_side": ["long"],
+            "rows": [100],
+            "conflict_rows": [0],
+            "review_priority": [0],
+        }
+    )
+    event_window_scorecard = {
+        "high_lcri_rows": 0,
+        "toxic_high_lcri_row_share": 0.0,
+        "event_toxic_high_lcri_row_share": 0.0,
+        "weighted_high_lcri_signal_survival_ratio": 0.0,
+        "weighted_high_lcri_fill_adverse_spread": 0.0,
+        "worst_event_window_regime": "none",
+        "worst_event_window_bucket": "none",
+        "worst_event_window_label": "none",
+        "release_decision": "review",
+        "release_label": "execution_lcri_event_window_review",
+        "blocking_reasons": "none",
+        "review_reasons": "no_high_lcri_rows",
+    }
+
+    gate = execution_publishability_release_gate(
+        review_packet,
+        quality_gate={"quality_gate_label": "queue_execution_publishable"},
+        capacity_stability={"capacity_stability_label": "capacity_stable"},
+        lcri_event_window_scorecard=event_window_scorecard,
+    )
+
+    assert gate["decision"] == "review"
+    assert gate["passes"] is False
+    assert gate["lcri_event_window_release_label"] == "execution_lcri_event_window_review"
+    assert "execution_lcri_event_window_review" in gate["review_reasons"]
+    assert "no_high_lcri_rows" in gate["review_reasons"]
+
+
+def test_execution_publishability_release_gate_rejects_malformed_lcri_event_window_scorecard() -> None:
+    review_packet = pd.DataFrame(
+        {
+            "publishable_side": ["long"],
+            "best_execution_side": ["long"],
+            "rows": [100],
+            "conflict_rows": [0],
+            "review_priority": [0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="execution publishability LCRI event-window"):
+        execution_publishability_release_gate(
+            review_packet,
+            quality_gate={"quality_gate_label": "queue_execution_publishable"},
+            capacity_stability={"capacity_stability_label": "capacity_stable"},
+            lcri_event_window_scorecard={"release_decision": "block"},
+        )
+
+
 def test_execution_publishability_release_gate_blocks_latency_fragile_queue_evidence() -> None:
     review_packet = pd.DataFrame(
         {

@@ -953,12 +953,27 @@ def run_demo(
     heldout_execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(heldout_scored)
     execution_lcri_regime_attribution = execution_adjusted_lcri_regime_attribution(scored)
     heldout_execution_lcri_regime_attribution = execution_adjusted_lcri_regime_attribution(heldout_scored)
+    execution_lcri_event_window_attribution = execution_adjusted_lcri_event_window_attribution(scored)
+    heldout_execution_lcri_event_window_attribution = execution_adjusted_lcri_event_window_attribution(
+        heldout_scored
+    )
+    execution_lcri_event_window_release_scorecard = (
+        execution_adjusted_lcri_event_window_release_scorecard(
+            execution_lcri_event_window_attribution
+        )
+    )
+    heldout_execution_lcri_event_window_release_scorecard = (
+        execution_adjusted_lcri_event_window_release_scorecard(
+            heldout_execution_lcri_event_window_attribution
+        )
+    )
     execution_publishability_gate = execution_publishability_release_gate(
         execution_publishability_packet,
         quality_gate=queue_execution_quality_gate,
         capacity_stability=queue_capacity_stability,
         regime_capacity_stability=queue_regime_capacity_stability_summary,
         lcri_regime_attribution=execution_lcri_regime_attribution,
+        lcri_event_window_scorecard=execution_lcri_event_window_release_scorecard,
     )
     heldout_execution_publishability_gate = execution_publishability_release_gate(
         heldout_execution_publishability_packet,
@@ -966,6 +981,7 @@ def run_demo(
         capacity_stability=queue_capacity_stability,
         regime_capacity_stability=queue_regime_capacity_stability_summary,
         lcri_regime_attribution=heldout_execution_lcri_regime_attribution,
+        lcri_event_window_scorecard=heldout_execution_lcri_event_window_release_scorecard,
     )
     execution_lcri_quantile_diagnostics = execution_adjusted_lcri_quantile_diagnostics(scored)
     heldout_execution_lcri_quantile_diagnostics = execution_adjusted_lcri_quantile_diagnostics(
@@ -1004,20 +1020,6 @@ def run_demo(
     queue_path_drawdown_summary = queue_position_path_drawdown_summary(queue_path_drawdown_episodes)
     heldout_queue_path_drawdown_summary = queue_position_path_drawdown_summary(
         heldout_queue_path_drawdown_episodes
-    )
-    execution_lcri_event_window_attribution = execution_adjusted_lcri_event_window_attribution(scored)
-    heldout_execution_lcri_event_window_attribution = execution_adjusted_lcri_event_window_attribution(
-        heldout_scored
-    )
-    execution_lcri_event_window_release_scorecard = (
-        execution_adjusted_lcri_event_window_release_scorecard(
-            execution_lcri_event_window_attribution
-        )
-    )
-    heldout_execution_lcri_event_window_release_scorecard = (
-        execution_adjusted_lcri_event_window_release_scorecard(
-            heldout_execution_lcri_event_window_attribution
-        )
     )
     baseline_regime_basis = baseline_regime_basis_comparison(
         scored,

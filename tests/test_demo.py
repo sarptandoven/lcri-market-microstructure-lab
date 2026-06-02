@@ -355,6 +355,11 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         (tmp_path / "execution_adjusted_lcri_event_window_release_scorecard.json").read_text()
     )
     assert execution_lcri_event_release["release_decision"] in {"pass", "review", "block"}
+    assert release_gate["lcri_event_window_release_label"] == execution_lcri_event_release["release_label"]
+    assert release_gate["lcri_event_window_high_lcri_rows"] == execution_lcri_event_release["high_lcri_rows"]
+    assert release_gate["worst_lcri_event_window_regime"] == execution_lcri_event_release[
+        "worst_event_window_regime"
+    ]
     assert {
         "high_lcri_rows",
         "toxic_high_lcri_row_share",
