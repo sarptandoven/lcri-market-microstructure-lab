@@ -9503,6 +9503,177 @@ def _empty_passive_fill_event_transition_scorecard() -> dict[str, float | int | 
     }
 
 
+
+def queue_position_unfilled_opportunity_curve(
+    frame: pd.DataFrame,
+    *,
+    lcri_bins: int = 5,
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    side_col: str = "best_execution_side",
+    lcri_col: str = "lcri",
+    bid_realized_col: str = "bid_realized_fill",
+    ask_realized_col: str = "ask_realized_fill",
+    long_edge_col: str = "long_net_return_ticks",
+    short_edge_col: str = "short_net_return_ticks",
+    min_mean_unfilled_opportunity_ticks: float = 0.50,
+    min_edge_capture_rate: float = 0.50,
+) -> pd.DataFrame:
+    """Quantify LCRI signal edge stranded by queue-position non-fills.
+
+    Passive-alpha diagnostics can look publishable when the filled subset has edge,
+    while the strongest LCRI rows are simply not fillable. This curve keeps the
+    selected-side LCRI chronology in the denominator: rows are binned by absolute
+    LCRI, then selected-side signal edge is split into realized/captured edge and
+    unfilled opportunity. Optional grouping columns (for example event-window
+    regimes or liquidity regimes) expose where the queue prevents LCRI tails from
+    becoming executable rather than just measuring adverse selection after fills.
+    """
+    if not isinstance(lcri_bins, int) or isinstance(lcri_bins, bool):
+        raise ValueError("lcri_bins must be an integer")
+    if lcri_bins < 1:
+        raise ValueError("lcri_bins must be at least 1")
+    for name, value in {
+        "min_mean_unfilled_opportunity_ticks": min_mean_unfilled_opportunity_ticks,
+        "min_edge_capture_rate": min_edge_capture_rate,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if min_mean_unfilled_opportunity_ticks < 0.0:
+        raise ValueError("min_mean_unfilled_opportunity_ticks must be non-negative")
+    if not 0.0 <= min_edge_capture_rate <= 1.0:
+        raise ValueError("min_edge_capture_rate must be in [0, 1]")
+
+    grouping_columns = _normalize_group_columns(
+        frame,
+        group_cols,
+        "queue position unfilled opportunity",
+    )
+    required = {
+        side_col,
+        lcri_col,
+        bid_realized_col,
+        ask_realized_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        long_edge_col,
+        short_edge_col,
+    }
+    required.update(grouping_columns)
+    _require_columns(frame, required, "queue position unfilled opportunity")
+
+    columns = [
+        *grouping_columns,
+        "lcri_tail_bin",
+        "rows",
+        "mean_abs_lcri",
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+        "mean_signal_edge_ticks",
+        "mean_captured_edge_ticks",
+        "mean_unfilled_opportunity_ticks",
+        "edge_capture_rate",
+        "unfilled_opportunity_share",
+        "unfilled_opportunity_label",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    numeric_columns = [
+        lcri_col,
+        bid_realized_col,
+        ask_realized_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        long_edge_col,
+        short_edge_col,
+    ]
+    values = _finite_values(frame, numeric_columns, "queue position unfilled opportunity")
+    side = frame[side_col].astype(str)
+    tradable = side.isin(["long", "short"])
+    if not bool(tradable.any()):
+        return pd.DataFrame(columns=columns)
+
+    selected = pd.DataFrame(index=frame.index[tradable])
+    selected_side = side.loc[tradable]
+    for column in grouping_columns:
+        selected[column] = frame.loc[tradable, column].astype(str)
+    selected["abs_lcri"] = values.loc[tradable, lcri_col].abs()
+    selected["predicted_fill_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_fill_probability"],
+        values.loc[tradable, "ask_fill_probability"],
+    )
+    selected["realized_fill"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, bid_realized_col],
+        values.loc[tradable, ask_realized_col],
+    )
+    selected["signal_edge_ticks"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, long_edge_col],
+        values.loc[tradable, short_edge_col],
+    )
+    probability_columns = ["predicted_fill_probability", "realized_fill"]
+    for column in probability_columns:
+        if not selected[column].between(0.0, 1.0).all():
+            raise ValueError("queue position unfilled opportunity probabilities must be in [0, 1]")
+    selected["captured_edge_ticks"] = selected["signal_edge_ticks"] * selected["realized_fill"]
+    selected["unfilled_opportunity_ticks"] = selected["signal_edge_ticks"] * (1.0 - selected["realized_fill"])
+
+    rows: list[dict[str, float | int | str]] = []
+    groupers = grouping_columns.copy()
+    if not groupers:
+        selected["_all"] = "all"
+        groupers = ["_all"]
+    for keys, group in selected.groupby(groupers, sort=True):
+        if not isinstance(keys, tuple):
+            keys = (keys,)
+        grouped = group.copy()
+        grouped["lcri_tail_bin"] = _rank_probability_bins(grouped["abs_lcri"], lcri_bins)
+        for tail_bin, tail_group in grouped.groupby("lcri_tail_bin", sort=True):
+            total_signal_edge = float(tail_group["signal_edge_ticks"].sum())
+            total_captured_edge = float(tail_group["captured_edge_ticks"].sum())
+            total_unfilled_opportunity = float(tail_group["unfilled_opportunity_ticks"].sum())
+            edge_capture_rate = (
+                total_captured_edge / total_signal_edge if abs(total_signal_edge) > 1e-12 else 0.0
+            )
+            unfilled_share = (
+                total_unfilled_opportunity / total_signal_edge if abs(total_signal_edge) > 1e-12 else 0.0
+            )
+            mean_unfilled = float(tail_group["unfilled_opportunity_ticks"].mean())
+            if (
+                mean_unfilled >= min_mean_unfilled_opportunity_ticks - 1e-12
+                and edge_capture_rate < min_edge_capture_rate - 1e-12
+            ):
+                label = "unfilled_tail_opportunity"
+            elif mean_unfilled >= min_mean_unfilled_opportunity_ticks - 1e-12:
+                label = "partial_opportunity_capture"
+            else:
+                label = "opportunity_captured"
+            row: dict[str, float | int | str] = {}
+            for column, key in zip(groupers, keys, strict=True):
+                if column != "_all":
+                    row[column] = str(key)
+            row.update(
+                {
+                    "lcri_tail_bin": int(tail_bin),
+                    "rows": int(len(tail_group)),
+                    "mean_abs_lcri": float(tail_group["abs_lcri"].mean()),
+                    "mean_predicted_fill_probability": float(
+                        tail_group["predicted_fill_probability"].mean()
+                    ),
+                    "realized_fill_rate": float(tail_group["realized_fill"].mean()),
+                    "mean_signal_edge_ticks": float(tail_group["signal_edge_ticks"].mean()),
+                    "mean_captured_edge_ticks": float(tail_group["captured_edge_ticks"].mean()),
+                    "mean_unfilled_opportunity_ticks": mean_unfilled,
+                    "edge_capture_rate": float(edge_capture_rate),
+                    "unfilled_opportunity_share": float(unfilled_share),
+                    "unfilled_opportunity_label": label,
+                }
+            )
+            rows.append(row)
+    return pd.DataFrame(rows, columns=columns)
+
 def _rank_probability_bins(probability: pd.Series, bins: int) -> pd.Series:
     effective_bins = min(bins, len(probability))
     ranks = probability.rank(method="first")

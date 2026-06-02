@@ -153,6 +153,7 @@ from lcri_lab.execution import (
     queue_position_lcri_tail_adverse_selection_release_scorecard,
     queue_position_lcri_tail_adverse_selection_surface,
     queue_position_lcri_tail_fill_residuals,
+    queue_position_unfilled_opportunity_curve,
     queue_position_path_drawdown_episodes,
     queue_position_path_drawdown_summary,
     queue_position_regime_capacity_concentration,
@@ -991,6 +992,14 @@ def run_demo(
     heldout_queue_lcri_tail_fill_residuals = queue_position_lcri_tail_fill_residuals(
         heldout_passive_fill_labeled
     )
+    queue_unfilled_opportunity_curve = queue_position_unfilled_opportunity_curve(
+        passive_fill_labeled,
+        group_cols="passive_fill_event_window_regime",
+    )
+    heldout_queue_unfilled_opportunity_curve = queue_position_unfilled_opportunity_curve(
+        heldout_passive_fill_labeled,
+        group_cols="passive_fill_event_window_regime",
+    )
     queue_lcri_tail_adverse_selection_surface = queue_position_lcri_tail_adverse_selection_surface(
         passive_fill_labeled
     )
@@ -1177,6 +1186,8 @@ def run_demo(
         "heldout_execution_adjusted_lcri_quantile_diagnostics.csv",
         "queue_position_lcri_tail_fill_residuals.csv",
         "heldout_queue_position_lcri_tail_fill_residuals.csv",
+        "queue_position_unfilled_opportunity_curve.csv",
+        "heldout_queue_position_unfilled_opportunity_curve.csv",
         "queue_position_lcri_tail_adverse_selection_surface.csv",
         "heldout_queue_position_lcri_tail_adverse_selection_surface.csv",
         "queue_position_lcri_tail_adverse_selection_release_scorecard.json",
@@ -1795,6 +1806,12 @@ def run_demo(
     )
     heldout_queue_lcri_tail_fill_residuals.to_csv(
         output / "heldout_queue_position_lcri_tail_fill_residuals.csv", index=False
+    )
+    queue_unfilled_opportunity_curve.to_csv(
+        output / "queue_position_unfilled_opportunity_curve.csv", index=False
+    )
+    heldout_queue_unfilled_opportunity_curve.to_csv(
+        output / "heldout_queue_position_unfilled_opportunity_curve.csv", index=False
     )
     queue_lcri_tail_adverse_selection_surface.to_csv(
         output / "queue_position_lcri_tail_adverse_selection_surface.csv", index=False

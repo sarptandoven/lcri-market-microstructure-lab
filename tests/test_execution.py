@@ -12,6 +12,7 @@ from lcri_lab.execution import (
     queue_position_trade_confirmation_regime_scorecard,
     queue_position_trade_confirmation_release_scorecard,
     queue_position_trade_confirmation_surface,
+    queue_position_unfilled_opportunity_curve,
     add_passive_fill_event_window_regimes,
     add_queue_position_features,
     add_queue_position_order_size_features,
@@ -5822,3 +5823,67 @@ def test_queue_position_trade_confirmation_release_scorecard_rejects_missing_col
         match="missing queue position trade confirmation release scorecard columns",
     ):
         queue_position_trade_confirmation_release_scorecard(pd.DataFrame({"rows": [1]}))
+
+
+def test_queue_position_unfilled_opportunity_curve_quantifies_missed_lcri_edge() -> None:
+    frame = pd.DataFrame(
+        {
+            "regime": ["calm", "calm", "stress", "stress"],
+            "passive_fill_event_window": ["pre_event", "pre_event", "event", "event"],
+            "best_execution_side": ["long", "long", "short", "short"],
+            "lcri": [1.0, 3.0, -2.0, -4.0],
+            "long_net_return_ticks": [2.0, 4.0, -1.0, 0.0],
+            "short_net_return_ticks": [-2.0, -4.0, 3.0, 5.0],
+            "bid_realized_fill": [1.0, 0.0, 0.0, 0.0],
+            "ask_realized_fill": [0.0, 0.0, 1.0, 0.0],
+            "bid_fill_probability": [0.80, 0.20, 0.10, 0.10],
+            "ask_fill_probability": [0.10, 0.10, 0.70, 0.30],
+            "execution_adjusted_edge_ticks": [2.0, 0.0, 3.0, 0.0],
+        }
+    )
+
+    curve = queue_position_unfilled_opportunity_curve(frame, lcri_bins=2)
+
+    assert curve["lcri_tail_bin"].tolist() == [1, 2]
+    assert curve["rows"].tolist() == [2, 2]
+    assert curve["mean_abs_lcri"].tolist() == pytest.approx([1.5, 3.5])
+    assert curve["realized_fill_rate"].tolist() == pytest.approx([1.0, 0.0])
+    assert curve["mean_signal_edge_ticks"].tolist() == pytest.approx([2.5, 4.5])
+    assert curve["mean_captured_edge_ticks"].tolist() == pytest.approx([2.5, 0.0])
+    assert curve["mean_unfilled_opportunity_ticks"].tolist() == pytest.approx([0.0, 4.5])
+    assert curve["edge_capture_rate"].tolist() == pytest.approx([1.0, 0.0])
+    assert curve["unfilled_opportunity_label"].tolist() == [
+        "opportunity_captured",
+        "unfilled_tail_opportunity",
+    ]
+
+
+def test_queue_position_unfilled_opportunity_curve_can_group_by_event_window() -> None:
+    frame = pd.DataFrame(
+        {
+            "passive_fill_event_window": ["pre_event", "pre_event", "event", "event"],
+            "best_execution_side": ["long", "long", "short", "short"],
+            "lcri": [1.0, 3.0, -2.0, -4.0],
+            "long_net_return_ticks": [2.0, 4.0, -1.0, 0.0],
+            "short_net_return_ticks": [-2.0, -4.0, 3.0, 5.0],
+            "bid_realized_fill": [1.0, 0.0, 0.0, 0.0],
+            "ask_realized_fill": [0.0, 0.0, 1.0, 0.0],
+            "bid_fill_probability": [0.80, 0.20, 0.10, 0.10],
+            "ask_fill_probability": [0.10, 0.10, 0.70, 0.30],
+        }
+    )
+
+    curve = queue_position_unfilled_opportunity_curve(
+        frame,
+        lcri_bins=1,
+        group_cols="passive_fill_event_window",
+    )
+
+    assert curve["passive_fill_event_window"].tolist() == ["event", "pre_event"]
+    assert curve["rows"].tolist() == [2, 2]
+    assert curve["realized_fill_rate"].tolist() == pytest.approx([0.5, 0.5])
+    assert curve["mean_unfilled_opportunity_ticks"].tolist() == pytest.approx([2.5, 2.0])
+    assert curve["unfilled_opportunity_label"].tolist() == [
+        "unfilled_tail_opportunity",
+        "unfilled_tail_opportunity",
+    ]
