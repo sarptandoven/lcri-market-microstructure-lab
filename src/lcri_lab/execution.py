@@ -14746,6 +14746,174 @@ def queue_position_trade_confirmation_release_scorecard(
     return scorecard
 
 
+def _empty_queue_position_trade_confirmation_calibration_curve() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "regime",
+            "probability_bin",
+            "rows",
+            "mean_predicted_fill_probability",
+            "trade_confirmed_fill_rate",
+            "prompt_trade_confirmed_fill_rate",
+            "late_trade_confirmed_fill_rate",
+            "cancel_only_clear_rate",
+            "brier_score",
+            "calibration_error",
+            "absolute_calibration_error",
+            "trade_confirmation_calibration_label",
+        ]
+    )
+
+
+def queue_position_trade_confirmation_calibration_curve(
+    frame: pd.DataFrame,
+    *,
+    bins: int = 5,
+    side_col: str = "best_execution_side",
+    regime_col: str | None = None,
+    max_latency: float | None = None,
+    max_absolute_calibration_error: float = 0.20,
+    max_cancel_only_clear_rate: float = 0.25,
+    max_late_trade_confirmed_fill_rate: float = 0.25,
+) -> pd.DataFrame:
+    """Calibrate selected passive fill probability against trade-confirmed fills.
+
+    Queue-depletion fills are only publishable if selected-side probability bins
+    line up with fills confirmed by trades inside the latency budget. This curve
+    buckets the chosen bid/ask fill probability by side, then reports prompt trade
+    confirmation, late confirmation, cancel-only queue clearance, and Brier error
+    so high-confidence passive fills cannot hide behind cancel-driven depletion.
+    """
+    if not isinstance(bins, int) or isinstance(bins, bool):
+        raise ValueError("bins must be an integer")
+    if bins < 1:
+        raise ValueError("bins must be at least 1")
+    if max_latency is not None and (not math.isfinite(max_latency) or max_latency < 0.0):
+        raise ValueError("max_latency must be finite and non-negative when provided")
+    for name, value in {
+        "max_absolute_calibration_error": max_absolute_calibration_error,
+        "max_cancel_only_clear_rate": max_cancel_only_clear_rate,
+        "max_late_trade_confirmed_fill_rate": max_late_trade_confirmed_fill_rate,
+    }.items():
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be finite and in [0, 1]")
+
+    required = {
+        side_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_trade_confirmed_fill",
+        "ask_trade_confirmed_fill",
+        "bid_trade_confirmed_fill_latency",
+        "ask_trade_confirmed_fill_latency",
+        "bid_queue_advance_without_trade",
+        "ask_queue_advance_without_trade",
+    }
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(frame, required, "queue position trade confirmation calibration")
+    if frame.empty:
+        return _empty_queue_position_trade_confirmation_calibration_curve()
+
+    non_latency_columns = sorted(
+        required
+        - {side_col, "bid_trade_confirmed_fill_latency", "ask_trade_confirmed_fill_latency"}
+        - ({regime_col} if regime_col is not None else set())
+    )
+    values = _finite_values(frame, non_latency_columns, "queue position trade confirmation calibration")
+    rate_columns = [
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_trade_confirmed_fill",
+        "ask_trade_confirmed_fill",
+        "bid_queue_advance_without_trade",
+        "ask_queue_advance_without_trade",
+    ]
+    if not values[rate_columns].apply(lambda column: column.between(0.0, 1.0).all()).all():
+        raise ValueError("queue position trade confirmation calibration probabilities must be in [0, 1]")
+    latency_values = frame[
+        ["bid_trade_confirmed_fill_latency", "ask_trade_confirmed_fill_latency"]
+    ].astype(float)
+    observed_latency = latency_values.to_numpy(dtype=float)
+    observed_latency = observed_latency[~np.isnan(observed_latency)]
+    if (observed_latency < 0.0).any() or not np.isfinite(observed_latency).all():
+        raise ValueError("queue position trade confirmation calibration latencies must be non-negative")
+
+    side = frame[side_col].astype(str)
+    selected = pd.DataFrame(index=frame.index)
+    selected["regime"] = frame[regime_col].astype(str) if regime_col is not None else "all"
+    selected["predicted_fill_probability"] = np.select(
+        [side == "long", side == "short"],
+        [values["bid_fill_probability"], values["ask_fill_probability"]],
+        default=np.nan,
+    )
+    selected["trade_confirmed_fill"] = np.select(
+        [side == "long", side == "short"],
+        [values["bid_trade_confirmed_fill"], values["ask_trade_confirmed_fill"]],
+        default=np.nan,
+    )
+    selected["trade_confirmed_fill_latency"] = np.select(
+        [side == "long", side == "short"],
+        [latency_values["bid_trade_confirmed_fill_latency"], latency_values["ask_trade_confirmed_fill_latency"]],
+        default=np.nan,
+    )
+    selected["cancel_only_clear"] = np.select(
+        [side == "long", side == "short"],
+        [values["bid_queue_advance_without_trade"], values["ask_queue_advance_without_trade"]],
+        default=np.nan,
+    )
+    selected = selected.loc[side.isin(["long", "short"])].copy()
+    if selected.empty:
+        return _empty_queue_position_trade_confirmation_calibration_curve()
+
+    actual_bins = min(bins, len(selected))
+    ranks = selected["predicted_fill_probability"].rank(method="first")
+    selected["probability_bin"] = pd.qcut(ranks, q=actual_bins, labels=False, duplicates="drop").astype(int) + 1
+    selected["prompt_trade_confirmed_fill"] = selected["trade_confirmed_fill"]
+    selected["late_trade_confirmed_fill"] = 0.0
+    if max_latency is not None:
+        late = (selected["trade_confirmed_fill"] > 0.0) & (selected["trade_confirmed_fill_latency"] > max_latency)
+        selected.loc[late, "prompt_trade_confirmed_fill"] = 0.0
+        selected.loc[late, "late_trade_confirmed_fill"] = 1.0
+
+    rows: list[dict[str, float | int | str]] = []
+    for (regime, probability_bin), group in selected.groupby(["regime", "probability_bin"], sort=True):
+        predicted = float(group["predicted_fill_probability"].mean())
+        confirmed_rate = float(group["trade_confirmed_fill"].mean())
+        prompt_rate = float(group["prompt_trade_confirmed_fill"].mean())
+        late_rate = float(group["late_trade_confirmed_fill"].mean())
+        cancel_rate = float(group["cancel_only_clear"].mean())
+        calibration_error = float(confirmed_rate - predicted)
+        absolute_error = abs(calibration_error)
+        if cancel_rate > max_cancel_only_clear_rate:
+            label = "cancel_only_calibration_risk"
+        elif late_rate > max_late_trade_confirmed_fill_rate:
+            label = "late_confirmation_calibration_risk"
+        elif absolute_error > max_absolute_calibration_error:
+            label = "trade_confirmation_miscalibrated"
+        else:
+            label = "trade_confirmation_calibration_ok"
+        rows.append(
+            {
+                "regime": str(regime),
+                "probability_bin": int(probability_bin),
+                "rows": int(len(group)),
+                "mean_predicted_fill_probability": predicted,
+                "trade_confirmed_fill_rate": confirmed_rate,
+                "prompt_trade_confirmed_fill_rate": prompt_rate,
+                "late_trade_confirmed_fill_rate": late_rate,
+                "cancel_only_clear_rate": cancel_rate,
+                "brier_score": float(
+                    ((group["predicted_fill_probability"] - group["trade_confirmed_fill"]) ** 2).mean()
+                ),
+                "calibration_error": calibration_error,
+                "absolute_calibration_error": absolute_error,
+                "trade_confirmation_calibration_label": label,
+            }
+        )
+    return pd.DataFrame(rows)[list(_empty_queue_position_trade_confirmation_calibration_curve().columns)]
+
+
 def queue_position_trade_confirmation_surface(
     frame: pd.DataFrame,
     *,

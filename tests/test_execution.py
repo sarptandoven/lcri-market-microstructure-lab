@@ -12,6 +12,7 @@ from lcri_lab.execution import (
     execution_adjusted_edge_venue_economics_sensitivity,
     passive_fill_proxy_disagreement,
     trade_confirmed_passive_fill_latency_summary,
+    queue_position_trade_confirmation_calibration_curve,
     queue_position_trade_confirmation_competing_risk_curve,
     queue_position_trade_confirmation_regime_scorecard,
     queue_position_trade_confirmation_release_scorecard,
@@ -754,6 +755,45 @@ def test_trade_confirmed_passive_fill_latency_summary_surfaces_latency_and_cance
     assert by_side.loc["ask", "review_label"] == "cancel_only_and_latency_risk"
     assert by_side.loc["all", "rows"] == 8
     assert by_side.loc["all", "cancel_only_clear_rate"] == pytest.approx(0.25)
+
+
+def test_queue_position_trade_confirmation_calibration_curve_buckets_selected_side_probability() -> None:
+    frame = pd.DataFrame(
+        {
+            "best_execution_side": ["long", "long", "short", "short", "abstain"],
+            "regime": ["open", "open", "midday", "midday", "open"],
+            "bid_fill_probability": [0.20, 0.70, 0.90, 0.10, 0.50],
+            "ask_fill_probability": [0.80, 0.30, 0.40, 0.90, 0.50],
+            "bid_trade_confirmed_fill": [0.0, 1.0, 1.0, 0.0, 0.0],
+            "ask_trade_confirmed_fill": [1.0, 0.0, 0.0, 1.0, 0.0],
+            "bid_trade_confirmed_fill_latency": [None, 0.20, 0.10, None, None],
+            "ask_trade_confirmed_fill_latency": [0.10, None, 0.80, 1.20, None],
+            "bid_queue_advance_without_trade": [0.0, 0.0, 0.0, 0.0, 0.0],
+            "ask_queue_advance_without_trade": [0.0, 0.0, 1.0, 0.0, 0.0],
+        }
+    )
+
+    curve = queue_position_trade_confirmation_calibration_curve(frame, bins=2, max_latency=1.0)
+
+    assert curve["regime"].tolist() == ["all", "all"]
+    assert curve["probability_bin"].tolist() == [1, 2]
+    assert curve["rows"].tolist() == [2, 2]
+    assert curve["mean_predicted_fill_probability"].tolist() == pytest.approx([0.30, 0.80])
+    assert curve["trade_confirmed_fill_rate"].tolist() == pytest.approx([0.00, 1.00])
+    assert curve["prompt_trade_confirmed_fill_rate"].tolist() == pytest.approx([0.00, 0.50])
+    assert curve["cancel_only_clear_rate"].tolist() == pytest.approx([0.50, 0.00])
+    assert curve["calibration_error"].tolist() == pytest.approx([-0.30, 0.20])
+    assert curve["trade_confirmation_calibration_label"].tolist() == [
+        "cancel_only_calibration_risk",
+        "late_confirmation_calibration_risk",
+    ]
+
+
+def test_queue_position_trade_confirmation_calibration_curve_rejects_bad_inputs() -> None:
+    with pytest.raises(ValueError, match="bins"):
+        queue_position_trade_confirmation_calibration_curve(pd.DataFrame(), bins=0)
+    with pytest.raises(ValueError, match="missing queue position trade confirmation calibration columns"):
+        queue_position_trade_confirmation_calibration_curve(pd.DataFrame({"best_execution_side": ["long"]}))
 
 
 def test_queue_position_trade_confirmation_competing_risk_curve_tracks_latency_thresholds() -> None:
