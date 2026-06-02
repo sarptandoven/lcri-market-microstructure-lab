@@ -1638,6 +1638,114 @@ def baseline_stress_tail_publishability_summary(
     return output
 
 
+def baseline_nonlinear_feature_ablation(
+    frame: pd.DataFrame,
+    *,
+    train_fraction: float = 0.60,
+    ridge: float = 1e-3,
+    ablation_features: list[str] | tuple[str, ...] = tuple(NONLINEAR_LIQUIDITY_FEATURES),
+    material_drag_share: float = 0.05,
+) -> pd.DataFrame:
+    """Chronologically ablate nonlinear liquidity terms from the baseline basis.
+
+    Nonlinear LCRI neutralization is stronger when reviewers can see which stress
+    terms are indispensable out of sample. This diagnostic fits the full nonlinear
+    basis, then drops one requested nonlinear term at a time and measures the
+    holdout RMSE drag. Material ablations identify terms carrying genuine liquidity
+    curvature rather than cosmetic in-sample complexity.
+    """
+    columns = [
+        "feature",
+        "component",
+        "train_rows",
+        "test_rows",
+        "full_nonlinear_rmse",
+        "ablated_rmse",
+        "ablation_rmse_drag",
+        "ablation_rmse_drag_share",
+        "full_residual_mean",
+        "ablated_residual_mean",
+        "ablation_label",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    if not math.isfinite(train_fraction) or not 0.0 < train_fraction < 1.0:
+        raise ValueError("train_fraction must be finite and in (0, 1)")
+    if not math.isfinite(ridge) or ridge < 0.0:
+        raise ValueError("ridge must be a finite non-negative value")
+    if not math.isfinite(material_drag_share) or material_drag_share < 0.0:
+        raise ValueError("material_drag_share must be a finite non-negative value")
+    if not ablation_features:
+        raise ValueError("ablation_features must be non-empty")
+    feature_names = design_feature_names()
+    unknown = sorted(set(ablation_features) - set(feature_names))
+    if unknown:
+        raise ValueError(f"unknown ablation features: {unknown}")
+    if "raw_imbalance" not in frame.columns:
+        raise ValueError("missing nonlinear feature ablation columns: ['raw_imbalance']")
+
+    y = frame["raw_imbalance"].to_numpy(dtype=float)
+    if not np.isfinite(y).all():
+        raise ValueError("raw_imbalance values must be finite")
+    train_rows = int(len(frame) * train_fraction)
+    if train_rows < 1 or train_rows >= len(frame):
+        raise ValueError("train_fraction leaves no train or test rows")
+
+    x = _design_matrix(frame)
+    all_indexes = list(range(len(feature_names)))
+
+    def holdout_residual(indexes: list[int]) -> np.ndarray:
+        x_basis = x[:, indexes]
+        x_train = x_basis[:train_rows]
+        x_test = x_basis[train_rows:]
+        mean = x_train.mean(axis=0)
+        scale = x_train.std(axis=0)
+        scale[scale == 0.0] = 1.0
+        train_design = np.column_stack([np.ones(train_rows), (x_train - mean) / scale])
+        test_design = np.column_stack([np.ones(len(x_test)), (x_test - mean) / scale])
+        penalty = np.sqrt(ridge) * np.eye(train_design.shape[1])
+        penalty[0, 0] = 0.0
+        coefficients = np.linalg.lstsq(
+            np.vstack([train_design, penalty]),
+            np.concatenate([y[:train_rows], np.zeros(train_design.shape[1])]),
+            rcond=None,
+        )[0]
+        return y[train_rows:] - test_design @ coefficients
+
+    full_residual = holdout_residual(all_indexes)
+    full_rmse = float(np.sqrt(np.mean(full_residual**2)))
+    rows: list[dict[str, float | int | str]] = []
+    for feature in ablation_features:
+        drop_index = feature_names.index(feature)
+        ablated_indexes = [index for index in all_indexes if index != drop_index]
+        ablated_residual = holdout_residual(ablated_indexes)
+        ablated_rmse = float(np.sqrt(np.mean(ablated_residual**2)))
+        drag = float(ablated_rmse - full_rmse)
+        drag_share = drag / full_rmse if full_rmse > 0.0 else (1.0 if drag > 0.0 else 0.0)
+        rows.append(
+            {
+                "feature": str(feature),
+                "component": _component_for_feature(str(feature)),
+                "train_rows": int(train_rows),
+                "test_rows": int(len(frame) - train_rows),
+                "full_nonlinear_rmse": full_rmse,
+                "ablated_rmse": ablated_rmse,
+                "ablation_rmse_drag": drag,
+                "ablation_rmse_drag_share": float(drag_share),
+                "full_residual_mean": float(full_residual.mean()),
+                "ablated_residual_mean": float(ablated_residual.mean()),
+                "ablation_label": (
+                    "material_nonlinear_baseline_term"
+                    if drag_share >= material_drag_share
+                    else "marginal_nonlinear_baseline_term"
+                ),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns).sort_values(
+        ["ablation_rmse_drag", "feature"], ascending=[False, True], ignore_index=True
+    )
+
+
 def baseline_nonlinear_regularization_path(
     frame: pd.DataFrame,
     *,

@@ -20,6 +20,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "baseline_regime_publishability_summary.json").exists()
     assert (tmp_path / "baseline_nonlinear_stress_surface.csv").exists()
     assert (tmp_path / "baseline_nonlinear_stress_surface_summary.json").exists()
+    assert (tmp_path / "baseline_nonlinear_feature_ablation.csv").exists()
     assert (tmp_path / "regime_metrics.csv").exists()
     assert (tmp_path / "heldout_regime_metrics.csv").exists()
     assert (tmp_path / "regime_generalization_gap.csv").exists()
@@ -262,6 +263,33 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     }.issubset(nonlinear_surface_summary)
     assert nonlinear_surface_summary["stress_cells"] == len(nonlinear_surface)
     assert nonlinear_surface_summary["review_note"].startswith("nonlinear_")
+
+    nonlinear_ablation = pd.read_csv(tmp_path / "baseline_nonlinear_feature_ablation.csv")
+    assert nonlinear_ablation.columns.tolist() == [
+        "feature",
+        "component",
+        "train_rows",
+        "test_rows",
+        "full_nonlinear_rmse",
+        "ablated_rmse",
+        "ablation_rmse_drag",
+        "ablation_rmse_drag_share",
+        "full_residual_mean",
+        "ablated_residual_mean",
+        "ablation_label",
+    ]
+    assert set(nonlinear_ablation["feature"]) == {
+        "spread_stress_squared",
+        "volatility_stress_squared",
+        "liquidity_void_x_volatility",
+        "replenishment_inverse",
+    }
+    assert set(nonlinear_ablation["component"]) == {"nonlinear_liquidity"}
+    assert set(nonlinear_ablation["ablation_label"]) <= {
+        "material_nonlinear_baseline_term",
+        "marginal_nonlinear_baseline_term",
+    }
+    assert nonlinear_ablation["ablation_rmse_drag"].is_monotonic_decreasing
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
     assert "passes_monotonicity_gate" in monotonicity

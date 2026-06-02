@@ -73,6 +73,7 @@ from lcri_lab.evaluation import (
 )
 from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.baseline import (
+    baseline_nonlinear_feature_ablation,
     baseline_nonlinear_stress_surface,
     baseline_nonlinear_stress_surface_summary,
     baseline_regime_basis_comparison,
@@ -1028,6 +1029,10 @@ def run_demo(
     baseline_nonlinear_surface_summary = baseline_nonlinear_stress_surface_summary(
         baseline_nonlinear_surface
     )
+    baseline_nonlinear_ablation = baseline_nonlinear_feature_ablation(
+        scored,
+        train_fraction=train_frac,
+    )
 
     artifact_paths = [
         "lcri-model.json",
@@ -1041,6 +1046,7 @@ def run_demo(
         "baseline_stress_residual_drift.csv",
         "baseline_nonlinear_stress_surface.csv",
         "baseline_nonlinear_stress_surface_summary.json",
+        "baseline_nonlinear_feature_ablation.csv",
         "regime_metrics.csv",
         "heldout_regime_metrics.csv",
         "regime_generalization_gap.csv",
@@ -1297,6 +1303,9 @@ def run_demo(
     write_json(
         output / "baseline_nonlinear_stress_surface_summary.json",
         baseline_nonlinear_surface_summary,
+    )
+    baseline_nonlinear_ablation.to_csv(
+        output / "baseline_nonlinear_feature_ablation.csv", index=False
     )
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
     heldout_by_regime.to_csv(output / "heldout_regime_metrics.csv", index=False)

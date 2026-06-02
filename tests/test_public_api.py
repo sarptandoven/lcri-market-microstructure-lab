@@ -67,6 +67,11 @@ def test_public_api_exports_baseline_nonlinear_stress_surface() -> None:
     assert "baseline_nonlinear_stress_surface" in lcri_lab.__all__
 
 
+def test_public_api_exports_baseline_nonlinear_feature_ablation() -> None:
+    assert callable(lcri_lab.baseline_nonlinear_feature_ablation)
+    assert "baseline_nonlinear_feature_ablation" in lcri_lab.__all__
+
+
 def test_public_api_exports_baseline_nonlinear_coefficient_stability_summary() -> None:
     assert callable(lcri_lab.baseline_nonlinear_coefficient_stability)
     assert callable(lcri_lab.baseline_nonlinear_coefficient_stability_summary)

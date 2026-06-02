@@ -11,6 +11,7 @@ from lcri_lab.baseline import (
     baseline_nonlinear_stress_surface_summary,
     baseline_nonlinear_coefficient_stability,
     baseline_nonlinear_coefficient_stability_summary,
+    baseline_nonlinear_feature_ablation,
     baseline_nonlinear_regularization_path,
     baseline_nonlinear_regularization_summary,
     baseline_nonlinear_publishability_summary,
@@ -349,6 +350,53 @@ def test_baseline_nonlinear_coefficient_stability_rejects_invalid_windows() -> N
         baseline_nonlinear_coefficient_stability(features, train_window=0)
     with pytest.raises(ValueError, match="at least one coefficient stability window"):
         baseline_nonlinear_coefficient_stability(features, train_window=200)
+
+
+def test_baseline_nonlinear_feature_ablation_identifies_material_stress_term() -> None:
+    books = simulate_order_books(SimulationConfig(rows=900, seed=58))
+    features = compute_features(books)
+    spread = features["spread_ticks"].to_numpy(dtype=float)
+    volatility = features["volatility"].to_numpy(dtype=float)
+    void = features["liquidity_void_ratio"].to_numpy(dtype=float)
+    features["raw_imbalance"] = (
+        0.24 * spread**2
+        + 0.03 * volatility**2
+        + 0.02 * void * volatility
+    )
+
+    ablation = baseline_nonlinear_feature_ablation(features, train_fraction=0.55, ridge=1e-8)
+    spread_row = ablation[ablation["feature"] == "spread_stress_squared"].iloc[0]
+    weak_row = ablation[ablation["feature"] == "replenishment_inverse"].iloc[0]
+
+    assert ablation.columns.tolist() == [
+        "feature",
+        "component",
+        "train_rows",
+        "test_rows",
+        "full_nonlinear_rmse",
+        "ablated_rmse",
+        "ablation_rmse_drag",
+        "ablation_rmse_drag_share",
+        "full_residual_mean",
+        "ablated_residual_mean",
+        "ablation_label",
+    ]
+    assert spread_row["component"] == "nonlinear_liquidity"
+    assert spread_row["ablation_rmse_drag"] > weak_row["ablation_rmse_drag"]
+    assert spread_row["ablation_rmse_drag_share"] > 0.10
+    assert spread_row["ablation_label"] == "material_nonlinear_baseline_term"
+    assert weak_row["ablation_label"] == "marginal_nonlinear_baseline_term"
+    assert ablation["ablation_rmse_drag"].is_monotonic_decreasing
+
+
+def test_baseline_nonlinear_feature_ablation_rejects_invalid_feature_sets() -> None:
+    books = simulate_order_books(SimulationConfig(rows=120, seed=59))
+    features = compute_features(books)
+
+    with pytest.raises(ValueError, match="ablation_features must be non-empty"):
+        baseline_nonlinear_feature_ablation(features, ablation_features=[])
+    with pytest.raises(ValueError, match="unknown ablation features"):
+        baseline_nonlinear_feature_ablation(features, ablation_features=["not_a_feature"])
 
 
 def test_baseline_nonlinear_regularization_path_identifies_robust_ridge_band() -> None:
