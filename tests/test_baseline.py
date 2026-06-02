@@ -12,6 +12,7 @@ from lcri_lab.baseline import (
     baseline_nonlinear_coefficient_stability,
     baseline_nonlinear_coefficient_stability_summary,
     baseline_nonlinear_feature_ablation,
+    baseline_nonlinear_feature_ablation_summary,
     baseline_nonlinear_regularization_path,
     baseline_nonlinear_regularization_summary,
     baseline_nonlinear_publishability_summary,
@@ -485,6 +486,83 @@ def test_baseline_nonlinear_feature_ablation_rejects_invalid_feature_sets() -> N
         baseline_nonlinear_feature_ablation(features, ablation_features=[])
     with pytest.raises(ValueError, match="unknown ablation features"):
         baseline_nonlinear_feature_ablation(features, ablation_features=["not_a_feature"])
+
+
+def test_baseline_nonlinear_feature_ablation_summary_prioritizes_indispensable_terms() -> None:
+    ablation = pd.DataFrame(
+        {
+            "feature": [
+                "spread_stress_squared",
+                "volatility_stress_squared",
+                "liquidity_void_x_volatility",
+                "replenishment_inverse",
+            ],
+            "component": ["nonlinear_liquidity"] * 4,
+            "train_rows": [100] * 4,
+            "test_rows": [50] * 4,
+            "full_nonlinear_rmse": [0.20] * 4,
+            "ablated_rmse": [0.32, 0.23, 0.19, 0.205],
+            "ablation_rmse_drag": [0.12, 0.03, -0.01, 0.005],
+            "ablation_rmse_drag_share": [0.60, 0.15, -0.05, 0.025],
+            "full_residual_mean": [0.0] * 4,
+            "ablated_residual_mean": [0.04, 0.01, -0.02, 0.00],
+            "ablation_label": [
+                "material_nonlinear_baseline_term",
+                "material_nonlinear_baseline_term",
+                "marginal_nonlinear_baseline_term",
+                "marginal_nonlinear_baseline_term",
+            ],
+        }
+    )
+
+    summary = baseline_nonlinear_feature_ablation_summary(
+        ablation,
+        min_material_terms=2,
+        min_total_positive_drag_share=0.70,
+        max_negative_drag_share=0.10,
+    )
+
+    assert summary == {
+        "ablation_terms": 4,
+        "material_terms": 2,
+        "material_term_share": pytest.approx(0.50),
+        "total_positive_drag_share": pytest.approx(0.775),
+        "max_drag_share": pytest.approx(0.60),
+        "max_negative_drag_share": pytest.approx(0.05),
+        "strongest_feature": "spread_stress_squared",
+        "weakest_feature": "liquidity_void_x_volatility",
+        "publishable": True,
+        "review_note": "nonlinear_feature_ablation_supported",
+    }
+
+
+def test_baseline_nonlinear_feature_ablation_summary_blocks_cosmetic_terms() -> None:
+    ablation = pd.DataFrame(
+        {
+            "feature": ["spread_stress_squared", "volatility_stress_squared"],
+            "ablation_rmse_drag_share": [0.02, -0.25],
+            "ablation_label": [
+                "marginal_nonlinear_baseline_term",
+                "marginal_nonlinear_baseline_term",
+            ],
+        }
+    )
+
+    summary = baseline_nonlinear_feature_ablation_summary(
+        ablation,
+        min_material_terms=1,
+        max_negative_drag_share=0.10,
+    )
+
+    assert summary["publishable"] is False
+    assert summary["review_note"] == "nonlinear_feature_ablation_fragile"
+    assert summary["strongest_feature"] == "spread_stress_squared"
+    assert summary["weakest_feature"] == "volatility_stress_squared"
+
+
+def test_baseline_nonlinear_feature_ablation_summary_rejects_malformed_input() -> None:
+    with pytest.raises(ValueError, match="missing nonlinear feature ablation summary columns"):
+        baseline_nonlinear_feature_ablation_summary(pd.DataFrame({"feature": ["spread"]}))
 
 
 def test_baseline_nonlinear_regularization_path_identifies_robust_ridge_band() -> None:

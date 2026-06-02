@@ -12665,6 +12665,144 @@ def execution_adjusted_lcri_side_attribution(
     return pd.DataFrame(rows)[list(_empty_execution_adjusted_lcri_side_attribution().columns)]
 
 
+def execution_adjusted_lcri_side_release_scorecard(
+    attribution: pd.DataFrame,
+    *,
+    min_tradable_share: float = 0.50,
+    max_conflict_share: float = 0.25,
+    min_mean_edge_ticks: float = 0.0,
+) -> dict[str, bool | float | int | str]:
+    """Gate execution-adjusted LCRI side survival before publishing side claims.
+
+    ``execution_adjusted_lcri_side_attribution`` explains whether raw long/short
+    LCRI pressure survives the passive execution layer. This scorecard compresses
+    that artifact into release criteria: directional LCRI sides need enough
+    tradable coverage, bounded queue-induced side conflicts, no dominant side
+    inversion, and non-negative execution-adjusted edge after fill/adverse drag.
+    """
+    for name, value in {
+        "min_tradable_share": min_tradable_share,
+        "max_conflict_share": max_conflict_share,
+    }.items():
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be finite and in [0, 1]")
+    if not math.isfinite(min_mean_edge_ticks):
+        raise ValueError("min_mean_edge_ticks must be finite")
+
+    required = {
+        "lcri_side",
+        "rows",
+        "tradable_rows",
+        "execution_conflict_share",
+        "mean_execution_adjusted_edge_ticks",
+        "mean_fill_probability_advantage",
+        "dominant_execution_side",
+        "review_label",
+    }
+    missing = sorted(required - set(attribution.columns))
+    if missing:
+        raise ValueError(f"missing execution-adjusted LCRI side scorecard columns: {missing}")
+
+    if attribution.empty:
+        return {
+            "side_rows": 0,
+            "directional_rows": 0,
+            "directional_tradable_rows": 0,
+            "directional_tradable_share": 0.0,
+            "max_directional_conflict_share": 0.0,
+            "inverted_side_count": 0,
+            "negative_edge_side_count": 0,
+            "weak_fill_advantage_side_count": 0,
+            "worst_side": "none",
+            "release_decision": "review",
+            "review_note": "execution_lcri_side_insufficient_coverage",
+        }
+
+    values = _finite_values(
+        attribution,
+        [
+            "rows",
+            "tradable_rows",
+            "execution_conflict_share",
+            "mean_execution_adjusted_edge_ticks",
+            "mean_fill_probability_advantage",
+        ],
+        "execution-adjusted LCRI side scorecard",
+    )
+    if (values[["rows", "tradable_rows"]] < 0.0).any().any():
+        raise ValueError("execution-adjusted LCRI side scorecard row counts must be non-negative")
+    if not values["execution_conflict_share"].between(0.0, 1.0).all():
+        raise ValueError("execution-adjusted LCRI side scorecard conflict shares must be in [0, 1]")
+
+    lcri_side = attribution["lcri_side"].astype(str)
+    directional = attribution[lcri_side.isin(["long", "short"])].copy()
+    if directional.empty:
+        return {
+            "side_rows": int(len(attribution)),
+            "directional_rows": 0,
+            "directional_tradable_rows": 0,
+            "directional_tradable_share": 0.0,
+            "max_directional_conflict_share": 0.0,
+            "inverted_side_count": 0,
+            "negative_edge_side_count": 0,
+            "weak_fill_advantage_side_count": 0,
+            "worst_side": "none",
+            "release_decision": "review",
+            "review_note": "execution_lcri_side_insufficient_coverage",
+        }
+
+    directional_values = values.loc[directional.index]
+    directional_rows = int(round(float(directional_values["rows"].sum())))
+    directional_tradable_rows = int(round(float(directional_values["tradable_rows"].sum())))
+    directional_tradable_share = (
+        float(directional_tradable_rows / directional_rows) if directional_rows else 0.0
+    )
+    max_directional_conflict_share = float(directional_values["execution_conflict_share"].max())
+    inverted = directional["review_label"].astype(str) == "execution_side_inversion_review"
+    negative_edge = directional_values["mean_execution_adjusted_edge_ticks"] < min_mean_edge_ticks
+    weak_fill_advantage = directional_values["mean_fill_probability_advantage"] < 0.0
+    risk_score = (
+        directional_values["execution_conflict_share"]
+        - directional_values["mean_execution_adjusted_edge_ticks"].clip(upper=0.0)
+        - directional_values["mean_fill_probability_advantage"].clip(upper=0.0)
+    )
+    worst_side = str(directional.iloc[int(np.argmax(risk_score.to_numpy()))]["lcri_side"])
+
+    inverted_side_count = int(inverted.sum())
+    negative_edge_side_count = int(negative_edge.sum())
+    weak_fill_advantage_side_count = int(weak_fill_advantage.sum())
+    coverage_blocked = directional_tradable_share < min_tradable_share
+    conflict_blocked = max_directional_conflict_share > max_conflict_share
+    edge_blocked = negative_edge_side_count > 0
+    fill_blocked = weak_fill_advantage_side_count > 0
+    if inverted_side_count > 0:
+        release_decision = "block"
+        review_note = "execution_lcri_side_inversion_blocked"
+    elif coverage_blocked:
+        release_decision = "review"
+        review_note = "execution_lcri_side_insufficient_coverage"
+    elif conflict_blocked or edge_blocked or fill_blocked:
+        release_decision = "review"
+        review_note = "execution_lcri_side_friction_review"
+    else:
+        release_decision = "pass"
+        review_note = "execution_lcri_side_supported"
+
+    return {
+        "side_rows": int(len(attribution)),
+        "directional_rows": directional_rows,
+        "directional_tradable_rows": directional_tradable_rows,
+        "directional_tradable_share": directional_tradable_share,
+        "max_directional_conflict_share": max_directional_conflict_share,
+        "inverted_side_count": inverted_side_count,
+        "negative_edge_side_count": negative_edge_side_count,
+        "weak_fill_advantage_side_count": weak_fill_advantage_side_count,
+        "worst_side": worst_side,
+        "release_decision": release_decision,
+        "review_note": review_note,
+    }
+
+
 def _empty_execution_adjusted_lcri_regime_attribution() -> pd.DataFrame:
     return pd.DataFrame(
         columns=[

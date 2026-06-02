@@ -26,6 +26,7 @@ from lcri_lab.execution import (
     execution_adjusted_lcri_event_window_release_scorecard,
     execution_adjusted_lcri_quantile_diagnostics,
     execution_adjusted_lcri_regime_attribution,
+    execution_adjusted_lcri_side_release_scorecard,
     passive_fill_brier_decomposition,
     passive_fill_calibration_curve,
     passive_fill_calibration_summary,
@@ -867,6 +868,78 @@ def test_execution_adjusted_lcri_side_attribution_explains_execution_conflicts()
         "execution_side_inversion_review",
         "neutral_signal",
     ]
+
+
+def test_execution_adjusted_lcri_side_release_scorecard_flags_side_inversions() -> None:
+    attribution = pd.DataFrame(
+        {
+            "lcri_side": ["long", "short", "neutral"],
+            "rows": [40, 30, 10],
+            "tradable_rows": [32, 18, 0],
+            "execution_conflict_rows": [4, 15, 0],
+            "execution_conflict_share": [0.10, 0.50, 0.0],
+            "mean_signal_confidence": [0.76, 0.72, 0.50],
+            "mean_execution_adjusted_edge_ticks": [0.45, -0.08, 0.0],
+            "mean_fill_probability_advantage": [0.20, -0.04, 0.0],
+            "mean_adverse_fill_probability_advantage": [0.12, 0.35, 0.0],
+            "dominant_execution_side": ["long", "long", "none"],
+            "review_label": [
+                "execution_side_preserved",
+                "execution_side_inversion_review",
+                "neutral_signal",
+            ],
+        }
+    )
+
+    scorecard = execution_adjusted_lcri_side_release_scorecard(
+        attribution,
+        min_tradable_share=0.60,
+        max_conflict_share=0.25,
+        min_mean_edge_ticks=0.05,
+    )
+
+    assert scorecard == {
+        "side_rows": 3,
+        "directional_rows": 70,
+        "directional_tradable_rows": 50,
+        "directional_tradable_share": pytest.approx(50 / 70),
+        "max_directional_conflict_share": pytest.approx(0.50),
+        "inverted_side_count": 1,
+        "negative_edge_side_count": 1,
+        "weak_fill_advantage_side_count": 1,
+        "worst_side": "short",
+        "release_decision": "block",
+        "review_note": "execution_lcri_side_inversion_blocked",
+    }
+
+
+def test_execution_adjusted_lcri_side_release_scorecard_passes_preserved_sides() -> None:
+    attribution = pd.DataFrame(
+        {
+            "lcri_side": ["long", "short"],
+            "rows": [50, 50],
+            "tradable_rows": [45, 44],
+            "execution_conflict_rows": [2, 3],
+            "execution_conflict_share": [0.04, 0.06],
+            "mean_signal_confidence": [0.80, 0.78],
+            "mean_execution_adjusted_edge_ticks": [0.35, 0.28],
+            "mean_fill_probability_advantage": [0.18, 0.14],
+            "mean_adverse_fill_probability_advantage": [0.10, 0.12],
+            "dominant_execution_side": ["long", "short"],
+            "review_label": ["execution_side_preserved", "execution_side_preserved"],
+        }
+    )
+
+    scorecard = execution_adjusted_lcri_side_release_scorecard(attribution)
+
+    assert scorecard["release_decision"] == "pass"
+    assert scorecard["review_note"] == "execution_lcri_side_supported"
+    assert scorecard["worst_side"] == "short"
+
+
+def test_execution_adjusted_lcri_side_release_scorecard_rejects_malformed_input() -> None:
+    with pytest.raises(ValueError, match="missing execution-adjusted LCRI side scorecard columns"):
+        execution_adjusted_lcri_side_release_scorecard(pd.DataFrame({"lcri_side": ["long"]}))
 
 
 def test_execution_adjusted_lcri_quantile_diagnostics_measures_signal_survival() -> None:

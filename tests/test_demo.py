@@ -118,6 +118,18 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_execution_publishability_review_packet.csv").exists()
     assert (tmp_path / "execution_adjusted_lcri_side_attribution.csv").exists()
     assert (tmp_path / "heldout_execution_adjusted_lcri_side_attribution.csv").exists()
+    assert (tmp_path / "execution_adjusted_lcri_side_release_scorecard.json").exists()
+    assert (tmp_path / "heldout_execution_adjusted_lcri_side_release_scorecard.json").exists()
+    side_scorecard = json.loads(
+        (tmp_path / "execution_adjusted_lcri_side_release_scorecard.json").read_text()
+    )
+    assert side_scorecard["review_note"] in {
+        "execution_lcri_side_supported",
+        "execution_lcri_side_friction_review",
+        "execution_lcri_side_insufficient_coverage",
+        "execution_lcri_side_inversion_blocked",
+    }
+    assert side_scorecard["directional_rows"] >= side_scorecard["directional_tradable_rows"]
     assert (tmp_path / "queue_position_lcri_tail_fill_residuals.csv").exists()
     assert (tmp_path / "heldout_queue_position_lcri_tail_fill_residuals.csv").exists()
     assert (tmp_path / "queue_position_unfilled_opportunity_curve.csv").exists()

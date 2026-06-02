@@ -38,6 +38,10 @@ so convex book-stress effects are removed before residual pressure is scored.
 chronological train/test blocks, while `baseline_rolling_basis_summary` turns
 fold-level lift, winner rate, and overfit ratios into a compact publishability
 check so nonlinear lift is not inferred from a single favorable holdout split.
+`baseline_nonlinear_feature_ablation_summary` adds a complementary
+indispensability gate: it aggregates one-term holdout ablations into material-term
+count, total positive RMSE-drag share, worst negative drag, and strongest/weakest
+stress features so nonlinear LCRI claims are not supported by cosmetic basis terms.
 
 ## Inputs
 

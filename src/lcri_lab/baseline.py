@@ -1746,6 +1746,96 @@ def baseline_nonlinear_feature_ablation(
     )
 
 
+def baseline_nonlinear_feature_ablation_summary(
+    ablation: pd.DataFrame,
+    *,
+    min_material_terms: int = 1,
+    min_total_positive_drag_share: float = 0.10,
+    max_negative_drag_share: float = 0.15,
+) -> dict[str, bool | float | int | str]:
+    """Summarize whether nonlinear liquidity terms are indispensable out of sample.
+
+    ``baseline_nonlinear_feature_ablation`` exposes per-term holdout RMSE drag.
+    This compact gate turns that table into a release artifact: nonlinear LCRI
+    neutralization is more credible when at least one stress term is materially
+    harmful to remove, total positive drag is meaningful, and no term materially
+    improves the holdout after removal (a sign of cosmetic or overfit features).
+    """
+    if not isinstance(min_material_terms, int) or isinstance(min_material_terms, bool):
+        raise ValueError("min_material_terms must be an integer")
+    if min_material_terms < 0:
+        raise ValueError("min_material_terms must be non-negative")
+    for name, value in {
+        "min_total_positive_drag_share": min_total_positive_drag_share,
+        "max_negative_drag_share": max_negative_drag_share,
+    }.items():
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"{name} must be a finite non-negative value")
+
+    required = {"feature", "ablation_rmse_drag_share", "ablation_label"}
+    missing = sorted(required - set(ablation.columns))
+    if missing:
+        raise ValueError(f"missing nonlinear feature ablation summary columns: {missing}")
+    if ablation.empty:
+        return {
+            "ablation_terms": 0,
+            "material_terms": 0,
+            "material_term_share": 0.0,
+            "total_positive_drag_share": 0.0,
+            "max_drag_share": 0.0,
+            "max_negative_drag_share": 0.0,
+            "strongest_feature": "none",
+            "weakest_feature": "none",
+            "publishable": False,
+            "review_note": "nonlinear_feature_ablation_fragile",
+        }
+
+    drag_share = ablation["ablation_rmse_drag_share"].to_numpy(dtype=float)
+    if not np.isfinite(drag_share).all():
+        raise ValueError("nonlinear feature ablation drag shares must be finite")
+    labels = ablation["ablation_label"].astype(str)
+    valid_labels = {"material_nonlinear_baseline_term", "marginal_nonlinear_baseline_term"}
+    unknown_labels = sorted(set(labels) - valid_labels)
+    if unknown_labels:
+        raise ValueError(f"invalid nonlinear feature ablation labels: {unknown_labels}")
+
+    material_terms = int((labels == "material_nonlinear_baseline_term").sum())
+    ablation_terms = int(len(ablation))
+    material_term_share = float(material_terms / ablation_terms) if ablation_terms else 0.0
+    positive_drag = np.clip(drag_share, 0.0, None)
+    negative_drag = np.clip(-drag_share, 0.0, None)
+    total_positive_drag_share = float(positive_drag.sum())
+    max_drag_share = float(drag_share.max())
+    worst_negative_drag_share = float(negative_drag.max())
+    strongest_index = int(np.argmax(drag_share))
+    weakest_index = int(np.argmin(drag_share))
+    strongest_feature = str(ablation.iloc[strongest_index]["feature"])
+    weakest_feature = str(ablation.iloc[weakest_index]["feature"])
+
+    publishable = bool(
+        material_terms >= min_material_terms
+        and total_positive_drag_share >= min_total_positive_drag_share
+        and worst_negative_drag_share <= max_negative_drag_share
+    )
+    review_note = (
+        "nonlinear_feature_ablation_supported"
+        if publishable
+        else "nonlinear_feature_ablation_fragile"
+    )
+    return {
+        "ablation_terms": ablation_terms,
+        "material_terms": material_terms,
+        "material_term_share": material_term_share,
+        "total_positive_drag_share": total_positive_drag_share,
+        "max_drag_share": max_drag_share,
+        "max_negative_drag_share": worst_negative_drag_share,
+        "strongest_feature": strongest_feature,
+        "weakest_feature": weakest_feature,
+        "publishable": publishable,
+        "review_note": review_note,
+    }
+
+
 def baseline_nonlinear_regularization_path(
     frame: pd.DataFrame,
     *,

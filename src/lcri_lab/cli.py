@@ -74,6 +74,7 @@ from lcri_lab.evaluation import (
 from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.baseline import (
     baseline_nonlinear_feature_ablation,
+    baseline_nonlinear_feature_ablation_summary,
     baseline_nonlinear_stress_surface,
     baseline_nonlinear_stress_surface_summary,
     baseline_regime_basis_comparison,
@@ -105,6 +106,7 @@ from lcri_lab.execution import (
     execution_adjusted_lcri_quantile_diagnostics,
     execution_adjusted_lcri_regime_attribution,
     execution_adjusted_lcri_side_attribution,
+    execution_adjusted_lcri_side_release_scorecard,
     execution_publishability_release_gate,
     execution_publishability_review_packet,
     passive_fill_calibration_curve,
@@ -964,6 +966,12 @@ def run_demo(
     )
     execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(scored)
     heldout_execution_lcri_side_attribution = execution_adjusted_lcri_side_attribution(heldout_scored)
+    execution_lcri_side_release_scorecard = execution_adjusted_lcri_side_release_scorecard(
+        execution_lcri_side_attribution
+    )
+    heldout_execution_lcri_side_release_scorecard = execution_adjusted_lcri_side_release_scorecard(
+        heldout_execution_lcri_side_attribution
+    )
     execution_lcri_regime_attribution = execution_adjusted_lcri_regime_attribution(scored)
     heldout_execution_lcri_regime_attribution = execution_adjusted_lcri_regime_attribution(heldout_scored)
     execution_lcri_event_window_attribution = execution_adjusted_lcri_event_window_attribution(scored)
@@ -1086,6 +1094,11 @@ def run_demo(
         scored,
         train_fraction=train_frac,
     )
+    baseline_nonlinear_ablation_summary = baseline_nonlinear_feature_ablation_summary(
+        baseline_nonlinear_ablation,
+        min_material_terms=1,
+        min_total_positive_drag_share=0.10,
+    )
 
     artifact_paths = [
         "lcri-model.json",
@@ -1100,6 +1113,7 @@ def run_demo(
         "baseline_nonlinear_stress_surface.csv",
         "baseline_nonlinear_stress_surface_summary.json",
         "baseline_nonlinear_feature_ablation.csv",
+        "baseline_nonlinear_feature_ablation_summary.json",
         "regime_metrics.csv",
         "heldout_regime_metrics.csv",
         "regime_generalization_gap.csv",
@@ -1202,6 +1216,8 @@ def run_demo(
         "heldout_execution_adjusted_edge_component_attribution.csv",
         "execution_adjusted_lcri_side_attribution.csv",
         "heldout_execution_adjusted_lcri_side_attribution.csv",
+        "execution_adjusted_lcri_side_release_scorecard.json",
+        "heldout_execution_adjusted_lcri_side_release_scorecard.json",
         "execution_adjusted_lcri_regime_attribution.csv",
         "heldout_execution_adjusted_lcri_regime_attribution.csv",
         "execution_adjusted_lcri_quantile_diagnostics.csv",
@@ -1368,6 +1384,10 @@ def run_demo(
     )
     baseline_nonlinear_ablation.to_csv(
         output / "baseline_nonlinear_feature_ablation.csv", index=False
+    )
+    write_json(
+        output / "baseline_nonlinear_feature_ablation_summary.json",
+        baseline_nonlinear_ablation_summary,
     )
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
     heldout_by_regime.to_csv(output / "heldout_regime_metrics.csv", index=False)
@@ -1820,6 +1840,14 @@ def run_demo(
     )
     heldout_execution_lcri_side_attribution.to_csv(
         output / "heldout_execution_adjusted_lcri_side_attribution.csv", index=False
+    )
+    write_json(
+        output / "execution_adjusted_lcri_side_release_scorecard.json",
+        execution_lcri_side_release_scorecard,
+    )
+    write_json(
+        output / "heldout_execution_adjusted_lcri_side_release_scorecard.json",
+        heldout_execution_lcri_side_release_scorecard,
     )
     execution_lcri_regime_attribution.to_csv(
         output / "execution_adjusted_lcri_regime_attribution.csv", index=False
