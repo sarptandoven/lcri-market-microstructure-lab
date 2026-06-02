@@ -6,6 +6,7 @@ from lcri_lab.execution import (
     add_event_level_trade_confirmed_fill_proxy,
     add_execution_adjusted_edge,
     add_passive_fill_probabilities,
+    add_latency_adjusted_passive_fill_probabilities,
     add_event_level_realized_fill_proxy,
     passive_fill_proxy_disagreement,
     trade_confirmed_passive_fill_latency_summary,
@@ -165,6 +166,58 @@ def test_queue_position_order_size_features_rejects_negative_child_size() -> Non
 
     with pytest.raises(ValueError, match="order sizes must be non-negative"):
         add_queue_position_order_size_features(queued, levels=2, bid_order_size_col="bid_order")
+
+
+def test_latency_adjusted_passive_fill_probabilities_discount_stale_queue_state() -> None:
+    queued = add_queue_position_features(_book_frame(), levels=2, queue_position_fraction=0.25)
+    sized = add_queue_position_order_size_features(queued, levels=2, order_size_fraction=0.10)
+    probabilities = add_passive_fill_probabilities(sized)
+
+    output = add_latency_adjusted_passive_fill_probabilities(probabilities, latency_steps=3.0)
+
+    assert (output["bid_latency_adjusted_fill_probability"] <= output["bid_fill_probability"]).all()
+    assert (output["ask_latency_adjusted_fill_probability"] <= output["ask_fill_probability"]).all()
+    assert (output["bid_latency_adjusted_adverse_fill_probability"] >= output["bid_adverse_fill_probability"]).all()
+    assert (output["ask_latency_adjusted_adverse_fill_probability"] >= output["ask_adverse_fill_probability"]).all()
+    assert output["bid_latency_adjusted_fill_probability"].between(0.0, 1.0).all()
+    assert output["ask_latency_adjusted_adverse_fill_probability"].between(0.0, 1.0).all()
+    assert output["bid_latency_risk"].iloc[1] > output["bid_latency_risk"].iloc[0]
+
+
+def test_latency_adjusted_passive_fill_probabilities_preserve_zero_latency_base_probabilities() -> None:
+    queued = add_queue_position_features(_book_frame(), levels=2, queue_position_fraction=0.25)
+    probabilities = add_passive_fill_probabilities(queued)
+
+    output = add_latency_adjusted_passive_fill_probabilities(probabilities, latency_steps=0.0)
+
+    assert output["bid_latency_adjusted_fill_probability"].tolist() == pytest.approx(
+        probabilities["bid_fill_probability"].tolist()
+    )
+    assert output["ask_latency_adjusted_fill_probability"].tolist() == pytest.approx(
+        probabilities["ask_fill_probability"].tolist()
+    )
+    assert output["bid_latency_adjusted_adverse_fill_probability"].tolist() == pytest.approx(
+        probabilities["bid_adverse_fill_probability"].tolist()
+    )
+    assert output["ask_latency_adjusted_adverse_fill_probability"].tolist() == pytest.approx(
+        probabilities["ask_adverse_fill_probability"].tolist()
+    )
+
+
+def test_latency_adjusted_passive_fill_probabilities_accept_latency_column_and_reject_negative() -> None:
+    queued = add_queue_position_features(_book_frame(), levels=2, queue_position_fraction=0.25)
+    probabilities = add_passive_fill_probabilities(queued).assign(decision_latency=[0.0, 2.0])
+
+    output = add_latency_adjusted_passive_fill_probabilities(probabilities, latency_col="decision_latency")
+
+    assert output["latency_steps"].tolist() == pytest.approx([0.0, 2.0])
+    assert output["ask_latency_adjusted_fill_probability"].iloc[0] == pytest.approx(
+        probabilities["ask_fill_probability"].iloc[0]
+    )
+    with pytest.raises(ValueError, match="latency values must be non-negative"):
+        add_latency_adjusted_passive_fill_probabilities(
+            probabilities.assign(decision_latency=[0.0, -1.0]), latency_col="decision_latency"
+        )
 
 
 def test_execution_adjusted_edge_component_attribution_decomposes_fill_and_adverse_drag() -> None:

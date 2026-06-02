@@ -1045,6 +1045,104 @@ def add_passive_fill_probabilities(
     return output
 
 
+def add_latency_adjusted_passive_fill_probabilities(
+    frame: pd.DataFrame,
+    *,
+    latency_steps: float = 1.0,
+    latency_col: str | None = None,
+    decay_scale: float = 1.0,
+    adverse_selection_scale: float = 0.50,
+    config: FillProbabilityConfig | None = None,
+) -> pd.DataFrame:
+    """Discount passive fill odds for stale queue-position decisions.
+
+    ``add_passive_fill_probabilities`` prices the queue state at the observed
+    snapshot. In a live passive strategy the child order joins after model,
+    routing, and exchange latency. This helper applies a transparent survival
+    discount to fill probabilities and a matching adverse-selection uplift using
+    queue-clearance share, volatility, spread, and replenishment stress. The
+    resulting columns can be fed into execution-adjusted LCRI reviews without
+    pretending zero-latency fills are deployable.
+    """
+    config = config or FillProbabilityConfig()
+    if not math.isfinite(latency_steps):
+        raise ValueError("latency_steps must be finite")
+    if latency_steps < 0.0:
+        raise ValueError("latency values must be non-negative")
+    if not math.isfinite(decay_scale) or decay_scale < 0.0:
+        raise ValueError("decay_scale must be finite and non-negative")
+    if not math.isfinite(adverse_selection_scale) or adverse_selection_scale < 0.0:
+        raise ValueError("adverse_selection_scale must be finite and non-negative")
+
+    queue_columns = ("bid_queue_clear_share", "ask_queue_clear_share")
+    if not set(queue_columns).issubset(frame.columns):
+        queue_columns = ("bid_queue_share", "ask_queue_share")
+    required = {
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+        "spread_ticks",
+        "volatility",
+        "replenishment_rate",
+        *queue_columns,
+    }
+    if latency_col is not None:
+        required.add(latency_col)
+    _require_columns(frame, required, "latency-adjusted passive fill probability")
+
+    numeric_columns = sorted(required)
+    values = _finite_values(frame, numeric_columns, "latency-adjusted passive fill probability")
+    if latency_col is None:
+        latency = pd.Series(float(latency_steps), index=frame.index)
+    else:
+        latency = values[latency_col]
+    if (latency < 0.0).any():
+        raise ValueError("latency values must be non-negative")
+
+    bid_queue = values[queue_columns[0]].clip(lower=0.0)
+    ask_queue = values[queue_columns[1]].clip(lower=0.0)
+    spread_stress = np.log1p(values["spread_ticks"].clip(lower=0.0))
+    volatility_stress = np.log1p(values["volatility"].clip(lower=0.0))
+    thin_book_stress = 1.0 / (1.0 + values["replenishment_rate"].clip(lower=0.0))
+    common_stress = 0.25 * spread_stress + 0.35 * volatility_stress + 0.35 * thin_book_stress
+
+    bid_latency_risk = latency * decay_scale * (bid_queue + common_stress)
+    ask_latency_risk = latency * decay_scale * (ask_queue + common_stress)
+    bid_survival = np.exp(-bid_latency_risk.clip(0.0, 40.0))
+    ask_survival = np.exp(-ask_latency_risk.clip(0.0, 40.0))
+
+    bid_fill = values["bid_fill_probability"].clip(0.0, 1.0)
+    ask_fill = values["ask_fill_probability"].clip(0.0, 1.0)
+    bid_adverse = values["bid_adverse_fill_probability"].clip(0.0, 1.0)
+    ask_adverse = values["ask_adverse_fill_probability"].clip(0.0, 1.0)
+
+    bid_adjusted_fill = _clip_probability(bid_fill * bid_survival, config)
+    ask_adjusted_fill = _clip_probability(ask_fill * ask_survival, config)
+    bid_adjusted_adverse = _clip_probability(
+        bid_adverse + (1.0 - bid_adverse) * (1.0 - bid_survival) * adverse_selection_scale,
+        config,
+    )
+    ask_adjusted_adverse = _clip_probability(
+        ask_adverse + (1.0 - ask_adverse) * (1.0 - ask_survival) * adverse_selection_scale,
+        config,
+    )
+
+    output = frame.copy()
+    output["latency_steps"] = latency
+    output["bid_latency_risk"] = bid_latency_risk
+    output["ask_latency_risk"] = ask_latency_risk
+    output["bid_latency_survival"] = bid_survival
+    output["ask_latency_survival"] = ask_survival
+    output["bid_latency_adjusted_fill_probability"] = bid_adjusted_fill
+    output["ask_latency_adjusted_fill_probability"] = ask_adjusted_fill
+    output["bid_latency_adjusted_adverse_fill_probability"] = bid_adjusted_adverse
+    output["ask_latency_adjusted_adverse_fill_probability"] = ask_adjusted_adverse
+    output["bid_latency_adjusted_fill_minus_adverse"] = bid_adjusted_fill - bid_adjusted_adverse
+    output["ask_latency_adjusted_fill_minus_adverse"] = ask_adjusted_fill - ask_adjusted_adverse
+    return output
+
+
 def add_execution_adjusted_edge(
     frame: pd.DataFrame,
     *,
