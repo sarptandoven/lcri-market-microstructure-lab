@@ -11912,6 +11912,176 @@ def queue_position_path_tail_loss_scorecard(
     return pd.DataFrame(rows, columns=columns)
 
 
+def queue_position_path_tail_loss_release_gate(
+    tail_loss_scorecard: pd.DataFrame,
+    *,
+    max_fragile_path_share: float = 0.25,
+    max_overall_conditional_tail_loss_ticks: float = 1.0,
+    max_overall_severe_loss_share: float = 0.25,
+    max_overall_loss_run_length: int = 2,
+) -> dict[str, float | int | str]:
+    """Gate queue-position execution paths on clustered left-tail losses.
+
+    ``queue_position_path_tail_loss_scorecard`` exposes VaR/CVaR-style downside
+    that aggregate execution edge and drawdown summaries can miss. This release
+    gate turns those path rows into a compact publishability artifact: grouped
+    paths limit fragile-tail concentration while the ``overall`` row enforces
+    release-level conditional tail loss, severe-loss share, and clustered loss-run
+    ceilings.
+    """
+    for name, value in {
+        "max_fragile_path_share": max_fragile_path_share,
+        "max_overall_conditional_tail_loss_ticks": max_overall_conditional_tail_loss_ticks,
+        "max_overall_severe_loss_share": max_overall_severe_loss_share,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if max_fragile_path_share < 0.0:
+        raise ValueError("max_fragile_path_share must be non-negative")
+    if max_overall_conditional_tail_loss_ticks < 0.0:
+        raise ValueError("max_overall_conditional_tail_loss_ticks must be non-negative")
+    if not 0.0 <= max_overall_severe_loss_share <= 1.0:
+        raise ValueError("max_overall_severe_loss_share must be in [0, 1]")
+    if not isinstance(max_overall_loss_run_length, int) or isinstance(max_overall_loss_run_length, bool):
+        raise ValueError("max_overall_loss_run_length must be an integer")
+    if max_overall_loss_run_length < 0:
+        raise ValueError("max_overall_loss_run_length must be non-negative")
+
+    required = {
+        "path_id",
+        "rows",
+        "tradable_rows",
+        "loss_rows",
+        "conditional_tail_loss_ticks",
+        "severe_loss_share",
+        "max_loss_run_length",
+        "tail_loss_label",
+    }
+    _require_columns(tail_loss_scorecard, required, "queue position path tail loss release gate")
+    if tail_loss_scorecard.empty:
+        return {
+            "paths": 0,
+            "fragile_paths": 0,
+            "fragile_path_share": 0.0,
+            "total_tradable_rows": 0,
+            "overall_conditional_tail_loss_ticks": 0.0,
+            "overall_severe_loss_share": 0.0,
+            "overall_max_loss_run_length": 0,
+            "worst_path_id": "none",
+            "worst_path_tail_loss_label": "none",
+            "tail_loss_release_decision": "review",
+            "tail_loss_release_label": "queue_tail_loss_release_review",
+            "blocking_reasons": "none",
+            "review_reasons": "no_paths",
+        }
+
+    numeric_columns = [
+        "rows",
+        "tradable_rows",
+        "loss_rows",
+        "conditional_tail_loss_ticks",
+        "severe_loss_share",
+        "max_loss_run_length",
+    ]
+    numeric = _finite_values(
+        tail_loss_scorecard,
+        numeric_columns,
+        "queue position path tail loss release gate",
+    )
+    non_negative = [
+        "rows",
+        "tradable_rows",
+        "loss_rows",
+        "conditional_tail_loss_ticks",
+        "severe_loss_share",
+        "max_loss_run_length",
+    ]
+    if (numeric[non_negative] < 0.0).any().any():
+        raise ValueError("queue position path tail loss release gate metrics must be non-negative")
+    if (numeric["severe_loss_share"] > 1.0).any():
+        raise ValueError("queue position path tail loss release gate severe loss shares must be in [0, 1]")
+
+    path_ids = tail_loss_scorecard["path_id"].astype(str)
+    labels = tail_loss_scorecard["tail_loss_label"].astype(str)
+    grouped_paths = tail_loss_scorecard.loc[path_ids != "overall"]
+    if grouped_paths.empty:
+        grouped_paths = tail_loss_scorecard
+    grouped_numeric = numeric.loc[grouped_paths.index]
+    grouped_labels = labels.loc[grouped_paths.index]
+    paths = int(len(grouped_paths))
+    fragile_mask = grouped_labels == "execution_tail_loss_fragile"
+    fragile_paths = int(fragile_mask.sum())
+    fragile_path_share = float(fragile_paths / paths) if paths else 0.0
+
+    overall_rows = tail_loss_scorecard.loc[path_ids == "overall"]
+    if overall_rows.empty:
+        overall_numeric = numeric.iloc[-1]
+        missing_overall = True
+    else:
+        overall_numeric = numeric.loc[overall_rows.iloc[-1].name]
+        missing_overall = False
+
+    total_tradable_rows = int(overall_numeric["tradable_rows"])
+    overall_tail_loss = float(overall_numeric["conditional_tail_loss_ticks"])
+    overall_severe_share = float(overall_numeric["severe_loss_share"])
+    overall_loss_run = int(overall_numeric["max_loss_run_length"])
+
+    tail_rank = (
+        grouped_numeric["conditional_tail_loss_ticks"]
+        + grouped_numeric["severe_loss_share"]
+        + grouped_numeric["max_loss_run_length"]
+    )
+    if not grouped_paths.empty:
+        worst_index = tail_rank.sort_values(ascending=False).index[0]
+        worst_path_id = str(tail_loss_scorecard.loc[worst_index, "path_id"])
+        worst_label = str(tail_loss_scorecard.loc[worst_index, "tail_loss_label"])
+    else:
+        worst_path_id = "none"
+        worst_label = "none"
+
+    blocking_reasons: list[str] = []
+    if fragile_path_share > max_fragile_path_share:
+        blocking_reasons.append("fragile_path_share")
+    if overall_tail_loss > max_overall_conditional_tail_loss_ticks:
+        blocking_reasons.append("overall_conditional_tail_loss")
+    if overall_severe_share > max_overall_severe_loss_share:
+        blocking_reasons.append("overall_severe_loss_share")
+    if overall_loss_run > max_overall_loss_run_length:
+        blocking_reasons.append("overall_loss_run_length")
+
+    review_reasons: list[str] = []
+    if missing_overall:
+        review_reasons.append("missing_overall_path")
+    if total_tradable_rows == 0:
+        review_reasons.append("no_tradable_rows")
+
+    if blocking_reasons:
+        decision = "block"
+        label = "queue_tail_loss_release_blocked"
+    elif review_reasons:
+        decision = "review"
+        label = "queue_tail_loss_release_review"
+    else:
+        decision = "pass"
+        label = "queue_tail_loss_release_pass"
+
+    return {
+        "paths": paths,
+        "fragile_paths": fragile_paths,
+        "fragile_path_share": fragile_path_share,
+        "total_tradable_rows": total_tradable_rows,
+        "overall_conditional_tail_loss_ticks": overall_tail_loss,
+        "overall_severe_loss_share": overall_severe_share,
+        "overall_max_loss_run_length": overall_loss_run,
+        "worst_path_id": worst_path_id,
+        "worst_path_tail_loss_label": worst_label,
+        "tail_loss_release_decision": decision,
+        "tail_loss_release_label": label,
+        "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
+        "review_reasons": ";".join(review_reasons) if review_reasons else "none",
+    }
+
+
 def queue_position_path_risk_scorecard(
     frame: pd.DataFrame,
     *,

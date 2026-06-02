@@ -99,6 +99,7 @@ from lcri_lab.execution import (
     queue_position_path_risk_concentration,
     queue_position_path_risk_release_gate,
     queue_position_path_risk_scorecard,
+    queue_position_path_tail_loss_release_gate,
     queue_position_path_tail_loss_scorecard,
     queue_position_regime_fraction_sweep,
 )
@@ -5160,6 +5161,81 @@ def test_queue_position_path_tail_loss_scorecard_flags_clustered_left_tail() -> 
 def test_queue_position_path_tail_loss_scorecard_rejects_missing_edge() -> None:
     with pytest.raises(ValueError, match="missing queue position path tail loss columns"):
         queue_position_path_tail_loss_scorecard(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_path_tail_loss_release_gate_blocks_concentrated_tail_losses() -> None:
+    scorecard = pd.DataFrame(
+        {
+            "path_id": ["am", "pm", "overnight", "overall"],
+            "rows": [4, 4, 4, 12],
+            "tradable_rows": [4, 4, 4, 12],
+            "loss_rows": [1, 3, 1, 5],
+            "mean_loss_ticks": [0.10, 0.90, 0.05, 0.35],
+            "tail_loss_threshold_ticks": [0.25, 1.00, 0.10, 0.50],
+            "conditional_tail_loss_ticks": [0.25, 2.25, 0.10, 1.50],
+            "severe_loss_share": [0.0, 0.75, 0.0, 5.0 / 12.0],
+            "max_loss_run_length": [1, 3, 1, 3],
+            "tail_loss_label": [
+                "execution_tail_loss_stable",
+                "execution_tail_loss_fragile",
+                "execution_tail_loss_stable",
+                "execution_tail_loss_fragile",
+            ],
+        }
+    )
+
+    gate = queue_position_path_tail_loss_release_gate(
+        scorecard,
+        max_fragile_path_share=0.25,
+        max_overall_conditional_tail_loss_ticks=1.0,
+        max_overall_severe_loss_share=0.25,
+        max_overall_loss_run_length=2,
+    )
+
+    assert gate == {
+        "paths": 3,
+        "fragile_paths": 1,
+        "fragile_path_share": pytest.approx(1.0 / 3.0),
+        "total_tradable_rows": 12,
+        "overall_conditional_tail_loss_ticks": pytest.approx(1.5),
+        "overall_severe_loss_share": pytest.approx(5.0 / 12.0),
+        "overall_max_loss_run_length": 3,
+        "worst_path_id": "pm",
+        "worst_path_tail_loss_label": "execution_tail_loss_fragile",
+        "tail_loss_release_decision": "block",
+        "tail_loss_release_label": "queue_tail_loss_release_blocked",
+        "blocking_reasons": "fragile_path_share;overall_conditional_tail_loss;overall_severe_loss_share;overall_loss_run_length",
+        "review_reasons": "none",
+    }
+
+
+def test_queue_position_path_tail_loss_release_gate_passes_stable_tail_paths() -> None:
+    scorecard = pd.DataFrame(
+        {
+            "path_id": ["am", "overall"],
+            "rows": [4, 4],
+            "tradable_rows": [4, 4],
+            "loss_rows": [1, 1],
+            "mean_loss_ticks": [0.05, 0.05],
+            "tail_loss_threshold_ticks": [0.10, 0.10],
+            "conditional_tail_loss_ticks": [0.10, 0.10],
+            "severe_loss_share": [0.0, 0.0],
+            "max_loss_run_length": [1, 1],
+            "tail_loss_label": ["execution_tail_loss_stable", "execution_tail_loss_stable"],
+        }
+    )
+
+    gate = queue_position_path_tail_loss_release_gate(scorecard)
+
+    assert gate["tail_loss_release_decision"] == "pass"
+    assert gate["tail_loss_release_label"] == "queue_tail_loss_release_pass"
+    assert gate["blocking_reasons"] == "none"
+    assert gate["review_reasons"] == "none"
+
+
+def test_queue_position_path_tail_loss_release_gate_rejects_missing_columns() -> None:
+    with pytest.raises(ValueError, match="missing queue position path tail loss release gate columns"):
+        queue_position_path_tail_loss_release_gate(pd.DataFrame({"path_id": ["overall"]}))
 
 
 def test_queue_position_path_risk_scorecard_tracks_drawdown_and_turnover() -> None:

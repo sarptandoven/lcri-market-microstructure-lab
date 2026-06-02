@@ -271,7 +271,11 @@ summary = queue_position_path_drawdown_summary(episodes)
 `queue_position_path_drawdown_episodes.csv` plus
 `queue_position_path_drawdown_summary.json` artifacts, and `verify-report` checks
 that drawdown magnitudes, open/recovered episode labels, and summary release labels
-remain coherent.
+remain coherent. For stricter left-tail execution review,
+`queue_position_path_tail_loss_scorecard` reports path-level conditional tail loss,
+severe-loss share, and longest loss runs; `queue_position_path_tail_loss_release_gate`
+then blocks/reviews demos where grouped tail fragility or overall clustered losses
+make aggregate execution-adjusted edge non-publishable.
 
 ### Queue-position EV stress summaries
 
