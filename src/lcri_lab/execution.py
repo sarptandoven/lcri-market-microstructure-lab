@@ -11263,6 +11263,185 @@ def execution_adjusted_lcri_regime_attribution(
     )
 
 
+def _empty_execution_adjusted_lcri_absorption_attribution() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "absorption_regime",
+            "rows",
+            "publishable_rows",
+            "executable_rows",
+            "conflict_rows",
+            "conflict_share",
+            "negative_edge_share",
+            "mean_execution_adjusted_edge_ticks",
+            "mean_selected_fill_probability",
+            "mean_selected_adverse_fill_probability",
+            "mean_fill_minus_adverse_probability",
+            "absorption_execution_label",
+        ]
+    )
+
+
+def _absorption_execution_label(
+    *,
+    conflict_share: float,
+    negative_edge_share: float,
+    mean_fill_minus_adverse_probability: float,
+    executable_rows: int,
+    min_fill_minus_adverse_probability: float,
+    max_negative_edge_share: float,
+    max_conflict_share: float,
+) -> str:
+    if executable_rows == 0:
+        return "absorption_execution_sparse"
+    if (
+        negative_edge_share > max_negative_edge_share
+        or mean_fill_minus_adverse_probability < min_fill_minus_adverse_probability
+    ):
+        return "absorption_execution_toxic"
+    if conflict_share > max_conflict_share:
+        return "absorption_execution_conflicted"
+    return "absorption_execution_publishable"
+
+
+def execution_adjusted_lcri_absorption_attribution(
+    frame: pd.DataFrame,
+    *,
+    absorption_col: str = "absorption_regime",
+    min_fill_minus_adverse_probability: float = 0.05,
+    max_negative_edge_share: float = 0.50,
+    max_conflict_share: float = 0.25,
+) -> pd.DataFrame:
+    """Audit execution-adjusted LCRI tradability across absorption regimes.
+
+    Shadow absorption can make a residual imbalance look directionally interesting
+    while preventing passive execution from monetizing it. This diagnostic groups
+    rows by absorption regime and reports whether pre-execution publishable sides
+    survive queue-aware execution, whether selected-side fills are toxic, and where
+    absorption regimes should block or focus publishability review.
+    """
+    for name, value in {
+        "min_fill_minus_adverse_probability": min_fill_minus_adverse_probability,
+        "max_negative_edge_share": max_negative_edge_share,
+        "max_conflict_share": max_conflict_share,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= max_negative_edge_share <= 1.0:
+        raise ValueError("max_negative_edge_share must be in [0, 1]")
+    if not 0.0 <= max_conflict_share <= 1.0:
+        raise ValueError("max_conflict_share must be in [0, 1]")
+    if frame.empty:
+        return _empty_execution_adjusted_lcri_absorption_attribution()
+
+    required = {
+        absorption_col,
+        "publishable_side",
+        "best_execution_side",
+        "execution_adjusted_edge_ticks",
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+    }
+    _require_columns(frame, required, "execution-adjusted LCRI absorption attribution")
+    values = _finite_values(
+        frame,
+        [
+            "execution_adjusted_edge_ticks",
+            "bid_fill_probability",
+            "ask_fill_probability",
+            "bid_adverse_fill_probability",
+            "ask_adverse_fill_probability",
+        ],
+        "execution-adjusted LCRI absorption attribution",
+    )
+    probability_columns = [
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+    ]
+    if not values[probability_columns].apply(lambda column: column.between(0.0, 1.0).all()).all():
+        raise ValueError("execution-adjusted LCRI absorption probabilities must be in [0, 1]")
+
+    publishable_side = frame["publishable_side"].astype(str)
+    best_side = frame["best_execution_side"].astype(str)
+    valid_publishable_sides = {"long", "short", "abstain"}
+    valid_execution_sides = {"long", "short", "abstain"}
+    unknown_publishable = sorted(set(publishable_side) - valid_publishable_sides)
+    unknown_best = sorted(set(best_side) - valid_execution_sides)
+    if unknown_publishable:
+        raise ValueError(f"unknown publishable sides: {unknown_publishable}")
+    if unknown_best:
+        raise ValueError(f"unknown execution sides: {unknown_best}")
+
+    diagnostics = pd.DataFrame(index=frame.index)
+    diagnostics["absorption_regime"] = frame[absorption_col].astype(str)
+    diagnostics["publishable"] = publishable_side != "abstain"
+    diagnostics["executable"] = best_side != "abstain"
+    diagnostics["conflict"] = publishable_side != best_side
+    diagnostics["execution_adjusted_edge_ticks"] = values["execution_adjusted_edge_ticks"]
+    diagnostics["negative_edge"] = values["execution_adjusted_edge_ticks"] < 0.0
+    diagnostics["selected_fill_probability"] = _side_probability(
+        best_side,
+        bid=values["bid_fill_probability"],
+        ask=values["ask_fill_probability"],
+    )
+    diagnostics["selected_adverse_fill_probability"] = _side_probability(
+        best_side,
+        bid=values["bid_adverse_fill_probability"],
+        ask=values["ask_adverse_fill_probability"],
+    )
+    diagnostics["fill_minus_adverse_probability"] = (
+        diagnostics["selected_fill_probability"]
+        - diagnostics["selected_adverse_fill_probability"]
+    )
+
+    rows: list[dict[str, float | int | str]] = []
+    for absorption_regime, group in diagnostics.groupby("absorption_regime", sort=True):
+        conflict_share = float(group["conflict"].mean())
+        negative_edge_share = float(group["negative_edge"].mean())
+        mean_fill_minus_adverse_probability = float(group["fill_minus_adverse_probability"].mean())
+        executable_rows = int(group["executable"].sum())
+        rows.append(
+            {
+                "absorption_regime": str(absorption_regime),
+                "rows": int(len(group)),
+                "publishable_rows": int(group["publishable"].sum()),
+                "executable_rows": executable_rows,
+                "conflict_rows": int(group["conflict"].sum()),
+                "conflict_share": conflict_share,
+                "negative_edge_share": negative_edge_share,
+                "mean_execution_adjusted_edge_ticks": float(
+                    group["execution_adjusted_edge_ticks"].mean()
+                ),
+                "mean_selected_fill_probability": float(group["selected_fill_probability"].mean()),
+                "mean_selected_adverse_fill_probability": float(
+                    group["selected_adverse_fill_probability"].mean()
+                ),
+                "mean_fill_minus_adverse_probability": mean_fill_minus_adverse_probability,
+                "absorption_execution_label": _absorption_execution_label(
+                    conflict_share=conflict_share,
+                    negative_edge_share=negative_edge_share,
+                    mean_fill_minus_adverse_probability=mean_fill_minus_adverse_probability,
+                    executable_rows=executable_rows,
+                    min_fill_minus_adverse_probability=min_fill_minus_adverse_probability,
+                    max_negative_edge_share=max_negative_edge_share,
+                    max_conflict_share=max_conflict_share,
+                ),
+            }
+        )
+    output = pd.DataFrame(rows)[list(_empty_execution_adjusted_lcri_absorption_attribution().columns)]
+    if absorption_col != "absorption_regime":
+        output = output.rename(columns={"absorption_regime": absorption_col})
+    return output.sort_values(
+        ["absorption_execution_label", "conflict_share", "negative_edge_share", absorption_col],
+        ascending=[True, False, False, True],
+        ignore_index=True,
+    )
+
+
 def _empty_execution_adjusted_lcri_quantile_diagnostics() -> pd.DataFrame:
     return pd.DataFrame(
         columns=[

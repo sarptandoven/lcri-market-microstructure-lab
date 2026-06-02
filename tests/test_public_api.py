@@ -111,6 +111,11 @@ def test_public_api_exports_execution_adjusted_lcri_regime_attribution() -> None
     assert "execution_adjusted_lcri_regime_attribution" in lcri_lab.__all__
 
 
+def test_public_api_exports_execution_adjusted_lcri_absorption_attribution() -> None:
+    assert callable(lcri_lab.execution_adjusted_lcri_absorption_attribution)
+    assert "execution_adjusted_lcri_absorption_attribution" in lcri_lab.__all__
+
+
 def test_public_api_exports_queue_position_order_size_features() -> None:
     assert callable(lcri_lab.add_queue_position_order_size_features)
     assert "add_queue_position_order_size_features" in lcri_lab.__all__

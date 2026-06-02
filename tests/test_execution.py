@@ -14,6 +14,7 @@ from lcri_lab.execution import (
     add_queue_position_realized_fill_proxy,
     execution_adjusted_edge_component_attribution,
     execution_adjusted_edge_summary,
+    execution_adjusted_lcri_absorption_attribution,
     execution_adjusted_lcri_event_window_attribution,
     execution_adjusted_lcri_event_window_release_scorecard,
     execution_adjusted_lcri_quantile_diagnostics,
@@ -2042,6 +2043,75 @@ def test_execution_adjusted_lcri_regime_attribution_exposes_regime_side_survival
 def test_execution_adjusted_lcri_regime_attribution_rejects_missing_regime() -> None:
     with pytest.raises(ValueError, match="missing execution-adjusted LCRI regime attribution columns"):
         execution_adjusted_lcri_regime_attribution(pd.DataFrame({"lcri": [1.0]}))
+
+
+def test_execution_adjusted_lcri_absorption_attribution_quantifies_absorbed_vs_transmitted_execution() -> None:
+    frame = pd.DataFrame(
+        {
+            "absorption_regime": ["absorbed", "absorbed", "transmitted", "transmitted"],
+            "publishable_side": ["long", "short", "long", "short"],
+            "best_execution_side": ["abstain", "long", "long", "short"],
+            "execution_adjusted_edge_ticks": [-0.20, 0.40, 0.60, 0.90],
+            "bid_fill_probability": [0.20, 0.60, 0.70, 0.30],
+            "ask_fill_probability": [0.50, 0.40, 0.20, 0.80],
+            "bid_adverse_fill_probability": [0.10, 0.20, 0.10, 0.30],
+            "ask_adverse_fill_probability": [0.30, 0.40, 0.20, 0.20],
+        }
+    )
+
+    attribution = execution_adjusted_lcri_absorption_attribution(frame)
+
+    rows = attribution.set_index("absorption_regime")
+    absorbed = rows.loc["absorbed"]
+    assert absorbed["rows"] == 2
+    assert absorbed["publishable_rows"] == 2
+    assert absorbed["executable_rows"] == 1
+    assert absorbed["conflict_rows"] == 2
+    assert absorbed["conflict_share"] == pytest.approx(1.00)
+    assert absorbed["negative_edge_share"] == pytest.approx(0.50)
+    assert absorbed["mean_execution_adjusted_edge_ticks"] == pytest.approx(0.10)
+    assert absorbed["mean_selected_fill_probability"] == pytest.approx(0.30)
+    assert absorbed["mean_selected_adverse_fill_probability"] == pytest.approx(0.10)
+    assert absorbed["mean_fill_minus_adverse_probability"] == pytest.approx(0.20)
+    assert absorbed["absorption_execution_label"] == "absorption_execution_conflicted"
+
+    transmitted = rows.loc["transmitted"]
+    assert transmitted["executable_rows"] == 2
+    assert transmitted["conflict_share"] == pytest.approx(0.00)
+    assert transmitted["negative_edge_share"] == pytest.approx(0.00)
+    assert transmitted["mean_selected_fill_probability"] == pytest.approx(0.75)
+    assert transmitted["mean_selected_adverse_fill_probability"] == pytest.approx(0.15)
+    assert transmitted["absorption_execution_label"] == "absorption_execution_publishable"
+
+
+def test_execution_adjusted_lcri_absorption_attribution_flags_absorbed_toxicity() -> None:
+    frame = pd.DataFrame(
+        {
+            "absorption_regime": ["absorbed", "absorbed", "absorbed", "absorbed"],
+            "publishable_side": ["long", "long", "short", "short"],
+            "best_execution_side": ["long", "short", "short", "long"],
+            "execution_adjusted_edge_ticks": [-0.50, -0.10, 0.20, -0.20],
+            "bid_fill_probability": [0.70, 0.60, 0.20, 0.50],
+            "ask_fill_probability": [0.20, 0.50, 0.60, 0.30],
+            "bid_adverse_fill_probability": [0.80, 0.70, 0.20, 0.60],
+            "ask_adverse_fill_probability": [0.20, 0.80, 0.70, 0.30],
+        }
+    )
+
+    attribution = execution_adjusted_lcri_absorption_attribution(
+        frame,
+        max_negative_edge_share=0.50,
+        min_fill_minus_adverse_probability=0.0,
+    )
+
+    assert attribution.loc[0, "negative_edge_share"] == pytest.approx(0.75)
+    assert attribution.loc[0, "mean_fill_minus_adverse_probability"] == pytest.approx(-0.15)
+    assert attribution.loc[0, "absorption_execution_label"] == "absorption_execution_toxic"
+
+
+def test_execution_adjusted_lcri_absorption_attribution_rejects_missing_columns() -> None:
+    with pytest.raises(ValueError, match="missing execution-adjusted LCRI absorption attribution columns"):
+        execution_adjusted_lcri_absorption_attribution(pd.DataFrame({"absorption_regime": ["absorbed"]}))
 
 
 def test_passive_fill_calibration_curve_scores_realized_side_fills_by_regime() -> None:

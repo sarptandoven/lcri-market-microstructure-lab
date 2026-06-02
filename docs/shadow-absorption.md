@@ -31,3 +31,17 @@ absorbed
 ```
 
 The next research step is to compare publishable-edge hit rate by absorption regime.
+
+`execution_adjusted_lcri_absorption_attribution` closes that loop for the queue-aware
+execution layer. It groups the scored frame by `absorption_regime` and reports:
+
+- how many rows were pre-execution publishable versus queue-executable
+- publishable-side conflicts after passive fill/adverse-selection adjustment
+- selected-side fill and adverse-fill probabilities
+- negative execution-adjusted edge share
+- a compact `absorption_execution_label` for publishable, conflicted, toxic, or
+  sparse absorption regimes
+
+This separates "raw residual pressure was absorbed" from "absorbed pressure still
+survives passive execution costs," which is the publishability distinction that
+matters for LCRI market microstructure review.
