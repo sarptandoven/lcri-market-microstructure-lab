@@ -649,6 +649,105 @@ def verify_queue_position_trade_confirmation_release_scorecard(
     return errors
 
 
+def verify_queue_position_trade_confirmation_regime_scorecard(
+    output_dir: Path,
+    artifact: str = "queue_position_trade_confirmation_regime_scorecard.csv",
+) -> list[str]:
+    """Return errors for per-regime queue-position trade-confirmation scorecards."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing queue-position trade confirmation regime scorecard: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "regime",
+        "cells",
+        "supported_cells",
+        "rows",
+        "supported_rows",
+        "unsupported_rows",
+        "weighted_predicted_fill_probability",
+        "weighted_trade_confirmed_fill_rate",
+        "weighted_confirmation_shortfall",
+        "weighted_cancel_only_clear_rate",
+        "weighted_stale_trade_confirmed_fill_share",
+        "max_confirmation_shortfall",
+        "max_cancel_only_clear_rate",
+        "max_stale_trade_confirmed_fill_share",
+        "worst_confirmation_cell",
+        "worst_confirmation_cell_rows",
+        "worst_confirmation_cell_label",
+        "trade_confirmation_regime_label",
+        "publishable",
+        "blocking_reasons",
+        "review_reasons",
+        "regime_priority_rank",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete queue-position trade confirmation regime scorecard {artifact}: {missing}"]
+
+    numeric_columns = list(required - {"regime", "worst_confirmation_cell", "worst_confirmation_cell_label", "trade_confirmation_regime_label", "publishable", "blocking_reasons", "review_reasons"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite queue-position trade confirmation regime scorecard values in {artifact}")
+    count_columns = [
+        "cells",
+        "supported_cells",
+        "rows",
+        "supported_rows",
+        "unsupported_rows",
+        "worst_confirmation_cell_rows",
+        "regime_priority_rank",
+    ]
+    if not numeric[count_columns].ge(0.0).all().all():
+        errors.append(f"negative queue-position trade confirmation regime counts in {artifact}")
+    if not numeric[count_columns].apply(lambda col: np.isclose(col, np.round(col), atol=1e-9).all()).all():
+        errors.append(f"non-integer queue-position trade confirmation regime counts in {artifact}")
+    if (numeric["supported_cells"] > numeric["cells"]).any():
+        errors.append(f"supported queue-position trade confirmation regime cells exceed cells in {artifact}")
+    if not np.isclose(
+        numeric["supported_rows"] + numeric["unsupported_rows"],
+        numeric["rows"],
+        atol=1e-9,
+    ).all():
+        errors.append(f"inconsistent queue-position trade confirmation regime row totals in {artifact}")
+    rate_columns = [
+        "weighted_predicted_fill_probability",
+        "weighted_trade_confirmed_fill_rate",
+        "weighted_cancel_only_clear_rate",
+        "weighted_stale_trade_confirmed_fill_share",
+        "max_cancel_only_clear_rate",
+        "max_stale_trade_confirmed_fill_share",
+    ]
+    if not numeric[rate_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        errors.append(f"bounded queue-position trade confirmation regime rates violated in {artifact}")
+    shortfall_columns = ["weighted_confirmation_shortfall", "max_confirmation_shortfall"]
+    if not numeric[shortfall_columns].apply(lambda col: col.between(-1.0, 1.0).all()).all():
+        errors.append(f"bounded queue-position trade confirmation regime shortfall violated in {artifact}")
+    labels = frame["trade_confirmation_regime_label"].astype(str)
+    unknown_labels = sorted(set(labels) - {"pass", "review", "block"})
+    if unknown_labels:
+        errors.append(f"invalid queue-position trade confirmation regime labels in {artifact}: {unknown_labels}")
+    publishable = frame["publishable"]
+    if not publishable.map(lambda value: isinstance(value, bool)).all():
+        errors.append(f"non-boolean queue-position trade confirmation regime publishable flag in {artifact}")
+    elif not (publishable == labels.eq("pass")).all():
+        errors.append(f"queue-position trade confirmation regime publishable flag contradicts decision in {artifact}")
+    text_columns = [
+        "regime",
+        "worst_confirmation_cell",
+        "worst_confirmation_cell_label",
+        "blocking_reasons",
+        "review_reasons",
+    ]
+    for column in text_columns:
+        if frame[column].astype(str).str.len().eq(0).any():
+            errors.append(f"blank queue-position trade confirmation regime text field {column} in {artifact}")
+    return errors
+
+
+
 def verify_execution_publishability_review_artifacts(
     output_dir: Path, artifact: str = "execution_publishability_review_packet.csv"
 ) -> list[str]:

@@ -30,6 +30,7 @@ from lcri_lab.reporting import (
     verify_passive_fill_event_policy_stability_scorecard,
     verify_execution_adjusted_lcri_event_window_release_scorecard,
     verify_execution_adjusted_lcri_quantile_diagnostics,
+    verify_queue_position_trade_confirmation_regime_scorecard,
     verify_queue_position_trade_confirmation_release_scorecard,
     verify_trade_confirmed_passive_fill_latency_summary,
     verify_queue_position_lcri_tail_fill_residuals,
@@ -298,6 +299,76 @@ def test_verify_queue_position_trade_confirmation_release_scorecard_checks_schem
     errors = verify_queue_position_trade_confirmation_release_scorecard(tmp_path)
     assert any("publishable flag contradicts decision" in error for error in errors)
     assert any("bounded queue-position trade confirmation scorecard rates" in error for error in errors)
+
+
+def test_verify_queue_position_trade_confirmation_regime_scorecard_checks_schema_and_labels(
+    tmp_path,
+) -> None:
+    pd.DataFrame(
+        [
+            {
+                "regime": "stress",
+                "cells": 2,
+                "supported_cells": 2,
+                "rows": 40,
+                "supported_rows": 40,
+                "unsupported_rows": 0,
+                "weighted_predicted_fill_probability": 0.775,
+                "weighted_trade_confirmed_fill_rate": 0.25,
+                "weighted_confirmation_shortfall": 0.525,
+                "weighted_cancel_only_clear_rate": 0.4875,
+                "weighted_stale_trade_confirmed_fill_share": 0.175,
+                "max_confirmation_shortfall": 0.60,
+                "max_cancel_only_clear_rate": 0.55,
+                "max_stale_trade_confirmed_fill_share": 0.40,
+                "worst_confirmation_cell": "stress:q01",
+                "worst_confirmation_cell_rows": 30,
+                "worst_confirmation_cell_label": "cancel_driven_queue_clearance",
+                "trade_confirmation_regime_label": "block",
+                "publishable": False,
+                "blocking_reasons": "confirmation_shortfall,cancel_only_queue_clearance",
+                "review_reasons": "stale_trade_confirmed_fills",
+                "regime_priority_rank": 1,
+            }
+        ]
+    ).to_csv(tmp_path / "queue_position_trade_confirmation_regime_scorecard.csv", index=False)
+
+    assert verify_queue_position_trade_confirmation_regime_scorecard(tmp_path) == []
+
+    pd.DataFrame(
+        [
+            {
+                "regime": "stress",
+                "cells": 1,
+                "supported_cells": 2,
+                "rows": 10,
+                "supported_rows": 5,
+                "unsupported_rows": 2,
+                "weighted_predicted_fill_probability": 1.20,
+                "weighted_trade_confirmed_fill_rate": 0.25,
+                "weighted_confirmation_shortfall": 0.525,
+                "weighted_cancel_only_clear_rate": 0.4875,
+                "weighted_stale_trade_confirmed_fill_share": 0.175,
+                "max_confirmation_shortfall": 0.60,
+                "max_cancel_only_clear_rate": 0.55,
+                "max_stale_trade_confirmed_fill_share": 0.40,
+                "worst_confirmation_cell": "stress:q01",
+                "worst_confirmation_cell_rows": 30,
+                "worst_confirmation_cell_label": "cancel_driven_queue_clearance",
+                "trade_confirmation_regime_label": "pass",
+                "publishable": False,
+                "blocking_reasons": "none",
+                "review_reasons": "none",
+                "regime_priority_rank": 1,
+            }
+        ]
+    ).to_csv(tmp_path / "queue_position_trade_confirmation_regime_scorecard.csv", index=False)
+
+    errors = verify_queue_position_trade_confirmation_regime_scorecard(tmp_path)
+    assert any("supported queue-position trade confirmation regime cells exceed cells" in error for error in errors)
+    assert any("inconsistent queue-position trade confirmation regime row totals" in error for error in errors)
+    assert any("bounded queue-position trade confirmation regime rates" in error for error in errors)
+    assert any("publishable flag contradicts decision" in error for error in errors)
 
 
 
