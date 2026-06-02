@@ -30,6 +30,7 @@ from lcri_lab.reporting import (
     verify_passive_fill_event_policy_stability_scorecard,
     verify_execution_adjusted_lcri_event_window_release_scorecard,
     verify_execution_adjusted_lcri_quantile_diagnostics,
+    verify_queue_position_trade_confirmation_release_scorecard,
     verify_trade_confirmed_passive_fill_latency_summary,
     verify_queue_position_lcri_tail_fill_residuals,
     verify_queue_position_path_drawdown_artifacts,
@@ -257,6 +258,47 @@ def test_verify_trade_confirmed_passive_fill_latency_summary_checks_schema_and_b
     errors = verify_trade_confirmed_passive_fill_latency_summary(tmp_path)
     assert any("bounded trade-confirmed passive fill rates" in error for error in errors)
     assert any("invalid trade-confirmed passive fill review labels" in error for error in errors)
+
+
+def test_verify_queue_position_trade_confirmation_release_scorecard_checks_schema_and_decision(
+    tmp_path,
+) -> None:
+    payload = {
+        "evaluated_cells": 3,
+        "supported_cells": 3,
+        "total_rows": 60,
+        "supported_rows": 60,
+        "unsupported_rows": 0,
+        "weighted_confirmation_shortfall": 0.12,
+        "weighted_cancel_only_clear_rate": 0.08,
+        "weighted_stale_trade_confirmed_fill_share": 0.04,
+        "max_confirmation_shortfall": 0.18,
+        "max_cancel_only_clear_rate": 0.10,
+        "max_stale_trade_confirmed_fill_share": 0.12,
+        "worst_confirmation_cell": "stress:q02",
+        "worst_confirmation_cell_rows": 30,
+        "worst_confirmation_cell_label": "trade_confirmed_execution_ok",
+        "trade_confirmation_release_label": "pass",
+        "publishable": True,
+        "blocking_reasons": "none",
+        "review_reasons": "none",
+    }
+    (tmp_path / "queue_position_trade_confirmation_release_scorecard.json").write_text(
+        json.dumps(payload)
+    )
+
+    assert verify_queue_position_trade_confirmation_release_scorecard(tmp_path) == []
+
+    payload["publishable"] = False
+    payload["weighted_cancel_only_clear_rate"] = 1.20
+    (tmp_path / "queue_position_trade_confirmation_release_scorecard.json").write_text(
+        json.dumps(payload)
+    )
+
+    errors = verify_queue_position_trade_confirmation_release_scorecard(tmp_path)
+    assert any("publishable flag contradicts decision" in error for error in errors)
+    assert any("bounded queue-position trade confirmation scorecard rates" in error for error in errors)
+
 
 
 def test_verify_execution_adjusted_lcri_quantile_diagnostics_checks_schema(tmp_path) -> None:

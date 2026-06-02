@@ -12107,6 +12107,160 @@ def _trade_confirmation_surface_label(
     return "trade_confirmed_execution_ok"
 
 
+def _empty_queue_position_trade_confirmation_release_scorecard() -> dict[str, float | int | str | bool]:
+    return {
+        "evaluated_cells": 0,
+        "supported_cells": 0,
+        "total_rows": 0,
+        "supported_rows": 0,
+        "unsupported_rows": 0,
+        "weighted_confirmation_shortfall": 0.0,
+        "weighted_cancel_only_clear_rate": 0.0,
+        "weighted_stale_trade_confirmed_fill_share": 0.0,
+        "max_confirmation_shortfall": 0.0,
+        "max_cancel_only_clear_rate": 0.0,
+        "max_stale_trade_confirmed_fill_share": 0.0,
+        "worst_confirmation_cell": "none",
+        "worst_confirmation_cell_rows": 0,
+        "worst_confirmation_cell_label": "none",
+        "trade_confirmation_release_label": "review",
+        "publishable": False,
+        "blocking_reasons": "none",
+        "review_reasons": "insufficient_trade_confirmation_evidence",
+    }
+
+
+def queue_position_trade_confirmation_release_scorecard(
+    surface: pd.DataFrame,
+    *,
+    min_cell_rows: int = 1,
+    max_confirmation_shortfall: float = 0.20,
+    max_cancel_only_clear_rate: float = 0.15,
+    max_stale_trade_confirmed_fill_share: float = 0.25,
+) -> dict[str, float | int | str | bool]:
+    """Summarize trade-confirmed queue execution evidence for release gates.
+
+    The confirmation surface is intentionally granular. This reducer creates a compact
+    pass/review/block decision that penalizes passive fill probabilities which are
+    not confirmed by trades, queue clears driven by cancels, and fills that arrive
+    outside the configured latency budget.
+    """
+    if not isinstance(min_cell_rows, int) or isinstance(min_cell_rows, bool):
+        raise ValueError("min_cell_rows must be a positive integer")
+    if min_cell_rows < 1:
+        raise ValueError("min_cell_rows must be a positive integer")
+    for name, value in {
+        "max_confirmation_shortfall": max_confirmation_shortfall,
+        "max_cancel_only_clear_rate": max_cancel_only_clear_rate,
+        "max_stale_trade_confirmed_fill_share": max_stale_trade_confirmed_fill_share,
+    }.items():
+        if not math.isfinite(float(value)) or not 0.0 <= float(value) <= 1.0:
+            raise ValueError(f"{name} must be finite and between 0 and 1")
+    if surface.empty:
+        return _empty_queue_position_trade_confirmation_release_scorecard()
+
+    required = {
+        "queue_clear_bucket",
+        "rows",
+        "mean_predicted_fill_probability",
+        "trade_confirmed_fill_rate",
+        "cancel_only_clear_rate",
+        "stale_trade_confirmed_fill_share",
+        "confirmation_shortfall",
+        "confirmation_surface_label",
+    }
+    regime_col = "regime" if "regime" in surface.columns else None
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(surface, required, "queue position trade confirmation release scorecard")
+    numeric_columns = [
+        "rows",
+        "mean_predicted_fill_probability",
+        "trade_confirmed_fill_rate",
+        "cancel_only_clear_rate",
+        "stale_trade_confirmed_fill_share",
+        "confirmation_shortfall",
+    ]
+    values = _finite_values(surface, numeric_columns, "queue position trade confirmation release scorecard")
+    if (values["rows"] < 0.0).any():
+        raise ValueError("queue position trade confirmation release scorecard rows must be non-negative")
+    rate_columns = [
+        "mean_predicted_fill_probability",
+        "trade_confirmed_fill_rate",
+        "cancel_only_clear_rate",
+        "stale_trade_confirmed_fill_share",
+    ]
+    if not values[rate_columns].apply(lambda column: column.between(0.0, 1.0).all()).all():
+        raise ValueError("queue position trade confirmation release scorecard rates must be in [0, 1]")
+
+    data = values.copy()
+    data["regime"] = surface[regime_col].astype(str) if regime_col is not None else "all"
+    data["queue_clear_bucket"] = surface["queue_clear_bucket"].astype(str)
+    data["confirmation_surface_label"] = surface["confirmation_surface_label"].astype(str)
+    total_rows = int(data["rows"].sum())
+    scorecard = _empty_queue_position_trade_confirmation_release_scorecard()
+    scorecard.update({"evaluated_cells": int(len(surface)), "total_rows": total_rows})
+    if total_rows == 0:
+        return scorecard
+
+    supported = data[data["rows"] >= float(min_cell_rows)].copy()
+    if supported.empty:
+        scorecard["unsupported_rows"] = total_rows
+        return scorecard
+
+    supported_rows = int(supported["rows"].sum())
+    supported_weights = supported["rows"] / float(supported_rows)
+    worst_idx = supported.sort_values(
+        ["confirmation_shortfall", "cancel_only_clear_rate", "stale_trade_confirmed_fill_share", "rows"],
+        ascending=[False, False, False, False],
+    ).index[0]
+    worst = supported.loc[worst_idx]
+    worst_cell = f"{worst['regime']}:{worst['queue_clear_bucket']}"
+
+    observed_max_shortfall = float(supported["confirmation_shortfall"].max())
+    observed_max_cancel = float(supported["cancel_only_clear_rate"].max())
+    observed_max_stale = float(supported["stale_trade_confirmed_fill_share"].max())
+    blocking_reasons: list[str] = []
+    if observed_max_shortfall > float(max_confirmation_shortfall):
+        blocking_reasons.append("confirmation_shortfall")
+    if observed_max_cancel > float(max_cancel_only_clear_rate):
+        blocking_reasons.append("cancel_only_queue_clearance")
+    review_reasons: list[str] = []
+    if observed_max_stale > float(max_stale_trade_confirmed_fill_share):
+        review_reasons.append("stale_trade_confirmed_fills")
+    if supported_rows < total_rows:
+        review_reasons.append("unsupported_trade_confirmation_cells")
+    label = "block" if blocking_reasons else "review" if review_reasons else "pass"
+
+    scorecard.update(
+        {
+            "supported_cells": int(len(supported)),
+            "supported_rows": supported_rows,
+            "unsupported_rows": int(total_rows - supported_rows),
+            "weighted_confirmation_shortfall": float(
+                (supported["confirmation_shortfall"] * supported_weights).sum()
+            ),
+            "weighted_cancel_only_clear_rate": float(
+                (supported["cancel_only_clear_rate"] * supported_weights).sum()
+            ),
+            "weighted_stale_trade_confirmed_fill_share": float(
+                (supported["stale_trade_confirmed_fill_share"] * supported_weights).sum()
+            ),
+            "max_confirmation_shortfall": observed_max_shortfall,
+            "max_cancel_only_clear_rate": observed_max_cancel,
+            "max_stale_trade_confirmed_fill_share": observed_max_stale,
+            "worst_confirmation_cell": worst_cell,
+            "worst_confirmation_cell_rows": int(worst["rows"]),
+            "worst_confirmation_cell_label": str(worst["confirmation_surface_label"]),
+            "trade_confirmation_release_label": label,
+            "publishable": label == "pass",
+            "blocking_reasons": ",".join(blocking_reasons) if blocking_reasons else "none",
+            "review_reasons": ",".join(review_reasons) if review_reasons else "none",
+        }
+    )
+    return scorecard
+
+
 def queue_position_trade_confirmation_surface(
     frame: pd.DataFrame,
     *,

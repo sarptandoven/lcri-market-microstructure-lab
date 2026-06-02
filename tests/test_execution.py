@@ -9,6 +9,7 @@ from lcri_lab.execution import (
     add_event_level_realized_fill_proxy,
     passive_fill_proxy_disagreement,
     trade_confirmed_passive_fill_latency_summary,
+    queue_position_trade_confirmation_release_scorecard,
     queue_position_trade_confirmation_surface,
     add_passive_fill_event_window_regimes,
     add_queue_position_features,
@@ -5299,3 +5300,111 @@ def test_queue_position_trade_confirmation_surface_flags_cancel_driven_overpredi
 def test_queue_position_trade_confirmation_surface_rejects_missing_columns() -> None:
     with pytest.raises(ValueError, match="missing queue position trade confirmation surface columns"):
         queue_position_trade_confirmation_surface(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_trade_confirmation_release_scorecard_blocks_cancel_driven_overprediction() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["calm", "stress", "stress"],
+            "queue_clear_bucket": ["q01", "q01", "q02"],
+            "rows": [20, 30, 10],
+            "mean_queue_clear_share": [0.25, 0.50, 0.80],
+            "mean_predicted_fill_probability": [0.80, 0.70, 0.60],
+            "trade_confirmed_fill_rate": [0.35, 0.20, 0.55],
+            "cancel_only_clear_rate": [0.60, 0.50, 0.05],
+            "mean_trade_confirmed_fill_latency": [0.10, 0.20, 0.15],
+            "stale_trade_confirmed_fill_share": [0.00, 0.05, 0.00],
+            "confirmation_calibration_error": [-0.45, -0.50, -0.05],
+            "confirmation_shortfall": [0.45, 0.50, 0.05],
+            "confirmation_surface_label": [
+                "high_prediction_not_trade_confirmed",
+                "cancel_driven_queue_clearance",
+                "trade_confirmed_execution_ok",
+            ],
+        }
+    )
+
+    scorecard = queue_position_trade_confirmation_release_scorecard(
+        surface,
+        min_cell_rows=5,
+        max_confirmation_shortfall=0.20,
+        max_cancel_only_clear_rate=0.15,
+    )
+
+    assert scorecard["trade_confirmation_release_label"] == "block"
+    assert scorecard["publishable"] is False
+    assert scorecard["evaluated_cells"] == 3
+    assert scorecard["supported_cells"] == 3
+    assert scorecard["total_rows"] == 60
+    assert scorecard["worst_confirmation_cell"] == "stress:q01"
+    assert scorecard["max_confirmation_shortfall"] == pytest.approx(0.50)
+    assert scorecard["max_cancel_only_clear_rate"] == pytest.approx(0.60)
+    assert scorecard["blocking_reasons"] == "confirmation_shortfall,cancel_only_queue_clearance"
+
+
+def test_queue_position_trade_confirmation_release_scorecard_reviews_stale_confirmed_fills() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["calm", "calm"],
+            "queue_clear_bucket": ["q01", "q02"],
+            "rows": [12, 8],
+            "mean_queue_clear_share": [0.20, 0.60],
+            "mean_predicted_fill_probability": [0.60, 0.50],
+            "trade_confirmed_fill_rate": [0.55, 0.45],
+            "cancel_only_clear_rate": [0.02, 0.03],
+            "mean_trade_confirmed_fill_latency": [0.20, 1.50],
+            "stale_trade_confirmed_fill_share": [0.05, 0.40],
+            "confirmation_calibration_error": [-0.05, -0.05],
+            "confirmation_shortfall": [0.05, 0.05],
+            "confirmation_surface_label": ["trade_confirmed_execution_ok", "latency_risk"],
+        }
+    )
+
+    scorecard = queue_position_trade_confirmation_release_scorecard(
+        surface,
+        min_cell_rows=5,
+        max_stale_trade_confirmed_fill_share=0.25,
+    )
+
+    assert scorecard["trade_confirmation_release_label"] == "review"
+    assert scorecard["publishable"] is False
+    assert scorecard["review_reasons"] == "stale_trade_confirmed_fills"
+    assert scorecard["worst_confirmation_cell"] == "calm:q02"
+    assert scorecard["max_stale_trade_confirmed_fill_share"] == pytest.approx(0.40)
+
+
+def test_queue_position_trade_confirmation_release_scorecard_passes_confirmed_surface() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["calm", "stress"],
+            "queue_clear_bucket": ["q01", "q02"],
+            "rows": [20, 20],
+            "mean_queue_clear_share": [0.20, 0.60],
+            "mean_predicted_fill_probability": [0.55, 0.40],
+            "trade_confirmed_fill_rate": [0.57, 0.38],
+            "cancel_only_clear_rate": [0.02, 0.04],
+            "mean_trade_confirmed_fill_latency": [0.12, 0.20],
+            "stale_trade_confirmed_fill_share": [0.00, 0.05],
+            "confirmation_calibration_error": [0.02, -0.02],
+            "confirmation_shortfall": [-0.02, 0.02],
+            "confirmation_surface_label": [
+                "trade_confirmed_execution_ok",
+                "trade_confirmed_execution_ok",
+            ],
+        }
+    )
+
+    scorecard = queue_position_trade_confirmation_release_scorecard(surface, min_cell_rows=5)
+
+    assert scorecard["trade_confirmation_release_label"] == "pass"
+    assert scorecard["publishable"] is True
+    assert scorecard["blocking_reasons"] == "none"
+    assert scorecard["review_reasons"] == "none"
+
+
+def test_queue_position_trade_confirmation_release_scorecard_rejects_missing_columns() -> None:
+    with pytest.raises(
+        ValueError,
+        match="missing queue position trade confirmation release scorecard columns",
+    ):
+        queue_position_trade_confirmation_release_scorecard(pd.DataFrame({"rows": [1]}))

@@ -545,6 +545,110 @@ def verify_trade_confirmed_passive_fill_latency_summary(
     return errors
 
 
+def verify_queue_position_trade_confirmation_release_scorecard(
+    output_dir: Path,
+    artifact: str = "queue_position_trade_confirmation_release_scorecard.json",
+) -> list[str]:
+    """Return errors for queue-position trade-confirmation release scorecards."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing queue-position trade confirmation release scorecard: {artifact}"]
+    try:
+        payload = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        return [f"invalid queue-position trade confirmation release scorecard JSON {artifact}: {exc}"]
+
+    required = {
+        "evaluated_cells",
+        "supported_cells",
+        "total_rows",
+        "supported_rows",
+        "unsupported_rows",
+        "weighted_confirmation_shortfall",
+        "weighted_cancel_only_clear_rate",
+        "weighted_stale_trade_confirmed_fill_share",
+        "max_confirmation_shortfall",
+        "max_cancel_only_clear_rate",
+        "max_stale_trade_confirmed_fill_share",
+        "worst_confirmation_cell",
+        "worst_confirmation_cell_rows",
+        "worst_confirmation_cell_label",
+        "trade_confirmation_release_label",
+        "publishable",
+        "blocking_reasons",
+        "review_reasons",
+    }
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete queue-position trade confirmation release scorecard {artifact}: {missing}"]
+
+    errors: list[str] = []
+    numeric_keys = [
+        "evaluated_cells",
+        "supported_cells",
+        "total_rows",
+        "supported_rows",
+        "unsupported_rows",
+        "weighted_confirmation_shortfall",
+        "weighted_cancel_only_clear_rate",
+        "weighted_stale_trade_confirmed_fill_share",
+        "max_confirmation_shortfall",
+        "max_cancel_only_clear_rate",
+        "max_stale_trade_confirmed_fill_share",
+        "worst_confirmation_cell_rows",
+    ]
+    numeric = {key: float(payload[key]) for key in numeric_keys}
+    if not all(math.isfinite(value) for value in numeric.values()):
+        errors.append(f"non-finite queue-position trade confirmation scorecard values in {artifact}")
+    count_columns = [
+        "evaluated_cells",
+        "supported_cells",
+        "total_rows",
+        "supported_rows",
+        "unsupported_rows",
+        "worst_confirmation_cell_rows",
+    ]
+    if any(numeric[key] < 0.0 for key in count_columns):
+        errors.append(f"negative queue-position trade confirmation scorecard counts in {artifact}")
+    if any(not math.isclose(numeric[key], round(numeric[key]), abs_tol=1e-9) for key in count_columns):
+        errors.append(f"non-integer queue-position trade confirmation scorecard counts in {artifact}")
+    if numeric["supported_cells"] > numeric["evaluated_cells"]:
+        errors.append(f"supported queue-position trade confirmation cells exceed evaluated cells in {artifact}")
+    if not math.isclose(
+        numeric["supported_rows"] + numeric["unsupported_rows"],
+        numeric["total_rows"],
+        abs_tol=1e-9,
+    ):
+        errors.append(f"inconsistent queue-position trade confirmation scorecard row totals in {artifact}")
+    rate_columns = [
+        "weighted_cancel_only_clear_rate",
+        "weighted_stale_trade_confirmed_fill_share",
+        "max_cancel_only_clear_rate",
+        "max_stale_trade_confirmed_fill_share",
+    ]
+    if any(not 0.0 <= numeric[key] <= 1.0 for key in rate_columns):
+        errors.append(f"bounded queue-position trade confirmation scorecard rates violated in {artifact}")
+    signed_shortfall_columns = ["weighted_confirmation_shortfall", "max_confirmation_shortfall"]
+    if any(not -1.0 <= numeric[key] <= 1.0 for key in signed_shortfall_columns):
+        errors.append(f"bounded queue-position trade confirmation scorecard shortfall violated in {artifact}")
+    decision = str(payload["trade_confirmation_release_label"])
+    if decision not in {"pass", "review", "block"}:
+        errors.append(f"invalid queue-position trade confirmation release decision in {artifact}: {decision}")
+    if not isinstance(payload["publishable"], bool):
+        errors.append(f"non-boolean queue-position trade confirmation publishable flag in {artifact}")
+    elif payload["publishable"] != (decision == "pass"):
+        errors.append(f"queue-position trade confirmation publishable flag contradicts decision in {artifact}")
+    for key in [
+        "worst_confirmation_cell",
+        "worst_confirmation_cell_label",
+        "blocking_reasons",
+        "review_reasons",
+    ]:
+        if not str(payload[key]):
+            errors.append(f"blank queue-position trade confirmation scorecard text field {key} in {artifact}")
+    return errors
+
+
 def verify_execution_publishability_review_artifacts(
     output_dir: Path, artifact: str = "execution_publishability_review_packet.csv"
 ) -> list[str]:
