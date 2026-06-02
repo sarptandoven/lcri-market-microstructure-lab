@@ -210,6 +210,10 @@ silently double-counted. `execution_adjusted_edge_venue_economics_sensitivity`
 wraps those knobs into a scenario table (`base`, `maker_rebate`, and
 `wide_spread_toxic_fill` by default) with tradable-side shares, positive-edge
 share, worst-row edge, and an `economics_label` for execution-aware release review.
+`execution_adjusted_edge_venue_economics_release_scorecard` then condenses that
+scenario grid into a publishability decision by weighting scenario edge by row
+counts, tracking fragile venue assumptions, and naming the worst fee/slippage
+scenario so demo packets cannot pass solely on a zero-cost venue abstraction.
 
 ### Queue-position fill monotonicity review
 

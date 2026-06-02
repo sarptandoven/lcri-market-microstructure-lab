@@ -1466,6 +1466,155 @@ def execution_adjusted_edge_venue_economics_sensitivity(
     return pd.DataFrame(rows, columns=columns)
 
 
+def execution_adjusted_edge_venue_economics_release_scorecard(
+    sensitivity: pd.DataFrame,
+    *,
+    max_fragile_scenario_share: float = 0.34,
+    review_fragile_scenario_share: float = 0.10,
+    min_weighted_edge_ticks: float = 0.0,
+    min_worst_scenario_edge_ticks: float = -0.05,
+    min_positive_edge_share: float = 0.50,
+) -> dict[str, float | int | bool | str]:
+    """Summarize venue-economics sensitivity into a release-facing scorecard.
+
+    ``execution_adjusted_edge_venue_economics_sensitivity`` makes venue fee/rebate
+    and adverse-slippage assumptions explicit. This reducer prevents a queue-aware
+    LCRI result from being called publishable when only the base venue abstraction
+    works: it scenario-weights edge by row counts, tracks fragile venue scenarios,
+    and names the weakest fee/slippage assumption for review packets.
+    """
+    for name, value in {
+        "max_fragile_scenario_share": max_fragile_scenario_share,
+        "review_fragile_scenario_share": review_fragile_scenario_share,
+        "min_weighted_edge_ticks": min_weighted_edge_ticks,
+        "min_worst_scenario_edge_ticks": min_worst_scenario_edge_ticks,
+        "min_positive_edge_share": min_positive_edge_share,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= max_fragile_scenario_share <= 1.0:
+        raise ValueError("max_fragile_scenario_share must be in [0, 1]")
+    if not 0.0 <= review_fragile_scenario_share <= 1.0:
+        raise ValueError("review_fragile_scenario_share must be in [0, 1]")
+    if not 0.0 <= min_positive_edge_share <= 1.0:
+        raise ValueError("min_positive_edge_share must be in [0, 1]")
+
+    empty: dict[str, float | int | bool | str] = {
+        "scenarios": 0,
+        "rows": 0,
+        "tradable_rows": 0,
+        "weighted_tradable_share": 0.0,
+        "weighted_positive_edge_share": 0.0,
+        "weighted_mean_execution_adjusted_edge_ticks": 0.0,
+        "worst_scenario": "none",
+        "worst_scenario_edge_ticks": 0.0,
+        "worst_row_edge_ticks": 0.0,
+        "fragile_scenarios": 0,
+        "fragile_scenario_share": 0.0,
+        "venue_economics_release_decision": "review",
+        "venue_economics_release_label": "venue_economics_no_evidence",
+        "publishable": False,
+        "blocking_reasons": "none",
+        "review_reasons": "no_venue_economics_evidence",
+    }
+    if sensitivity.empty:
+        return empty
+
+    required = {
+        "scenario",
+        "rows",
+        "tradable_rows",
+        "tradable_share",
+        "positive_edge_share",
+        "mean_execution_adjusted_edge_ticks",
+        "worst_row_edge_ticks",
+        "economics_label",
+    }
+    _require_columns(sensitivity, required, "execution-adjusted venue economics release scorecard")
+    numeric_columns = [
+        "rows",
+        "tradable_rows",
+        "tradable_share",
+        "positive_edge_share",
+        "mean_execution_adjusted_edge_ticks",
+        "worst_row_edge_ticks",
+    ]
+    values = _finite_values(sensitivity, numeric_columns, "execution-adjusted venue economics release scorecard")
+    if (values[["rows", "tradable_rows", "tradable_share", "positive_edge_share"]] < 0.0).any().any():
+        raise ValueError("execution-adjusted venue economics scorecard counts and shares must be non-negative")
+    if not values[["tradable_share", "positive_edge_share"]].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("execution-adjusted venue economics scorecard shares must be in [0, 1]")
+    if (values["tradable_rows"] > values["rows"]).any():
+        raise ValueError("execution-adjusted venue economics tradable rows cannot exceed rows")
+
+    working = sensitivity.copy()
+    working[numeric_columns] = values
+    scenario_count = int(working["scenario"].astype(str).nunique())
+    rows = int(values["rows"].sum())
+    tradable_rows = int(values["tradable_rows"].sum())
+    weights = values["rows"].where(values["rows"] > 0.0, 1.0)
+    weighted_tradable_share = float(np.average(values["tradable_share"], weights=weights))
+    weighted_positive_share = float(np.average(values["positive_edge_share"], weights=weights))
+    weighted_edge = float(np.average(values["mean_execution_adjusted_edge_ticks"], weights=weights))
+    worst_idx = values["mean_execution_adjusted_edge_ticks"].idxmin()
+    worst_scenario = str(working.loc[worst_idx, "scenario"])
+    worst_scenario_edge = float(values.loc[worst_idx, "mean_execution_adjusted_edge_ticks"])
+    worst_row_edge = float(values["worst_row_edge_ticks"].min())
+
+    labels = working["economics_label"].astype(str)
+    fragile_mask = (
+        labels != "positive_after_costs"
+    ) | (values["positive_edge_share"] < min_positive_edge_share) | (
+        values["mean_execution_adjusted_edge_ticks"] < min_weighted_edge_ticks
+    )
+    fragile_scenarios = int(fragile_mask.sum())
+    fragile_share = fragile_scenarios / len(working)
+
+    blocking_reasons: list[str] = []
+    review_reasons: list[str] = []
+    if fragile_share > max_fragile_scenario_share:
+        blocking_reasons.append("fragile_scenario_share")
+    elif fragile_share > review_fragile_scenario_share:
+        review_reasons.append("fragile_scenario_share")
+    if weighted_edge < min_weighted_edge_ticks:
+        blocking_reasons.append("weighted_edge_below_floor")
+    if worst_scenario_edge < min_worst_scenario_edge_ticks:
+        blocking_reasons.append("worst_scenario_edge_below_floor")
+    if weighted_positive_share < min_positive_edge_share:
+        review_reasons.append("positive_edge_share_below_review_floor")
+    if tradable_rows == 0:
+        blocking_reasons.append("no_tradable_rows")
+
+    if blocking_reasons:
+        decision = "block"
+        label = "venue_economics_not_publishable"
+    elif review_reasons:
+        decision = "review"
+        label = "venue_economics_review"
+    else:
+        decision = "pass"
+        label = "venue_economics_publishable"
+
+    return {
+        "scenarios": scenario_count,
+        "rows": rows,
+        "tradable_rows": tradable_rows,
+        "weighted_tradable_share": weighted_tradable_share,
+        "weighted_positive_edge_share": weighted_positive_share,
+        "weighted_mean_execution_adjusted_edge_ticks": weighted_edge,
+        "worst_scenario": worst_scenario,
+        "worst_scenario_edge_ticks": worst_scenario_edge,
+        "worst_row_edge_ticks": worst_row_edge,
+        "fragile_scenarios": fragile_scenarios,
+        "fragile_scenario_share": fragile_share,
+        "venue_economics_release_decision": decision,
+        "venue_economics_release_label": label,
+        "publishable": decision == "pass",
+        "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
+        "review_reasons": ";".join(review_reasons) if review_reasons else "none",
+    }
+
+
 def execution_adjusted_edge_component_attribution(
     frame: pd.DataFrame,
     *,

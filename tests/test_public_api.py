@@ -111,6 +111,11 @@ def test_public_api_exports_execution_adjusted_edge_component_attribution() -> N
     assert "execution_adjusted_edge_component_attribution" in lcri_lab.__all__
 
 
+def test_public_api_exports_execution_adjusted_edge_venue_economics_release_scorecard() -> None:
+    assert callable(lcri_lab.execution_adjusted_edge_venue_economics_release_scorecard)
+    assert "execution_adjusted_edge_venue_economics_release_scorecard" in lcri_lab.__all__
+
+
 def test_public_api_exports_execution_adjusted_lcri_regime_attribution() -> None:
     assert callable(lcri_lab.execution_adjusted_lcri_regime_attribution)
     assert "execution_adjusted_lcri_regime_attribution" in lcri_lab.__all__

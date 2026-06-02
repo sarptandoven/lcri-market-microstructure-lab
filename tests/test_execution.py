@@ -5,6 +5,7 @@ from lcri_lab.execution import (
     FillProbabilityConfig,
     add_event_level_trade_confirmed_fill_proxy,
     add_execution_adjusted_edge,
+    execution_adjusted_edge_venue_economics_release_scorecard,
     add_passive_fill_probabilities,
     add_latency_adjusted_passive_fill_probabilities,
     add_event_level_realized_fill_proxy,
@@ -295,6 +296,59 @@ def test_execution_adjusted_edge_venue_economics_sensitivity_reprices_scenarios(
     ].iloc[0]
     assert sensitivity["worst_row_edge_ticks"].iloc[1] == pytest.approx(-0.19)
     assert sensitivity["economics_label"].tolist() == ["positive_after_costs", "positive_after_costs"]
+
+
+def test_execution_adjusted_edge_venue_economics_release_scorecard_flags_fragile_scenarios() -> None:
+    sensitivity = pd.DataFrame(
+        {
+            "scenario": ["base", "rebate", "toxic_fee"],
+            "rows": [100, 100, 100],
+            "tradable_rows": [70, 65, 20],
+            "tradable_share": [0.70, 0.65, 0.20],
+            "positive_edge_share": [0.64, 0.58, 0.25],
+            "mean_execution_adjusted_edge_ticks": [0.08, 0.04, -0.06],
+            "worst_row_edge_ticks": [-0.10, -0.15, -0.40],
+            "economics_label": ["positive_after_costs", "positive_after_costs", "cost_fragile"],
+        }
+    )
+
+    scorecard = execution_adjusted_edge_venue_economics_release_scorecard(
+        sensitivity,
+        max_fragile_scenario_share=0.25,
+        min_weighted_edge_ticks=0.02,
+        min_worst_scenario_edge_ticks=-0.02,
+        min_positive_edge_share=0.50,
+    )
+
+    assert scorecard["scenarios"] == 3
+    assert scorecard["fragile_scenarios"] == 1
+    assert scorecard["fragile_scenario_share"] == pytest.approx(1.0 / 3.0)
+    assert scorecard["weighted_mean_execution_adjusted_edge_ticks"] == pytest.approx(0.02)
+    assert scorecard["worst_scenario"] == "toxic_fee"
+    assert scorecard["venue_economics_release_decision"] == "block"
+    assert "fragile_scenario_share" in scorecard["blocking_reasons"]
+
+
+def test_execution_adjusted_edge_venue_economics_release_scorecard_passes_robust_sensitivity() -> None:
+    sensitivity = pd.DataFrame(
+        {
+            "scenario": ["base", "rebate"],
+            "rows": [50, 50],
+            "tradable_rows": [30, 35],
+            "tradable_share": [0.60, 0.70],
+            "positive_edge_share": [0.62, 0.66],
+            "mean_execution_adjusted_edge_ticks": [0.06, 0.08],
+            "worst_row_edge_ticks": [-0.08, -0.07],
+            "economics_label": ["positive_after_costs", "positive_after_costs"],
+        }
+    )
+
+    scorecard = execution_adjusted_edge_venue_economics_release_scorecard(sensitivity)
+
+    assert scorecard["venue_economics_release_decision"] == "pass"
+    assert scorecard["publishable"] is True
+    assert scorecard["blocking_reasons"] == "none"
+    assert scorecard["review_reasons"] == "none"
 
 
 def test_execution_adjusted_edge_component_attribution_decomposes_fill_and_adverse_drag() -> None:
