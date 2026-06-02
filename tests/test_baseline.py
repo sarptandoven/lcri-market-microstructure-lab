@@ -12,6 +12,7 @@ from lcri_lab.baseline import (
     baseline_nonlinear_coefficient_stability,
     baseline_nonlinear_coefficient_stability_summary,
     baseline_nonlinear_feature_ablation,
+    baseline_nonlinear_extrapolation_risk,
     baseline_nonlinear_feature_ablation_summary,
     baseline_nonlinear_regularization_path,
     baseline_nonlinear_regularization_summary,
@@ -1411,3 +1412,44 @@ def test_baseline_rejects_non_finite_features() -> None:
 
     with pytest.raises(ValueError, match="finite"):
         LiquidityBaseline().fit(features)
+
+
+def test_baseline_nonlinear_extrapolation_risk_flags_holdout_outside_train_support() -> None:
+    books = simulate_order_books(SimulationConfig(rows=300, seed=94))
+    features = compute_features(books)
+    train = features.iloc[:180].copy()
+    evaluation = features.iloc[180:240].copy()
+    evaluation["spread_ticks"] = evaluation["spread_ticks"] + 20.0
+    evaluation["volatility"] = evaluation["volatility"] + 4.0
+
+    risk = baseline_nonlinear_extrapolation_risk(
+        train,
+        evaluation,
+        feature_names=("spread_stress_squared", "volatility_stress_squared"),
+        train_quantile=0.90,
+    )
+
+    assert risk.columns.tolist() == [
+        "feature",
+        "train_low",
+        "train_high",
+        "eval_min",
+        "eval_max",
+        "out_of_support_share",
+        "mean_standardized_shift",
+        "max_standardized_shift",
+        "risk_label",
+    ]
+    assert risk["feature"].tolist() == ["spread_stress_squared", "volatility_stress_squared"]
+    assert risk["out_of_support_share"].min() > 0.90
+    assert set(risk["risk_label"]) == {"extrapolation_risk"}
+
+
+def test_baseline_nonlinear_extrapolation_risk_rejects_invalid_inputs() -> None:
+    books = simulate_order_books(SimulationConfig(rows=80, seed=95))
+    features = compute_features(books)
+
+    with pytest.raises(ValueError, match=r"train_quantile must be finite and in \(0, 1\)"):
+        baseline_nonlinear_extrapolation_risk(features, features, train_quantile=1.0)
+    with pytest.raises(ValueError, match="unknown nonlinear extrapolation features"):
+        baseline_nonlinear_extrapolation_risk(features, features, feature_names=("spread_ticks",))

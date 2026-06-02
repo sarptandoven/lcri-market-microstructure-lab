@@ -21,6 +21,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "baseline_nonlinear_stress_surface.csv").exists()
     assert (tmp_path / "baseline_nonlinear_stress_surface_summary.json").exists()
     assert (tmp_path / "baseline_nonlinear_feature_ablation.csv").exists()
+    assert (tmp_path / "baseline_nonlinear_extrapolation_risk.csv").exists()
     assert (tmp_path / "regime_metrics.csv").exists()
     assert (tmp_path / "heldout_regime_metrics.csv").exists()
     assert (tmp_path / "regime_generalization_gap.csv").exists()
@@ -331,6 +332,30 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "marginal_nonlinear_baseline_term",
     }
     assert nonlinear_ablation["ablation_rmse_drag"].is_monotonic_decreasing
+
+    nonlinear_extrapolation = pd.read_csv(tmp_path / "baseline_nonlinear_extrapolation_risk.csv")
+    assert nonlinear_extrapolation.columns.tolist() == [
+        "feature",
+        "train_low",
+        "train_high",
+        "eval_min",
+        "eval_max",
+        "out_of_support_share",
+        "mean_standardized_shift",
+        "max_standardized_shift",
+        "risk_label",
+    ]
+    assert set(nonlinear_extrapolation["feature"]) == {
+        "spread_stress_squared",
+        "volatility_stress_squared",
+        "liquidity_void_x_volatility",
+        "replenishment_inverse",
+    }
+    assert nonlinear_extrapolation["out_of_support_share"].between(0.0, 1.0).all()
+    assert set(nonlinear_extrapolation["risk_label"]) <= {
+        "inside_train_support",
+        "extrapolation_risk",
+    }
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
     assert "passes_monotonicity_gate" in monotonicity

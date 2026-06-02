@@ -2581,6 +2581,86 @@ def baseline_nonlinear_coefficient_stability(
     )
 
 
+def baseline_nonlinear_extrapolation_risk(
+    train_frame: pd.DataFrame,
+    evaluation_frame: pd.DataFrame,
+    *,
+    feature_names: tuple[str, ...] | list[str] | None = None,
+    train_quantile: float = 0.95,
+    max_safe_out_of_support_share: float = 0.10,
+) -> pd.DataFrame:
+    """Audit nonlinear-baseline extrapolation risk on a chronological holdout.
+
+    Nonlinear liquidity terms can look impressive in-sample while becoming fragile
+    when the evaluation window lives outside the training support. This diagnostic
+    compares evaluation nonlinear basis values against central training quantile
+    support and labels terms whose holdout mass materially leaves that support.
+    """
+    columns = [
+        "feature",
+        "train_low",
+        "train_high",
+        "eval_min",
+        "eval_max",
+        "out_of_support_share",
+        "mean_standardized_shift",
+        "max_standardized_shift",
+        "risk_label",
+    ]
+    if train_frame.empty or evaluation_frame.empty:
+        return pd.DataFrame(columns=columns)
+    if not math.isfinite(train_quantile) or not 0.0 < train_quantile < 1.0:
+        raise ValueError("train_quantile must be finite and in (0, 1)")
+    if (
+        not math.isfinite(max_safe_out_of_support_share)
+        or not 0.0 <= max_safe_out_of_support_share <= 1.0
+    ):
+        raise ValueError("max_safe_out_of_support_share must be finite and in [0, 1]")
+
+    all_feature_names = design_feature_names()
+    nonlinear_names = list(NONLINEAR_LIQUIDITY_FEATURES)
+    if feature_names is None:
+        selected_features = nonlinear_names
+    else:
+        selected_features = list(feature_names)
+        unknown = sorted(set(selected_features) - set(nonlinear_names))
+        if unknown:
+            raise ValueError(f"unknown nonlinear extrapolation features: {unknown}")
+        if not selected_features:
+            raise ValueError("feature_names must be non-empty when provided")
+
+    train_design = pd.DataFrame(_design_matrix(train_frame), columns=all_feature_names)
+    eval_design = pd.DataFrame(_design_matrix(evaluation_frame), columns=all_feature_names)
+    tail = (1.0 - train_quantile) / 2.0
+    rows: list[dict[str, float | str]] = []
+    for feature in selected_features:
+        train_values = train_design[feature].to_numpy(dtype=float)
+        eval_values = eval_design[feature].to_numpy(dtype=float)
+        train_low = float(np.quantile(train_values, tail))
+        train_high = float(np.quantile(train_values, 1.0 - tail))
+        train_center = float(np.mean(train_values))
+        train_scale = float(np.std(train_values)) or 1.0
+        standardized_shift = np.abs((eval_values - train_center) / train_scale)
+        out_of_support = (eval_values < train_low) | (eval_values > train_high)
+        out_share = float(np.mean(out_of_support))
+        rows.append(
+            {
+                "feature": feature,
+                "train_low": train_low,
+                "train_high": train_high,
+                "eval_min": float(np.min(eval_values)),
+                "eval_max": float(np.max(eval_values)),
+                "out_of_support_share": out_share,
+                "mean_standardized_shift": float(np.mean(standardized_shift)),
+                "max_standardized_shift": float(np.max(standardized_shift)),
+                "risk_label": "extrapolation_risk"
+                if out_share > max_safe_out_of_support_share
+                else "inside_train_support",
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
 def _stress_bin_rank(surface: pd.DataFrame, bin_columns: list[str]) -> pd.Series:
     rank_map = {"low": 0.0, "medium": 1.0, "high": 2.0}
     ranks = pd.Series(0.0, index=surface.index)

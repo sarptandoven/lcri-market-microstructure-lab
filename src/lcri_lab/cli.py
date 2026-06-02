@@ -73,6 +73,7 @@ from lcri_lab.evaluation import (
 )
 from lcri_lab.absorption import add_shadow_absorption
 from lcri_lab.baseline import (
+    baseline_nonlinear_extrapolation_risk,
     baseline_nonlinear_feature_ablation,
     baseline_nonlinear_feature_ablation_summary,
     baseline_nonlinear_stress_surface,
@@ -1099,6 +1100,12 @@ def run_demo(
         min_material_terms=1,
         min_total_positive_drag_share=0.10,
     )
+    baseline_nonlinear_extrapolation = baseline_nonlinear_extrapolation_risk(
+        scored.loc[train.index],
+        heldout_scored,
+        train_quantile=0.90,
+        max_safe_out_of_support_share=0.15,
+    )
 
     artifact_paths = [
         "lcri-model.json",
@@ -1114,6 +1121,7 @@ def run_demo(
         "baseline_nonlinear_stress_surface_summary.json",
         "baseline_nonlinear_feature_ablation.csv",
         "baseline_nonlinear_feature_ablation_summary.json",
+        "baseline_nonlinear_extrapolation_risk.csv",
         "regime_metrics.csv",
         "heldout_regime_metrics.csv",
         "regime_generalization_gap.csv",
@@ -1388,6 +1396,9 @@ def run_demo(
     write_json(
         output / "baseline_nonlinear_feature_ablation_summary.json",
         baseline_nonlinear_ablation_summary,
+    )
+    baseline_nonlinear_extrapolation.to_csv(
+        output / "baseline_nonlinear_extrapolation_risk.csv", index=False
     )
     by_regime.to_csv(output / "regime_metrics.csv", index=False)
     heldout_by_regime.to_csv(output / "heldout_regime_metrics.csv", index=False)
@@ -1975,6 +1986,7 @@ def run_demo(
         generalization_gap=generalization_gap,
         baseline_tail_lift_diagnostics=baseline_tail_lift,
         baseline_stress_residual_drift=baseline_residual_drift,
+        baseline_nonlinear_extrapolation_risk=baseline_nonlinear_extrapolation,
         baseline_regime_publishability_summary=baseline_regime_publishability,
         regime_generalization_gap=regime_gap,
         transition_generalization_gap=transition_gap,
