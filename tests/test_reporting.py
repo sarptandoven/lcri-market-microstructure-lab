@@ -28,6 +28,7 @@ from lcri_lab.reporting import (
     verify_execution_publishability_review_artifacts,
     verify_passive_fill_event_policy_stability,
     verify_passive_fill_event_policy_stability_scorecard,
+    verify_passive_fill_event_window_regime_scorecard,
     verify_execution_adjusted_lcri_event_window_release_scorecard,
     verify_execution_adjusted_lcri_quantile_diagnostics,
     verify_queue_position_trade_confirmation_regime_scorecard,
@@ -502,6 +503,38 @@ def test_verify_execution_adjusted_lcri_event_window_release_scorecard_checks_sc
     assert any("bounded execution-adjusted LCRI event-window scorecard shares" in error for error in errors)
     assert any("impossible execution-adjusted LCRI event-window scorecard row counts" in error for error in errors)
     assert any("inconsistent execution-adjusted LCRI event-window scorecard label" in error for error in errors)
+
+
+def test_verify_passive_fill_event_window_regime_scorecard_checks_schema_and_release_label(
+    tmp_path,
+) -> None:
+    payload = {
+        "regimes": 3,
+        "total_rows": 12,
+        "event_rows": 4,
+        "event_row_share": 4 / 12,
+        "post_event_rows": 5,
+        "post_event_negative_edge_share": 0.20,
+        "post_event_mean_toxicity_probability": 0.25,
+        "event_mean_execution_adjusted_edge_ticks": 0.30,
+        "worst_regime_by_toxicity": "post_event",
+        "worst_regime_toxicity_probability": 0.25,
+        "worst_regime_negative_edge_share": 0.20,
+        "event_window_release_label": "event_window_execution_ready",
+    }
+    (tmp_path / "passive_fill_event_window_regime_scorecard.json").write_text(json.dumps(payload))
+
+    assert verify_passive_fill_event_window_regime_scorecard(tmp_path) == []
+
+    payload["event_rows"] = 13
+    payload["event_row_share"] = 1.25
+    payload["event_window_release_label"] = "not_a_release_label"
+    (tmp_path / "passive_fill_event_window_regime_scorecard.json").write_text(json.dumps(payload))
+
+    errors = verify_passive_fill_event_window_regime_scorecard(tmp_path)
+    assert any("bounded passive-fill event-window scorecard shares" in error for error in errors)
+    assert any("impossible passive-fill event-window scorecard row counts" in error for error in errors)
+    assert any("invalid passive-fill event-window scorecard release label" in error for error in errors)
 
 
 def test_verify_queue_position_lcri_tail_fill_residuals_checks_schema_and_bounds(tmp_path) -> None:

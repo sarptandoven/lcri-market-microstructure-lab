@@ -1233,6 +1233,88 @@ def verify_execution_adjusted_lcri_event_window_release_scorecard(
     return errors
 
 
+def verify_passive_fill_event_window_regime_scorecard(
+    output_dir: Path,
+    artifact: str = "passive_fill_event_window_regime_scorecard.json",
+) -> list[str]:
+    """Return errors for passive-fill event-window regime release scorecards."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing passive-fill event-window regime scorecard: {artifact}"]
+    try:
+        payload = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        return [f"invalid passive-fill event-window regime scorecard JSON {artifact}: {exc}"]
+
+    required = {
+        "regimes",
+        "total_rows",
+        "event_rows",
+        "event_row_share",
+        "post_event_rows",
+        "post_event_negative_edge_share",
+        "post_event_mean_toxicity_probability",
+        "event_mean_execution_adjusted_edge_ticks",
+        "worst_regime_by_toxicity",
+        "worst_regime_toxicity_probability",
+        "worst_regime_negative_edge_share",
+        "event_window_release_label",
+    }
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete passive-fill event-window regime scorecard {artifact}: {missing}"]
+
+    errors: list[str] = []
+    numeric_columns = [
+        "regimes",
+        "total_rows",
+        "event_rows",
+        "event_row_share",
+        "post_event_rows",
+        "post_event_negative_edge_share",
+        "post_event_mean_toxicity_probability",
+        "event_mean_execution_adjusted_edge_ticks",
+        "worst_regime_toxicity_probability",
+        "worst_regime_negative_edge_share",
+    ]
+    numeric = {column: float(payload[column]) for column in numeric_columns}
+    if not all(math.isfinite(value) for value in numeric.values()):
+        errors.append(f"non-finite passive-fill event-window scorecard values in {artifact}")
+    count_columns = ["regimes", "total_rows", "event_rows", "post_event_rows"]
+    if not all(numeric[column] >= 0.0 and numeric[column].is_integer() for column in count_columns):
+        errors.append(f"negative passive-fill event-window scorecard row counts in {artifact}")
+    if (
+        numeric["event_rows"] > numeric["total_rows"]
+        or numeric["post_event_rows"] > numeric["total_rows"]
+    ):
+        errors.append(f"impossible passive-fill event-window scorecard row counts in {artifact}")
+    bounded_columns = [
+        "event_row_share",
+        "post_event_negative_edge_share",
+        "post_event_mean_toxicity_probability",
+        "worst_regime_toxicity_probability",
+        "worst_regime_negative_edge_share",
+    ]
+    if not all(0.0 <= numeric[column] <= 1.0 for column in bounded_columns):
+        errors.append(f"bounded passive-fill event-window scorecard shares violated in {artifact}")
+    expected_event_share = (
+        numeric["event_rows"] / numeric["total_rows"] if numeric["total_rows"] > 0.0 else 0.0
+    )
+    if abs(numeric["event_row_share"] - expected_event_share) > 1e-9:
+        errors.append(f"inconsistent passive-fill event-window scorecard event share in {artifact}")
+    valid_labels = {
+        "insufficient_event_window_evidence",
+        "toxic_post_event_reversal",
+        "nonpositive_event_edge",
+        "event_window_execution_ready",
+    }
+    if str(payload["event_window_release_label"]) not in valid_labels:
+        errors.append(f"invalid passive-fill event-window scorecard release label in {artifact}")
+    if not str(payload["worst_regime_by_toxicity"]):
+        errors.append(f"blank passive-fill event-window scorecard worst regime in {artifact}")
+    return errors
+
+
 def verify_queue_position_lcri_tail_fill_residuals(
     output_dir: Path, artifact: str = "queue_position_lcri_tail_fill_residuals.csv"
 ) -> list[str]:

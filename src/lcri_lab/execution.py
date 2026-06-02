@@ -7396,6 +7396,144 @@ def _empty_passive_fill_event_window_transition_matrix() -> pd.DataFrame:
     )
 
 
+def _empty_passive_fill_event_window_regime_scorecard() -> dict[str, float | int | str]:
+    return {
+        "regimes": 0,
+        "total_rows": 0,
+        "event_rows": 0,
+        "event_row_share": 0.0,
+        "post_event_rows": 0,
+        "post_event_negative_edge_share": 0.0,
+        "post_event_mean_toxicity_probability": 0.0,
+        "event_mean_execution_adjusted_edge_ticks": 0.0,
+        "worst_regime_by_toxicity": "none",
+        "worst_regime_toxicity_probability": 0.0,
+        "worst_regime_negative_edge_share": 0.0,
+        "event_window_release_label": "insufficient_event_window_evidence",
+    }
+
+
+def passive_fill_event_window_regime_scorecard(
+    summary: pd.DataFrame,
+    *,
+    min_event_rows: int = 1,
+    max_post_event_negative_edge_share: float = 0.50,
+    max_post_event_toxicity_probability: float = 0.50,
+    min_event_mean_edge_ticks: float = 0.0,
+) -> dict[str, float | int | str]:
+    """Gate passive-fill event-window regimes for execution publishability.
+
+    ``passive_fill_event_window_regime_summary`` identifies where high-probability
+    passive fills occur and what happens immediately around them. This scorecard
+    compresses that surface into release-ready evidence: enough executable event
+    rows, positive event-time edge, and no toxic post-event reversal where fills
+    are available but quickly followed by adverse execution economics.
+    """
+    if not isinstance(min_event_rows, int) or isinstance(min_event_rows, bool):
+        raise ValueError("min_event_rows must be an integer")
+    if min_event_rows < 0:
+        raise ValueError("min_event_rows must be non-negative")
+    for name, value in {
+        "max_post_event_negative_edge_share": max_post_event_negative_edge_share,
+        "max_post_event_toxicity_probability": max_post_event_toxicity_probability,
+        "min_event_mean_edge_ticks": min_event_mean_edge_ticks,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= max_post_event_negative_edge_share <= 1.0:
+        raise ValueError("max_post_event_negative_edge_share must be in [0.0, 1.0]")
+    if not 0.0 <= max_post_event_toxicity_probability <= 1.0:
+        raise ValueError("max_post_event_toxicity_probability must be in [0.0, 1.0]")
+
+    required = {
+        "passive_fill_event_window_regime",
+        "rows",
+        "event_rows",
+        "row_share",
+        "mean_passive_fill_event_toxicity_probability",
+        "mean_execution_adjusted_edge_ticks",
+        "negative_edge_share",
+    }
+    _require_columns(summary, required, "passive fill event window regime scorecard")
+    if summary.empty:
+        return _empty_passive_fill_event_window_regime_scorecard()
+
+    data = summary[list(required)].copy()
+    numeric_columns = [
+        "rows",
+        "event_rows",
+        "row_share",
+        "mean_passive_fill_event_toxicity_probability",
+        "mean_execution_adjusted_edge_ticks",
+        "negative_edge_share",
+    ]
+    values = _finite_values(data, numeric_columns, "passive fill event window regime scorecard")
+    if (values[["rows", "event_rows", "row_share", "negative_edge_share"]] < 0.0).any().any():
+        raise ValueError("passive fill event window regime scorecard values must be non-negative")
+    if (values[["row_share", "negative_edge_share"]] > 1.0).any().any():
+        raise ValueError("passive fill event window regime scorecard shares must be in [0.0, 1.0]")
+    data[numeric_columns] = values[numeric_columns]
+    data["passive_fill_event_window_regime"] = data[
+        "passive_fill_event_window_regime"
+    ].astype(str)
+
+    total_rows = int(round(float(data["rows"].sum())))
+    event_rows = int(round(float(data["event_rows"].sum())))
+    event_row_share = float(event_rows) / float(total_rows) if total_rows else 0.0
+    post = data[data["passive_fill_event_window_regime"] == "post_event"]
+    event = data[data["passive_fill_event_window_regime"] == "event"]
+    post_event_rows = int(round(float(post["rows"].sum()))) if not post.empty else 0
+    post_event_negative_edge_share = (
+        float(np.average(post["negative_edge_share"], weights=post["rows"])) if post_event_rows else 0.0
+    )
+    post_event_toxicity = (
+        float(
+            np.average(
+                post["mean_passive_fill_event_toxicity_probability"],
+                weights=post["rows"],
+            )
+        )
+        if post_event_rows
+        else 0.0
+    )
+    event_mean_edge = (
+        float(np.average(event["mean_execution_adjusted_edge_ticks"], weights=event["rows"]))
+        if not event.empty and float(event["rows"].sum()) > 0.0
+        else 0.0
+    )
+    worst_idx = data["mean_passive_fill_event_toxicity_probability"].idxmax()
+    worst = data.loc[worst_idx]
+
+    if event_rows < min_event_rows:
+        label = "insufficient_event_window_evidence"
+    elif post_event_rows and (
+        post_event_negative_edge_share > max_post_event_negative_edge_share
+        or post_event_toxicity > max_post_event_toxicity_probability
+    ):
+        label = "toxic_post_event_reversal"
+    elif event_mean_edge <= min_event_mean_edge_ticks:
+        label = "nonpositive_event_edge"
+    else:
+        label = "event_window_execution_ready"
+
+    return {
+        "regimes": int(len(data)),
+        "total_rows": total_rows,
+        "event_rows": event_rows,
+        "event_row_share": event_row_share,
+        "post_event_rows": post_event_rows,
+        "post_event_negative_edge_share": post_event_negative_edge_share,
+        "post_event_mean_toxicity_probability": post_event_toxicity,
+        "event_mean_execution_adjusted_edge_ticks": event_mean_edge,
+        "worst_regime_by_toxicity": str(worst["passive_fill_event_window_regime"]),
+        "worst_regime_toxicity_probability": float(
+            worst["mean_passive_fill_event_toxicity_probability"]
+        ),
+        "worst_regime_negative_edge_share": float(worst["negative_edge_share"]),
+        "event_window_release_label": label,
+    }
+
+
 def passive_fill_event_window_transition_matrix(
     frame: pd.DataFrame,
     *,

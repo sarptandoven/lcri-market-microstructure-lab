@@ -50,6 +50,7 @@ from lcri_lab.execution import (
     passive_fill_event_transition_policy_curve,
     passive_fill_event_transition_scorecard,
     passive_fill_event_transition_summary,
+    passive_fill_event_window_regime_scorecard,
     passive_fill_event_window_regime_summary,
     passive_fill_event_window_diagnostics,
     execution_publishability_release_gate,
@@ -3089,6 +3090,69 @@ def test_passive_fill_event_window_regime_summary_ranks_toxic_executable_neighbo
     assert post_event["mean_execution_adjusted_edge_ticks"] == pytest.approx(-0.60)
     assert post_event["negative_edge_share"] == pytest.approx(1.0)
     assert post_event["dominant_passive_fill_event_side"] == "long"
+
+
+def test_passive_fill_event_window_regime_scorecard_flags_toxic_post_event_reversal() -> None:
+    summary = pd.DataFrame(
+        {
+            "passive_fill_event_window_regime": ["event", "post_event", "pre_event"],
+            "rows": [4, 5, 3],
+            "event_rows": [4, 0, 0],
+            "row_share": [4 / 12, 5 / 12, 3 / 12],
+            "mean_passive_fill_event_fill_probability": [0.90, 0.88, 0.89],
+            "mean_passive_fill_event_toxicity_probability": [0.30, 0.62, 0.35],
+            "mean_execution_adjusted_edge_ticks": [0.20, -0.40, 0.10],
+            "negative_edge_share": [0.25, 0.80, 0.10],
+            "dominant_passive_fill_event_side": ["long", "short", "long"],
+        }
+    )
+
+    scorecard = passive_fill_event_window_regime_scorecard(
+        summary,
+        min_event_rows=3,
+        max_post_event_negative_edge_share=0.50,
+        max_post_event_toxicity_probability=0.55,
+    )
+
+    assert scorecard["regimes"] == 3
+    assert scorecard["total_rows"] == 12
+    assert scorecard["event_rows"] == 4
+    assert scorecard["event_row_share"] == pytest.approx(4 / 12)
+    assert scorecard["post_event_rows"] == 5
+    assert scorecard["post_event_negative_edge_share"] == pytest.approx(0.80)
+    assert scorecard["post_event_mean_toxicity_probability"] == pytest.approx(0.62)
+    assert scorecard["event_mean_execution_adjusted_edge_ticks"] == pytest.approx(0.20)
+    assert scorecard["worst_regime_by_toxicity"] == "post_event"
+    assert scorecard["worst_regime_negative_edge_share"] == pytest.approx(0.80)
+    assert scorecard["event_window_release_label"] == "toxic_post_event_reversal"
+
+
+def test_passive_fill_event_window_regime_scorecard_passes_clean_event_windows() -> None:
+    summary = pd.DataFrame(
+        {
+            "passive_fill_event_window_regime": ["event", "post_event"],
+            "rows": [5, 4],
+            "event_rows": [5, 0],
+            "row_share": [5 / 9, 4 / 9],
+            "mean_passive_fill_event_fill_probability": [0.92, 0.88],
+            "mean_passive_fill_event_toxicity_probability": [0.20, 0.25],
+            "mean_execution_adjusted_edge_ticks": [0.35, 0.05],
+            "negative_edge_share": [0.10, 0.20],
+            "dominant_passive_fill_event_side": ["long", "long"],
+        }
+    )
+
+    scorecard = passive_fill_event_window_regime_scorecard(summary, min_event_rows=3)
+
+    assert scorecard["event_window_release_label"] == "event_window_execution_ready"
+    assert scorecard["worst_regime_by_toxicity"] == "post_event"
+
+
+def test_passive_fill_event_window_regime_scorecard_rejects_bad_summary() -> None:
+    with pytest.raises(ValueError, match="missing passive fill event window regime scorecard columns"):
+        passive_fill_event_window_regime_scorecard(pd.DataFrame({"rows": [1]}))
+    with pytest.raises(ValueError, match="min_event_rows"):
+        passive_fill_event_window_regime_scorecard(pd.DataFrame(), min_event_rows=-1)
 
 
 def test_passive_fill_event_lead_lag_profile_respects_group_boundaries() -> None:

@@ -125,6 +125,8 @@ from lcri_lab.execution import (
     passive_fill_event_transition_scorecard,
     passive_fill_event_transition_summary,
     passive_fill_event_window_diagnostics,
+    passive_fill_event_window_regime_scorecard,
+    passive_fill_event_window_regime_summary,
     passive_fill_event_window_sensitivity,
     passive_fill_event_window_transition_matrix,
     passive_fill_event_window_transition_scorecard,
@@ -224,6 +226,7 @@ from lcri_lab.reporting import (
     verify_passive_fill_event_lifecycle_policy_curve,
     verify_passive_fill_event_policy_stability,
     verify_passive_fill_event_policy_stability_scorecard,
+    verify_passive_fill_event_window_regime_scorecard,
     verify_passive_fill_event_transition_policy_curve,
     verify_passive_fill_threshold_policy_curve,
     verify_phase_shift_artifact_review,
@@ -605,6 +608,18 @@ def run_demo(
     )
     execution_publishability_packet = execution_publishability_review_packet(scored)
     heldout_execution_publishability_packet = execution_publishability_review_packet(heldout_scored)
+    scored = add_passive_fill_event_window_regimes(
+        scored,
+        threshold=0.75,
+        window=3,
+        group_cols="pressure_memory_decay_state",
+    )
+    heldout_scored = add_passive_fill_event_window_regimes(
+        heldout_scored,
+        threshold=0.75,
+        window=3,
+        group_cols="pressure_memory_decay_state",
+    )
     passive_fill_events = passive_fill_event_window_diagnostics(
         scored,
         threshold=0.75,
@@ -621,6 +636,10 @@ def run_demo(
         passive_fill_event_lead_lag
     )
     passive_fill_event_regimes = passive_fill_event_regime_summary(passive_fill_events)
+    passive_fill_event_window_regimes = passive_fill_event_window_regime_summary(scored)
+    passive_fill_event_window_regime_gate = passive_fill_event_window_regime_scorecard(
+        passive_fill_event_window_regimes
+    )
     passive_fill_event_window_transitions = passive_fill_event_window_transition_matrix(scored)
     passive_fill_event_window_transition_gate = passive_fill_event_window_transition_scorecard(
         passive_fill_event_window_transitions
@@ -659,6 +678,12 @@ def run_demo(
     )
     heldout_passive_fill_event_regimes = passive_fill_event_regime_summary(
         heldout_passive_fill_events
+    )
+    heldout_passive_fill_event_window_regimes = passive_fill_event_window_regime_summary(
+        heldout_scored
+    )
+    heldout_passive_fill_event_window_regime_gate = passive_fill_event_window_regime_scorecard(
+        heldout_passive_fill_event_window_regimes
     )
     heldout_passive_fill_event_window_transitions = passive_fill_event_window_transition_matrix(
         heldout_scored
@@ -1252,6 +1277,8 @@ def run_demo(
         "passive_fill_event_lead_lag_profile.csv",
         "passive_fill_event_lead_lag_scorecard.csv",
         "passive_fill_event_regime_summary.csv",
+        "passive_fill_event_window_regime_summary.csv",
+        "passive_fill_event_window_regime_scorecard.json",
         "passive_fill_event_window_transition_matrix.csv",
         "passive_fill_event_window_transition_scorecard.json",
         "passive_fill_event_window_sensitivity.csv",
@@ -1270,6 +1297,8 @@ def run_demo(
         "heldout_passive_fill_event_lead_lag_profile.csv",
         "heldout_passive_fill_event_lead_lag_scorecard.csv",
         "heldout_passive_fill_event_regime_summary.csv",
+        "heldout_passive_fill_event_window_regime_summary.csv",
+        "heldout_passive_fill_event_window_regime_scorecard.json",
         "heldout_passive_fill_event_window_transition_matrix.csv",
         "heldout_passive_fill_event_window_transition_scorecard.json",
         "heldout_passive_fill_event_window_sensitivity.csv",
@@ -1588,6 +1617,13 @@ def run_demo(
     passive_fill_event_regimes.to_csv(
         output / "passive_fill_event_regime_summary.csv", index=False
     )
+    passive_fill_event_window_regimes.to_csv(
+        output / "passive_fill_event_window_regime_summary.csv", index=False
+    )
+    write_json(
+        output / "passive_fill_event_window_regime_scorecard.json",
+        passive_fill_event_window_regime_gate,
+    )
     passive_fill_event_window_transitions.to_csv(
         output / "passive_fill_event_window_transition_matrix.csv", index=False
     )
@@ -1644,6 +1680,13 @@ def run_demo(
     )
     heldout_passive_fill_event_regimes.to_csv(
         output / "heldout_passive_fill_event_regime_summary.csv", index=False
+    )
+    heldout_passive_fill_event_window_regimes.to_csv(
+        output / "heldout_passive_fill_event_window_regime_summary.csv", index=False
+    )
+    write_json(
+        output / "heldout_passive_fill_event_window_regime_scorecard.json",
+        heldout_passive_fill_event_window_regime_gate,
     )
     heldout_passive_fill_event_window_transitions.to_csv(
         output / "heldout_passive_fill_event_window_transition_matrix.csv", index=False
@@ -3021,6 +3064,18 @@ def verify_report(report_dir: Path) -> None:
             )
             if "heldout_execution_adjusted_lcri_event_window_release_scorecard.json"
             in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_passive_fill_event_window_regime_scorecard(report_dir)
+            if "passive_fill_event_window_regime_scorecard.json" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_passive_fill_event_window_regime_scorecard(
+                report_dir, "heldout_passive_fill_event_window_regime_scorecard.json"
+            )
+            if "heldout_passive_fill_event_window_regime_scorecard.json" in manifest_artifacts
             else []
         ),
         *(
