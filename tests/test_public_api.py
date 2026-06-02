@@ -161,6 +161,11 @@ def test_public_api_exports_queue_position_trade_confirmation_release_scorecard(
     assert "queue_position_trade_confirmation_release_scorecard" in lcri_lab.__all__
 
 
+def test_public_api_exports_queue_position_trade_confirmation_competing_risk_curve() -> None:
+    assert callable(lcri_lab.queue_position_trade_confirmation_competing_risk_curve)
+    assert "queue_position_trade_confirmation_competing_risk_curve" in lcri_lab.__all__
+
+
 def test_public_api_exports_queue_position_adverse_selection_policy_frontier() -> None:
     assert callable(lcri_lab.queue_position_adverse_selection_policy_frontier)
     assert callable(lcri_lab.queue_position_adverse_selection_policy_summary)

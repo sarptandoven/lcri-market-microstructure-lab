@@ -10,6 +10,7 @@ from lcri_lab.execution import (
     add_event_level_realized_fill_proxy,
     passive_fill_proxy_disagreement,
     trade_confirmed_passive_fill_latency_summary,
+    queue_position_trade_confirmation_competing_risk_curve,
     queue_position_trade_confirmation_regime_scorecard,
     queue_position_trade_confirmation_release_scorecard,
     queue_position_trade_confirmation_surface,
@@ -627,6 +628,62 @@ def test_trade_confirmed_passive_fill_latency_summary_surfaces_latency_and_cance
     assert by_side.loc["ask", "review_label"] == "cancel_only_and_latency_risk"
     assert by_side.loc["all", "rows"] == 8
     assert by_side.loc["all", "cancel_only_clear_rate"] == pytest.approx(0.25)
+
+
+def test_queue_position_trade_confirmation_competing_risk_curve_tracks_latency_thresholds() -> None:
+    frame = pd.DataFrame(
+        {
+            "bid_trade_confirmed_fill": [1.0, 1.0, 0.0, 0.0],
+            "ask_trade_confirmed_fill": [1.0, 0.0, 0.0, 1.0],
+            "bid_trade_confirmed_fill_latency": [0.10, 0.60, pd.NA, pd.NA],
+            "ask_trade_confirmed_fill_latency": [0.30, pd.NA, pd.NA, 0.90],
+            "bid_queue_advance_without_trade": [0.0, 0.0, 1.0, 0.0],
+            "ask_queue_advance_without_trade": [0.0, 1.0, 0.0, 0.0],
+        }
+    )
+
+    curve = queue_position_trade_confirmation_competing_risk_curve(
+        frame,
+        latency_thresholds=(0.25, 0.75),
+        max_late_trade_confirmed_rate=0.50,
+    )
+    by_side_threshold = curve.set_index(["side", "latency_threshold"])
+
+    assert curve.columns.tolist() == [
+        "side",
+        "latency_threshold",
+        "rows",
+        "trade_confirmed_by_threshold_rate",
+        "late_trade_confirmed_rate",
+        "cancel_only_clear_rate",
+        "unresolved_rate",
+        "competing_risk_label",
+    ]
+    assert by_side_threshold.loc[("bid", 0.25), "trade_confirmed_by_threshold_rate"] == pytest.approx(0.25)
+    assert by_side_threshold.loc[("bid", 0.25), "late_trade_confirmed_rate"] == pytest.approx(0.25)
+    assert by_side_threshold.loc[("bid", 0.25), "cancel_only_clear_rate"] == pytest.approx(0.25)
+    assert by_side_threshold.loc[("bid", 0.25), "unresolved_rate"] == pytest.approx(0.25)
+    assert by_side_threshold.loc[("bid", 0.75), "trade_confirmed_by_threshold_rate"] == pytest.approx(0.50)
+    assert by_side_threshold.loc[("ask", 0.75), "late_trade_confirmed_rate"] == pytest.approx(0.25)
+    assert by_side_threshold.loc[("all", 0.25), "rows"] == 8
+    assert by_side_threshold.loc[("all", 0.75), "competing_risk_label"] == "cancel_only_risk"
+
+
+def test_queue_position_trade_confirmation_competing_risk_curve_rejects_unsorted_thresholds() -> None:
+    with pytest.raises(ValueError, match="strictly increasing"):
+        queue_position_trade_confirmation_competing_risk_curve(
+            pd.DataFrame(
+                {
+                    "bid_trade_confirmed_fill": [1.0],
+                    "ask_trade_confirmed_fill": [0.0],
+                    "bid_trade_confirmed_fill_latency": [0.1],
+                    "ask_trade_confirmed_fill_latency": [pd.NA],
+                    "bid_queue_advance_without_trade": [0.0],
+                    "ask_queue_advance_without_trade": [0.0],
+                }
+            ),
+            latency_thresholds=(0.5, 0.25),
+        )
 
 
 def test_trade_confirmed_passive_fill_latency_summary_rejects_invalid_fill_flags() -> None:

@@ -857,6 +857,119 @@ def trade_confirmed_passive_fill_latency_summary(
     return pd.DataFrame(rows, columns=columns)
 
 
+def queue_position_trade_confirmation_competing_risk_curve(
+    frame: pd.DataFrame,
+    *,
+    fill_cols: tuple[str, ...] = ("bid_trade_confirmed_fill", "ask_trade_confirmed_fill"),
+    latency_cols: tuple[str, ...] = ("bid_trade_confirmed_fill_latency", "ask_trade_confirmed_fill_latency"),
+    cancel_only_cols: tuple[str, ...] = ("bid_queue_advance_without_trade", "ask_queue_advance_without_trade"),
+    sides: tuple[str, ...] = ("bid", "ask"),
+    latency_thresholds: tuple[float, ...] = (0.10, 0.25, 0.50, 1.00),
+    max_cancel_only_clear_rate: float = 0.05,
+    max_late_trade_confirmed_rate: float = 0.10,
+) -> pd.DataFrame:
+    """Cumulative competing-risk curve for passive-fill confirmation latency.
+
+    Rows produced by ``add_event_level_trade_confirmed_fill_proxy`` can end as
+    prompt trade-confirmed fills, late trade-confirmed fills, cancel-only queue
+    clears, or unresolved opportunities. This curve evaluates those outcomes at
+    latency cutoffs so publication reviews can see whether execution-adjusted LCRI
+    survives realistic reaction-time budgets rather than only an end-of-window fill
+    label.
+    """
+    column_groups = [fill_cols, latency_cols, cancel_only_cols, sides]
+    lengths = {len(group) for group in column_groups}
+    if lengths != {len(sides)} or not sides:
+        raise ValueError("all side column tuples must be non-empty and have the same length")
+    thresholds = [float(threshold) for threshold in latency_thresholds]
+    if not thresholds:
+        raise ValueError("latency_thresholds must be non-empty")
+    if any(not math.isfinite(threshold) or threshold < 0.0 for threshold in thresholds):
+        raise ValueError("latency_thresholds must be finite non-negative values")
+    if any(right <= left for left, right in zip(thresholds, thresholds[1:], strict=False)):
+        raise ValueError("latency_thresholds must be strictly increasing")
+    if not math.isfinite(max_cancel_only_clear_rate) or not 0.0 <= max_cancel_only_clear_rate <= 1.0:
+        raise ValueError("max_cancel_only_clear_rate must be finite and in [0, 1]")
+    if not math.isfinite(max_late_trade_confirmed_rate) or not 0.0 <= max_late_trade_confirmed_rate <= 1.0:
+        raise ValueError("max_late_trade_confirmed_rate must be finite and in [0, 1]")
+
+    required = set(fill_cols) | set(latency_cols) | set(cancel_only_cols)
+    _require_columns(frame, required, "queue-position trade confirmation competing risk curve")
+    columns = [
+        "side",
+        "latency_threshold",
+        "rows",
+        "trade_confirmed_by_threshold_rate",
+        "late_trade_confirmed_rate",
+        "cancel_only_clear_rate",
+        "unresolved_rate",
+        "competing_risk_label",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    fill_values = _finite_values(frame, list(fill_cols), "queue-position trade confirmation competing risk curve")
+    cancel_values = _finite_values(frame, list(cancel_only_cols), "queue-position trade confirmation competing risk curve")
+    if not fill_values.apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("queue-position trade confirmation competing risk fill flags must be in [0, 1]")
+    if not cancel_values.apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("queue-position trade confirmation competing risk cancel-only flags must be in [0, 1]")
+
+    latency_values = pd.DataFrame(index=frame.index)
+    for latency_col in latency_cols:
+        latency = pd.to_numeric(frame[latency_col], errors="coerce")
+        observed = latency.dropna()
+        if (observed < 0.0).any() or not np.isfinite(observed.to_numpy()).all():
+            raise ValueError("queue-position trade confirmation competing risk latencies must be non-negative")
+        latency_values[latency_col] = latency
+
+    def summarize_side(side: str, fill: pd.Series, latency: pd.Series, cancel_only: pd.Series) -> list[dict[str, float | int | str]]:
+        fill_bool = fill >= 0.5
+        cancel_bool = cancel_only >= 0.5
+        rows = int(len(fill))
+        summaries: list[dict[str, float | int | str]] = []
+        for threshold in thresholds:
+            prompt_fill = fill_bool & latency.le(threshold).fillna(False)
+            late_fill = fill_bool & ~prompt_fill
+            unresolved = ~(prompt_fill | late_fill | cancel_bool)
+            late_rate = float(late_fill.mean())
+            cancel_rate = float(cancel_bool.mean())
+            if cancel_rate > max_cancel_only_clear_rate and late_rate > max_late_trade_confirmed_rate:
+                label = "cancel_only_and_late_confirmation_risk"
+            elif cancel_rate > max_cancel_only_clear_rate:
+                label = "cancel_only_risk"
+            elif late_rate > max_late_trade_confirmed_rate:
+                label = "late_confirmation_risk"
+            else:
+                label = "trade_confirmation_curve_ok"
+            summaries.append(
+                {
+                    "side": side,
+                    "latency_threshold": threshold,
+                    "rows": rows,
+                    "trade_confirmed_by_threshold_rate": float(prompt_fill.mean()),
+                    "late_trade_confirmed_rate": late_rate,
+                    "cancel_only_clear_rate": cancel_rate,
+                    "unresolved_rate": float(unresolved.mean()),
+                    "competing_risk_label": label,
+                }
+            )
+        return summaries
+
+    rows: list[dict[str, float | int | str]] = []
+    for side, fill_col, latency_col, cancel_col in zip(sides, fill_cols, latency_cols, cancel_only_cols, strict=True):
+        rows.extend(summarize_side(side, fill_values[fill_col], latency_values[latency_col], cancel_values[cancel_col]))
+    rows.extend(
+        summarize_side(
+            "all",
+            pd.concat([fill_values[column] for column in fill_cols], ignore_index=True),
+            pd.concat([latency_values[column] for column in latency_cols], ignore_index=True),
+            pd.concat([cancel_values[column] for column in cancel_only_cols], ignore_index=True),
+        )
+    )
+    return pd.DataFrame(rows, columns=columns)
+
+
 def passive_fill_proxy_disagreement(
     frame: pd.DataFrame,
     *,

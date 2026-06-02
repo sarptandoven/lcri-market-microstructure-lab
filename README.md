@@ -220,6 +220,7 @@ not mistake queue movement for a tradable fill.
 ```python
 from lcri_lab import (
     add_event_level_trade_confirmed_fill_proxy,
+    queue_position_trade_confirmation_competing_risk_curve,
     trade_confirmed_passive_fill_latency_summary,
 )
 
@@ -234,13 +235,23 @@ latency_review = trade_confirmed_passive_fill_latency_summary(
     max_mean_latency=0.300,
     max_cancel_only_clear_rate=0.025,
 )
+competing_risk_curve = queue_position_trade_confirmation_competing_risk_curve(
+    fills,
+    latency_thresholds=(0.050, 0.100, 0.250),
+    max_cancel_only_clear_rate=0.025,
+    max_late_trade_confirmed_rate=0.100,
+)
 ```
 
 `trade_confirmed_passive_fill_latency_summary` returns typed side-level review
 rows for `bid`, `ask`, and `all`, including trade-confirmed fill rate,
 cancel-only clear rate, mean/p95 fill latency, mean trade/cancel depletion, and a
-bounded `review_label`. The companion report verifier accepts both in-sample and
-heldout `*_trade_confirmed_passive_fill_latency_summary.csv` artifacts so API
+bounded `review_label`. `queue_position_trade_confirmation_competing_risk_curve`
+adds a cumulative latency-budget view: for each side and for the combined book it
+splits opportunities into fills confirmed by the cutoff, late trade-confirmed
+fills, cancel-only queue clears, and unresolved rows, with bounded competing-risk
+labels for publication gates. The companion report verifier accepts both in-sample
+and heldout `*_trade_confirmed_passive_fill_latency_summary.csv` artifacts so API
 users can gate publication on whether fills are promptly trade-confirmed rather
 than inferred from cancel-only queue movement.
 
