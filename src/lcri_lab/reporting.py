@@ -649,6 +649,78 @@ def verify_queue_position_trade_confirmation_release_scorecard(
     return errors
 
 
+def verify_queue_position_unfilled_opportunity_scorecard(
+    output_dir: Path,
+    artifact: str = "queue_position_unfilled_opportunity_scorecard.json",
+) -> list[str]:
+    """Return errors for queue-position unfilled-opportunity release scorecards."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing queue-position unfilled opportunity scorecard: {artifact}"]
+    try:
+        payload = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        return [f"invalid queue-position unfilled opportunity scorecard JSON {artifact}: {exc}"]
+
+    required = {
+        "evaluated_cells",
+        "tail_cells",
+        "tail_rows",
+        "max_tail_unfilled_opportunity_share",
+        "min_tail_edge_capture_rate",
+        "weighted_tail_unfilled_opportunity_share",
+        "weighted_tail_edge_capture_rate",
+        "worst_tail_cell",
+        "unfilled_opportunity_release_label",
+        "publishable",
+        "blocking_reasons",
+        "review_reasons",
+    }
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete queue-position unfilled opportunity scorecard {artifact}: {missing}"]
+
+    errors: list[str] = []
+    numeric_keys = [
+        "evaluated_cells",
+        "tail_cells",
+        "tail_rows",
+        "max_tail_unfilled_opportunity_share",
+        "min_tail_edge_capture_rate",
+        "weighted_tail_unfilled_opportunity_share",
+        "weighted_tail_edge_capture_rate",
+    ]
+    numeric = {key: float(payload[key]) for key in numeric_keys}
+    if not all(math.isfinite(value) for value in numeric.values()):
+        errors.append(f"non-finite queue-position unfilled opportunity scorecard values in {artifact}")
+    count_columns = ["evaluated_cells", "tail_cells", "tail_rows"]
+    if any(numeric[key] < 0.0 for key in count_columns):
+        errors.append(f"negative queue-position unfilled opportunity scorecard counts in {artifact}")
+    if any(not math.isclose(numeric[key], round(numeric[key]), abs_tol=1e-9) for key in count_columns):
+        errors.append(f"non-integer queue-position unfilled opportunity scorecard counts in {artifact}")
+    if numeric["tail_cells"] > numeric["evaluated_cells"]:
+        errors.append(f"tail queue-position unfilled opportunity cells exceed evaluated cells in {artifact}")
+    rate_columns = [
+        "max_tail_unfilled_opportunity_share",
+        "min_tail_edge_capture_rate",
+        "weighted_tail_unfilled_opportunity_share",
+        "weighted_tail_edge_capture_rate",
+    ]
+    if any(not 0.0 <= numeric[key] <= 1.0 for key in rate_columns):
+        errors.append(f"bounded queue-position unfilled opportunity scorecard rates violated in {artifact}")
+    decision = str(payload["unfilled_opportunity_release_label"])
+    if decision not in {"pass", "review", "block"}:
+        errors.append(f"invalid queue-position unfilled opportunity release decision in {artifact}: {decision}")
+    if not isinstance(payload["publishable"], bool):
+        errors.append(f"non-boolean queue-position unfilled opportunity publishable flag in {artifact}")
+    elif payload["publishable"] != (decision == "pass"):
+        errors.append(f"queue-position unfilled opportunity publishable flag contradicts decision in {artifact}")
+    for key in ["worst_tail_cell", "blocking_reasons", "review_reasons"]:
+        if not str(payload[key]):
+            errors.append(f"blank queue-position unfilled opportunity scorecard text field {key} in {artifact}")
+    return errors
+
+
 def verify_queue_position_trade_confirmation_regime_scorecard(
     output_dir: Path,
     artifact: str = "queue_position_trade_confirmation_regime_scorecard.csv",

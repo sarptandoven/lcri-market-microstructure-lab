@@ -120,6 +120,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_execution_adjusted_lcri_side_attribution.csv").exists()
     assert (tmp_path / "queue_position_lcri_tail_fill_residuals.csv").exists()
     assert (tmp_path / "heldout_queue_position_lcri_tail_fill_residuals.csv").exists()
+    assert (tmp_path / "queue_position_unfilled_opportunity_curve.csv").exists()
+    assert (tmp_path / "heldout_queue_position_unfilled_opportunity_curve.csv").exists()
+    assert (tmp_path / "queue_position_unfilled_opportunity_scorecard.json").exists()
+    assert (tmp_path / "heldout_queue_position_unfilled_opportunity_scorecard.json").exists()
     assert (tmp_path / "queue_position_lcri_tail_adverse_selection_surface.csv").exists()
     assert (tmp_path / "heldout_queue_position_lcri_tail_adverse_selection_surface.csv").exists()
     assert (tmp_path / "queue_position_lcri_tail_adverse_selection_release_scorecard.json").exists()
@@ -408,6 +412,15 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     tail_adverse_scorecard = json.loads(
         (tmp_path / "queue_position_lcri_tail_adverse_selection_release_scorecard.json").read_text()
     )
+    unfilled_opportunity_scorecard = json.loads(
+        (tmp_path / "queue_position_unfilled_opportunity_scorecard.json").read_text()
+    )
+    assert unfilled_opportunity_scorecard["unfilled_opportunity_release_label"] in {"pass", "review", "block"}
+    assert unfilled_opportunity_scorecard["publishable"] == (
+        unfilled_opportunity_scorecard["unfilled_opportunity_release_label"] == "pass"
+    )
+    assert unfilled_opportunity_scorecard["tail_rows"] >= 0
+    assert "worst_tail_cell" in unfilled_opportunity_scorecard
     assert tail_adverse_scorecard["tail_adverse_release_label"] in {"pass", "review", "block"}
     assert tail_adverse_scorecard["total_tail_rows"] >= 0
     assert "candidate_weighted_fill_minus_adverse_rate" in tail_adverse_scorecard

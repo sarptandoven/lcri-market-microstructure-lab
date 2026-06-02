@@ -154,6 +154,7 @@ from lcri_lab.execution import (
     queue_position_lcri_tail_adverse_selection_surface,
     queue_position_lcri_tail_fill_residuals,
     queue_position_unfilled_opportunity_curve,
+    queue_position_unfilled_opportunity_scorecard,
     queue_position_path_drawdown_episodes,
     queue_position_path_drawdown_summary,
     queue_position_regime_capacity_concentration,
@@ -210,6 +211,7 @@ from lcri_lab.reporting import (
     verify_execution_publishability_release_gate,
     verify_queue_position_trade_confirmation_regime_scorecard,
     verify_queue_position_trade_confirmation_release_scorecard,
+    verify_queue_position_unfilled_opportunity_scorecard,
     verify_trade_confirmed_passive_fill_latency_summary,
     verify_passive_fill_realization_horizon_sweep,
     verify_queue_position_lcri_tail_fill_residuals,
@@ -1000,6 +1002,16 @@ def run_demo(
         heldout_passive_fill_labeled,
         group_cols="passive_fill_event_window_regime",
     )
+    queue_unfilled_opportunity_scorecard = queue_position_unfilled_opportunity_scorecard(
+        queue_unfilled_opportunity_curve,
+        min_tail_bin=4,
+        min_tail_rows=20,
+    )
+    heldout_queue_unfilled_opportunity_scorecard = queue_position_unfilled_opportunity_scorecard(
+        heldout_queue_unfilled_opportunity_curve,
+        min_tail_bin=4,
+        min_tail_rows=20,
+    )
     queue_lcri_tail_adverse_selection_surface = queue_position_lcri_tail_adverse_selection_surface(
         passive_fill_labeled
     )
@@ -1188,6 +1200,8 @@ def run_demo(
         "heldout_queue_position_lcri_tail_fill_residuals.csv",
         "queue_position_unfilled_opportunity_curve.csv",
         "heldout_queue_position_unfilled_opportunity_curve.csv",
+        "queue_position_unfilled_opportunity_scorecard.json",
+        "heldout_queue_position_unfilled_opportunity_scorecard.json",
         "queue_position_lcri_tail_adverse_selection_surface.csv",
         "heldout_queue_position_lcri_tail_adverse_selection_surface.csv",
         "queue_position_lcri_tail_adverse_selection_release_scorecard.json",
@@ -1812,6 +1826,14 @@ def run_demo(
     )
     heldout_queue_unfilled_opportunity_curve.to_csv(
         output / "heldout_queue_position_unfilled_opportunity_curve.csv", index=False
+    )
+    write_json(
+        output / "queue_position_unfilled_opportunity_scorecard.json",
+        queue_unfilled_opportunity_scorecard,
+    )
+    write_json(
+        output / "heldout_queue_position_unfilled_opportunity_scorecard.json",
+        heldout_queue_unfilled_opportunity_scorecard,
     )
     queue_lcri_tail_adverse_selection_surface.to_csv(
         output / "queue_position_lcri_tail_adverse_selection_surface.csv", index=False
@@ -2892,6 +2914,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_queue_position_lcri_tail_fill_residuals.csv"
             )
             if "heldout_queue_position_lcri_tail_fill_residuals.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_queue_position_unfilled_opportunity_scorecard(report_dir)
+            if "queue_position_unfilled_opportunity_scorecard.json" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_queue_position_unfilled_opportunity_scorecard(
+                report_dir, "heldout_queue_position_unfilled_opportunity_scorecard.json"
+            )
+            if "heldout_queue_position_unfilled_opportunity_scorecard.json" in manifest_artifacts
             else []
         ),
         *(

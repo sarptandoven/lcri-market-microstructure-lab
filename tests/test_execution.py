@@ -13,6 +13,7 @@ from lcri_lab.execution import (
     queue_position_trade_confirmation_release_scorecard,
     queue_position_trade_confirmation_surface,
     queue_position_unfilled_opportunity_curve,
+    queue_position_unfilled_opportunity_scorecard,
     add_passive_fill_event_window_regimes,
     add_queue_position_features,
     add_queue_position_order_size_features,
@@ -5887,3 +5888,73 @@ def test_queue_position_unfilled_opportunity_curve_can_group_by_event_window() -
         "unfilled_tail_opportunity",
         "unfilled_tail_opportunity",
     ]
+
+
+def test_queue_position_unfilled_opportunity_scorecard_blocks_tail_edge_nonfills() -> None:
+    curve = pd.DataFrame(
+        {
+            "passive_fill_event_window": ["pre_event", "event", "event"],
+            "lcri_tail_bin": [1, 1, 2],
+            "rows": [30, 20, 10],
+            "mean_abs_lcri": [1.5, 2.0, 4.0],
+            "mean_predicted_fill_probability": [0.70, 0.80, 0.65],
+            "realized_fill_rate": [0.65, 0.30, 0.10],
+            "mean_signal_edge_ticks": [1.0, 2.0, 5.0],
+            "mean_captured_edge_ticks": [0.65, 0.60, 0.50],
+            "mean_unfilled_opportunity_ticks": [0.35, 1.40, 4.50],
+            "edge_capture_rate": [0.65, 0.30, 0.10],
+            "unfilled_opportunity_share": [0.35, 0.70, 0.90],
+            "unfilled_opportunity_label": [
+                "opportunity_captured",
+                "unfilled_tail_opportunity",
+                "unfilled_tail_opportunity",
+            ],
+        }
+    )
+
+    scorecard = queue_position_unfilled_opportunity_scorecard(
+        curve,
+        min_tail_bin=2,
+        max_tail_unfilled_opportunity_share=0.50,
+        min_tail_edge_capture_rate=0.40,
+        min_tail_rows=5,
+    )
+
+    assert scorecard["unfilled_opportunity_release_label"] == "block"
+    assert scorecard["publishable"] is False
+    assert scorecard["evaluated_cells"] == 3
+    assert scorecard["tail_cells"] == 1
+    assert scorecard["tail_rows"] == 10
+    assert scorecard["max_tail_unfilled_opportunity_share"] == pytest.approx(0.90)
+    assert scorecard["min_tail_edge_capture_rate"] == pytest.approx(0.10)
+    assert scorecard["worst_tail_cell"] == "event:tail_2"
+    assert scorecard["blocking_reasons"] == "tail_opportunity_share,tail_capture_shortfall"
+
+
+def test_queue_position_unfilled_opportunity_scorecard_reviews_thin_tail_evidence() -> None:
+    curve = pd.DataFrame(
+        {
+            "lcri_tail_bin": [1, 2],
+            "rows": [25, 3],
+            "mean_abs_lcri": [1.0, 3.0],
+            "mean_predicted_fill_probability": [0.60, 0.55],
+            "realized_fill_rate": [0.60, 0.50],
+            "mean_signal_edge_ticks": [1.0, 2.0],
+            "mean_captured_edge_ticks": [0.60, 1.0],
+            "mean_unfilled_opportunity_ticks": [0.40, 1.0],
+            "edge_capture_rate": [0.60, 0.50],
+            "unfilled_opportunity_share": [0.40, 0.50],
+            "unfilled_opportunity_label": ["opportunity_captured", "partial_opportunity_capture"],
+        }
+    )
+
+    scorecard = queue_position_unfilled_opportunity_scorecard(curve, min_tail_bin=2, min_tail_rows=5)
+
+    assert scorecard["unfilled_opportunity_release_label"] == "review"
+    assert scorecard["publishable"] is False
+    assert scorecard["review_reasons"] == "thin_tail_opportunity_evidence"
+
+
+def test_queue_position_unfilled_opportunity_scorecard_rejects_missing_columns() -> None:
+    with pytest.raises(ValueError, match="missing queue position unfilled opportunity scorecard columns"):
+        queue_position_unfilled_opportunity_scorecard(pd.DataFrame({"rows": [1]}))

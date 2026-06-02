@@ -32,6 +32,7 @@ from lcri_lab.reporting import (
     verify_execution_adjusted_lcri_quantile_diagnostics,
     verify_queue_position_trade_confirmation_regime_scorecard,
     verify_queue_position_trade_confirmation_release_scorecard,
+    verify_queue_position_unfilled_opportunity_scorecard,
     verify_trade_confirmed_passive_fill_latency_summary,
     verify_queue_position_lcri_tail_fill_residuals,
     verify_queue_position_path_drawdown_artifacts,
@@ -299,6 +300,36 @@ def test_verify_queue_position_trade_confirmation_release_scorecard_checks_schem
     errors = verify_queue_position_trade_confirmation_release_scorecard(tmp_path)
     assert any("publishable flag contradicts decision" in error for error in errors)
     assert any("bounded queue-position trade confirmation scorecard rates" in error for error in errors)
+
+
+def test_verify_queue_position_unfilled_opportunity_scorecard_checks_schema_and_decision(
+    tmp_path,
+) -> None:
+    payload = {
+        "evaluated_cells": 3,
+        "tail_cells": 1,
+        "tail_rows": 30,
+        "max_tail_unfilled_opportunity_share": 0.45,
+        "min_tail_edge_capture_rate": 0.55,
+        "weighted_tail_unfilled_opportunity_share": 0.45,
+        "weighted_tail_edge_capture_rate": 0.55,
+        "worst_tail_cell": "event:tail_5",
+        "unfilled_opportunity_release_label": "pass",
+        "publishable": True,
+        "blocking_reasons": "none",
+        "review_reasons": "none",
+    }
+    (tmp_path / "queue_position_unfilled_opportunity_scorecard.json").write_text(json.dumps(payload))
+
+    assert verify_queue_position_unfilled_opportunity_scorecard(tmp_path) == []
+
+    payload["publishable"] = False
+    payload["weighted_tail_edge_capture_rate"] = 1.20
+    (tmp_path / "queue_position_unfilled_opportunity_scorecard.json").write_text(json.dumps(payload))
+
+    errors = verify_queue_position_unfilled_opportunity_scorecard(tmp_path)
+    assert any("publishable flag contradicts decision" in error for error in errors)
+    assert any("bounded queue-position unfilled opportunity scorecard rates" in error for error in errors)
 
 
 def test_verify_queue_position_trade_confirmation_regime_scorecard_checks_schema_and_labels(

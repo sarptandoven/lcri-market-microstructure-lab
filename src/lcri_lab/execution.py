@@ -9674,6 +9674,146 @@ def queue_position_unfilled_opportunity_curve(
             rows.append(row)
     return pd.DataFrame(rows, columns=columns)
 
+
+def queue_position_unfilled_opportunity_scorecard(
+    curve: pd.DataFrame,
+    *,
+    min_tail_bin: int | None = None,
+    max_tail_unfilled_opportunity_share: float = 0.50,
+    min_tail_edge_capture_rate: float = 0.50,
+    min_tail_rows: int = 20,
+) -> dict[str, bool | float | int | str]:
+    """Gate execution-adjusted LCRI on high-signal opportunity that never fills.
+
+    A passive policy can pass filled-trade toxicity checks while leaving the best
+    LCRI tail edge stranded behind the queue. This scorecard reduces
+    ``queue_position_unfilled_opportunity_curve`` into a release decision focused
+    on the highest LCRI tail bins: it blocks when tail opportunity share is too
+    large or edge capture is too low, and reviews when tail evidence is too thin.
+    """
+    if min_tail_bin is not None and (
+        not isinstance(min_tail_bin, int) or isinstance(min_tail_bin, bool) or min_tail_bin < 1
+    ):
+        raise ValueError("min_tail_bin must be a positive integer when provided")
+    if not isinstance(min_tail_rows, int) or isinstance(min_tail_rows, bool) or min_tail_rows < 1:
+        raise ValueError("min_tail_rows must be a positive integer")
+    for name, value in {
+        "max_tail_unfilled_opportunity_share": max_tail_unfilled_opportunity_share,
+        "min_tail_edge_capture_rate": min_tail_edge_capture_rate,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= max_tail_unfilled_opportunity_share <= 1.0:
+        raise ValueError("max_tail_unfilled_opportunity_share must be in [0, 1]")
+    if not 0.0 <= min_tail_edge_capture_rate <= 1.0:
+        raise ValueError("min_tail_edge_capture_rate must be in [0, 1]")
+
+    required = {
+        "lcri_tail_bin",
+        "rows",
+        "mean_abs_lcri",
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+        "mean_signal_edge_ticks",
+        "mean_captured_edge_ticks",
+        "mean_unfilled_opportunity_ticks",
+        "edge_capture_rate",
+        "unfilled_opportunity_share",
+        "unfilled_opportunity_label",
+    }
+    missing = sorted(required - set(curve.columns))
+    if missing:
+        raise ValueError(f"missing queue position unfilled opportunity scorecard columns: {missing}")
+    if curve.empty:
+        return {
+            "evaluated_cells": 0,
+            "tail_cells": 0,
+            "tail_rows": 0,
+            "max_tail_unfilled_opportunity_share": 0.0,
+            "min_tail_edge_capture_rate": 0.0,
+            "weighted_tail_unfilled_opportunity_share": 0.0,
+            "weighted_tail_edge_capture_rate": 0.0,
+            "worst_tail_cell": "none",
+            "unfilled_opportunity_release_label": "review",
+            "publishable": False,
+            "blocking_reasons": "none",
+            "review_reasons": "empty_unfilled_opportunity_curve",
+        }
+
+    numeric_columns = list(required - {"unfilled_opportunity_label"})
+    numeric = curve[numeric_columns].astype(float)
+    if not np.isfinite(numeric.to_numpy()).all():
+        raise ValueError("queue position unfilled opportunity scorecard metrics must be finite")
+    if (numeric["rows"] < 0.0).any() or not np.isclose(
+        numeric["rows"], np.round(numeric["rows"]), atol=1e-9
+    ).all():
+        raise ValueError("queue position unfilled opportunity scorecard rows must be non-negative integers")
+    bounded_columns = [
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+        "edge_capture_rate",
+        "unfilled_opportunity_share",
+    ]
+    if not numeric[bounded_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("queue position unfilled opportunity scorecard rates must be in [0, 1]")
+
+    tail_start = int(min_tail_bin) if min_tail_bin is not None else int(numeric["lcri_tail_bin"].max())
+    tail = curve.loc[numeric["lcri_tail_bin"] >= tail_start].copy()
+    if tail.empty:
+        tail = curve.loc[numeric["lcri_tail_bin"] == numeric["lcri_tail_bin"].max()].copy()
+    tail_numeric = tail[numeric_columns].astype(float)
+    tail_rows = int(tail_numeric["rows"].sum())
+    weights = tail_numeric["rows"] / float(tail_rows) if tail_rows > 0 else pd.Series(0.0, index=tail.index)
+    weighted_share = float((tail_numeric["unfilled_opportunity_share"] * weights).sum())
+    weighted_capture = float((tail_numeric["edge_capture_rate"] * weights).sum())
+    max_unfilled_share = float(tail_numeric["unfilled_opportunity_share"].max())
+    min_capture = float(tail_numeric["edge_capture_rate"].min())
+
+    risk = tail_numeric["unfilled_opportunity_share"] - tail_numeric["edge_capture_rate"]
+    worst_index = risk.sort_values(ascending=False).index[0]
+    group_columns = [
+        column
+        for column in curve.columns
+        if column not in required and not column.startswith("mean_") and column not in {"rows"}
+    ]
+    if group_columns:
+        prefix = ":".join(str(curve.loc[worst_index, column]) for column in group_columns)
+        worst_tail_cell = f"{prefix}:tail_{int(curve.loc[worst_index, 'lcri_tail_bin'])}"
+    else:
+        worst_tail_cell = f"tail_{int(curve.loc[worst_index, 'lcri_tail_bin'])}"
+
+    blocking_reasons: list[str] = []
+    review_reasons: list[str] = []
+    if max_unfilled_share > max_tail_unfilled_opportunity_share + 1e-12:
+        blocking_reasons.append("tail_opportunity_share")
+    if min_capture < min_tail_edge_capture_rate - 1e-12:
+        blocking_reasons.append("tail_capture_shortfall")
+    if tail_rows < min_tail_rows:
+        review_reasons.append("thin_tail_opportunity_evidence")
+
+    if blocking_reasons:
+        label = "block"
+    elif review_reasons:
+        label = "review"
+    else:
+        label = "pass"
+
+    return {
+        "evaluated_cells": int(len(curve)),
+        "tail_cells": int(len(tail)),
+        "tail_rows": tail_rows,
+        "max_tail_unfilled_opportunity_share": max_unfilled_share,
+        "min_tail_edge_capture_rate": min_capture,
+        "weighted_tail_unfilled_opportunity_share": weighted_share,
+        "weighted_tail_edge_capture_rate": weighted_capture,
+        "worst_tail_cell": worst_tail_cell,
+        "unfilled_opportunity_release_label": label,
+        "publishable": bool(label == "pass"),
+        "blocking_reasons": ",".join(blocking_reasons) if blocking_reasons else "none",
+        "review_reasons": ",".join(review_reasons) if review_reasons else "none",
+    }
+
+
 def _rank_probability_bins(probability: pd.Series, bins: int) -> pd.Series:
     effective_bins = min(bins, len(probability))
     ranks = probability.rank(method="first")
