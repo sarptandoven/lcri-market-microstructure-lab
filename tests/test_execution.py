@@ -76,6 +76,8 @@ from lcri_lab.execution import (
     queue_position_latency_edge_survival_scorecard,
     queue_position_latency_regime_surface,
     queue_position_latency_release_scorecard,
+    queue_position_lcri_tail_adverse_selection_release_scorecard,
+    queue_position_lcri_tail_adverse_selection_surface,
     queue_position_lcri_tail_fill_residuals,
     queue_position_path_drawdown_episodes,
     queue_position_path_drawdown_summary,
@@ -4919,3 +4921,151 @@ def test_queue_position_path_drawdown_summary_blocks_concentrated_event_damage()
 def test_queue_position_path_drawdown_summary_rejects_missing_columns() -> None:
     with pytest.raises(ValueError, match="missing queue position path drawdown summary columns"):
         queue_position_path_drawdown_summary(pd.DataFrame({"path_id": ["overall"]}))
+
+
+def test_queue_position_lcri_tail_adverse_selection_surface_flags_toxic_fill_pockets() -> None:
+    frame = pd.DataFrame(
+        {
+            "regime": ["calm", "calm", "calm", "calm", "stress", "stress", "stress"],
+            "best_execution_side": ["long", "long", "long", "long", "short", "short", "abstain"],
+            "lcri": [1.0, 2.0, 3.0, 4.0, -1.0, -3.0, 4.0],
+            "bid_fill_probability": [0.80, 0.85, 0.90, 0.95, 0.10, 0.20, 0.99],
+            "ask_fill_probability": [0.10, 0.20, 0.20, 0.20, 0.85, 0.90, 0.01],
+            "bid_adverse_fill_probability": [0.20, 0.30, 0.95, 0.85, 0.05, 0.10, 0.50],
+            "ask_adverse_fill_probability": [0.10, 0.10, 0.10, 0.10, 0.95, 0.30, 0.50],
+            "bid_realized_fill": [1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+            "ask_realized_fill": [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            "execution_adjusted_edge_ticks": [0.50, 0.20, -0.20, -0.60, -0.30, 0.40, 1.0],
+        }
+    )
+
+    surface = queue_position_lcri_tail_adverse_selection_surface(
+        frame,
+        lcri_bins=2,
+        fill_probability_bins=1,
+        max_abs_fill_residual=0.25,
+        min_fill_minus_adverse_rate=0.0,
+    )
+
+    assert surface.columns.tolist() == [
+        "regime",
+        "best_execution_side",
+        "lcri_tail_bin",
+        "fill_probability_bin",
+        "rows",
+        "mean_abs_lcri",
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+        "mean_selected_adverse_probability",
+        "fill_residual",
+        "absolute_fill_residual",
+        "fill_minus_adverse_rate",
+        "mean_execution_adjusted_edge_ticks",
+        "tail_adverse_selection_label",
+    ]
+    toxic = surface.loc[
+        (surface["regime"] == "calm")
+        & (surface["best_execution_side"] == "long")
+        & (surface["lcri_tail_bin"] == 2)
+    ].iloc[0]
+    assert toxic["rows"] == 2
+    assert toxic["mean_predicted_fill_probability"] == pytest.approx(0.925)
+    assert toxic["realized_fill_rate"] == pytest.approx(0.50)
+    assert toxic["mean_selected_adverse_probability"] == pytest.approx(0.90)
+    assert toxic["fill_minus_adverse_rate"] == pytest.approx(-0.40)
+    assert toxic["tail_adverse_selection_label"] == "tail_adverse_toxic"
+
+    short = surface.loc[surface["best_execution_side"] == "short"].iloc[-1]
+    assert short["tail_adverse_selection_label"] == "tail_adverse_publishable"
+
+
+def test_queue_position_lcri_tail_adverse_selection_surface_rejects_missing_columns() -> None:
+    with pytest.raises(ValueError, match="missing queue position LCRI tail adverse selection columns"):
+        queue_position_lcri_tail_adverse_selection_surface(pd.DataFrame({"lcri": [1.0]}))
+
+
+def test_queue_position_lcri_tail_adverse_selection_release_scorecard_blocks_toxic_tail() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["calm", "stress", "stress"],
+            "best_execution_side": ["long", "long", "short"],
+            "lcri_tail_bin": [5, 5, 4],
+            "fill_probability_bin": [5, 4, 5],
+            "rows": [12, 8, 5],
+            "mean_abs_lcri": [4.2, 3.7, 2.4],
+            "mean_predicted_fill_probability": [0.92, 0.80, 0.70],
+            "realized_fill_rate": [0.40, 0.55, 0.78],
+            "mean_selected_adverse_probability": [0.88, 0.70, 0.30],
+            "fill_residual": [-0.52, -0.25, 0.08],
+            "absolute_fill_residual": [0.52, 0.25, 0.08],
+            "fill_minus_adverse_rate": [-0.48, -0.15, 0.48],
+            "mean_execution_adjusted_edge_ticks": [-0.30, 0.10, 0.20],
+            "tail_adverse_selection_label": [
+                "tail_adverse_toxic",
+                "tail_adverse_toxic",
+                "tail_adverse_publishable",
+            ],
+        }
+    )
+
+    scorecard = queue_position_lcri_tail_adverse_selection_release_scorecard(
+        surface,
+        min_cell_rows=5,
+        block_toxic_row_share=0.40,
+        review_toxic_row_share=0.20,
+        block_fill_minus_adverse_rate=0.0,
+        review_fill_residual=0.20,
+    )
+
+    assert scorecard["tail_adverse_release_label"] == "block"
+    assert scorecard["total_tail_rows"] == 25
+    assert scorecard["eligible_tail_cells"] == 3
+    assert scorecard["toxic_tail_row_share"] == pytest.approx(20 / 25)
+    assert scorecard["candidate_weighted_fill_minus_adverse_rate"] == pytest.approx(
+        ((-0.48 * 12) + (-0.15 * 8) + (0.48 * 5)) / 25
+    )
+    assert scorecard["worst_tail_cell"] == "calm:long:lcri_tail=5:fill_bin=5"
+    assert scorecard["blocking_reasons"] == "toxic_tail_row_share,negative_tail_fill_minus_adverse"
+
+
+def test_queue_position_lcri_tail_adverse_selection_release_scorecard_reviews_miscalibration() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["calm", "stress"],
+            "best_execution_side": ["long", "short"],
+            "lcri_tail_bin": [5, 5],
+            "fill_probability_bin": [5, 4],
+            "rows": [10, 10],
+            "mean_abs_lcri": [4.0, 3.8],
+            "mean_predicted_fill_probability": [0.85, 0.75],
+            "realized_fill_rate": [0.60, 0.70],
+            "mean_selected_adverse_probability": [0.45, 0.40],
+            "fill_residual": [-0.25, -0.05],
+            "absolute_fill_residual": [0.25, 0.05],
+            "fill_minus_adverse_rate": [0.15, 0.30],
+            "mean_execution_adjusted_edge_ticks": [0.05, 0.10],
+            "tail_adverse_selection_label": [
+                "tail_fill_overstated",
+                "tail_adverse_publishable",
+            ],
+        }
+    )
+
+    scorecard = queue_position_lcri_tail_adverse_selection_release_scorecard(
+        surface,
+        min_cell_rows=5,
+        block_toxic_row_share=0.50,
+        review_fill_residual=0.20,
+    )
+
+    assert scorecard["tail_adverse_release_label"] == "review"
+    assert scorecard["review_reasons"] == "tail_fill_miscalibration"
+    assert scorecard["worst_tail_cell"] == "calm:long:lcri_tail=5:fill_bin=5"
+
+
+def test_queue_position_lcri_tail_adverse_selection_release_scorecard_rejects_missing_columns() -> None:
+    with pytest.raises(
+        ValueError,
+        match="missing queue position LCRI tail adverse selection release scorecard columns",
+    ):
+        queue_position_lcri_tail_adverse_selection_release_scorecard(pd.DataFrame({"rows": [1]}))

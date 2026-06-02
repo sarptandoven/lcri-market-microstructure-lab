@@ -147,6 +147,8 @@ from lcri_lab.execution import (
     queue_position_latency_edge_survival_scorecard,
     queue_position_latency_regime_surface,
     queue_position_latency_release_scorecard,
+    queue_position_lcri_tail_adverse_selection_release_scorecard,
+    queue_position_lcri_tail_adverse_selection_surface,
     queue_position_lcri_tail_fill_residuals,
     queue_position_path_drawdown_episodes,
     queue_position_path_drawdown_summary,
@@ -952,6 +954,22 @@ def run_demo(
     heldout_queue_lcri_tail_fill_residuals = queue_position_lcri_tail_fill_residuals(
         heldout_passive_fill_labeled
     )
+    queue_lcri_tail_adverse_selection_surface = queue_position_lcri_tail_adverse_selection_surface(
+        passive_fill_labeled
+    )
+    heldout_queue_lcri_tail_adverse_selection_surface = (
+        queue_position_lcri_tail_adverse_selection_surface(heldout_passive_fill_labeled)
+    )
+    queue_lcri_tail_adverse_selection_release_scorecard = (
+        queue_position_lcri_tail_adverse_selection_release_scorecard(
+            queue_lcri_tail_adverse_selection_surface
+        )
+    )
+    heldout_queue_lcri_tail_adverse_selection_release_scorecard = (
+        queue_position_lcri_tail_adverse_selection_release_scorecard(
+            heldout_queue_lcri_tail_adverse_selection_surface
+        )
+    )
     queue_path_drawdown_episodes = queue_position_path_drawdown_episodes(
         scored,
         group_cols="pressure_memory_decay_state",
@@ -1131,6 +1149,10 @@ def run_demo(
         "heldout_execution_adjusted_lcri_quantile_diagnostics.csv",
         "queue_position_lcri_tail_fill_residuals.csv",
         "heldout_queue_position_lcri_tail_fill_residuals.csv",
+        "queue_position_lcri_tail_adverse_selection_surface.csv",
+        "heldout_queue_position_lcri_tail_adverse_selection_surface.csv",
+        "queue_position_lcri_tail_adverse_selection_release_scorecard.json",
+        "heldout_queue_position_lcri_tail_adverse_selection_release_scorecard.json",
         "execution_adjusted_lcri_event_window_attribution.csv",
         "heldout_execution_adjusted_lcri_event_window_attribution.csv",
         "execution_adjusted_lcri_event_window_release_scorecard.json",
@@ -1728,6 +1750,20 @@ def run_demo(
     )
     heldout_queue_lcri_tail_fill_residuals.to_csv(
         output / "heldout_queue_position_lcri_tail_fill_residuals.csv", index=False
+    )
+    queue_lcri_tail_adverse_selection_surface.to_csv(
+        output / "queue_position_lcri_tail_adverse_selection_surface.csv", index=False
+    )
+    heldout_queue_lcri_tail_adverse_selection_surface.to_csv(
+        output / "heldout_queue_position_lcri_tail_adverse_selection_surface.csv", index=False
+    )
+    write_json(
+        output / "queue_position_lcri_tail_adverse_selection_release_scorecard.json",
+        queue_lcri_tail_adverse_selection_release_scorecard,
+    )
+    write_json(
+        output / "heldout_queue_position_lcri_tail_adverse_selection_release_scorecard.json",
+        heldout_queue_lcri_tail_adverse_selection_release_scorecard,
     )
     queue_path_drawdown_episodes.to_csv(
         output / "queue_position_path_drawdown_episodes.csv", index=False

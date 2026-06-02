@@ -119,6 +119,10 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_execution_adjusted_lcri_side_attribution.csv").exists()
     assert (tmp_path / "queue_position_lcri_tail_fill_residuals.csv").exists()
     assert (tmp_path / "heldout_queue_position_lcri_tail_fill_residuals.csv").exists()
+    assert (tmp_path / "queue_position_lcri_tail_adverse_selection_surface.csv").exists()
+    assert (tmp_path / "heldout_queue_position_lcri_tail_adverse_selection_surface.csv").exists()
+    assert (tmp_path / "queue_position_lcri_tail_adverse_selection_release_scorecard.json").exists()
+    assert (tmp_path / "heldout_queue_position_lcri_tail_adverse_selection_release_scorecard.json").exists()
     assert (tmp_path / "execution_publishability_release_gate.json").exists()
     assert (tmp_path / "heldout_execution_publishability_release_gate.json").exists()
     assert (tmp_path / "execution_adjusted_lcri_event_window_release_scorecard.json").exists()
@@ -345,6 +349,32 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "tail_fill_overstated",
         "tail_fill_understated",
     }
+    tail_adverse_surface = pd.read_csv(
+        tmp_path / "queue_position_lcri_tail_adverse_selection_surface.csv"
+    )
+    assert {
+        "regime",
+        "best_execution_side",
+        "lcri_tail_bin",
+        "fill_probability_bin",
+        "mean_selected_adverse_probability",
+        "fill_minus_adverse_rate",
+        "tail_adverse_selection_label",
+    }.issubset(tail_adverse_surface.columns)
+    assert not tail_adverse_surface.empty
+    assert tail_adverse_surface["mean_selected_adverse_probability"].between(0.0, 1.0).all()
+    assert set(tail_adverse_surface["tail_adverse_selection_label"]) <= {
+        "tail_adverse_publishable",
+        "tail_adverse_toxic",
+        "tail_fill_overstated",
+        "tail_fill_understated",
+    }
+    tail_adverse_scorecard = json.loads(
+        (tmp_path / "queue_position_lcri_tail_adverse_selection_release_scorecard.json").read_text()
+    )
+    assert tail_adverse_scorecard["tail_adverse_release_label"] in {"pass", "review", "block"}
+    assert tail_adverse_scorecard["total_tail_rows"] >= 0
+    assert "candidate_weighted_fill_minus_adverse_rate" in tail_adverse_scorecard
     assert release_gate["decision"] in {"pass", "review", "block"}
     assert release_gate["total_rows"] > 0
     assert "quality_gate_label" in release_gate

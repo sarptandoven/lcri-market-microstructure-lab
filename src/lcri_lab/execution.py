@@ -1367,6 +1367,375 @@ def queue_position_lcri_tail_fill_residuals(
     return output
 
 
+def queue_position_lcri_tail_adverse_selection_surface(
+    frame: pd.DataFrame,
+    *,
+    lcri_bins: int = 5,
+    fill_probability_bins: int = 5,
+    regime_col: str | None = "regime",
+    side_col: str = "best_execution_side",
+    lcri_col: str = "lcri",
+    bid_realized_col: str = "bid_realized_fill",
+    ask_realized_col: str = "ask_realized_fill",
+    max_abs_fill_residual: float = 0.20,
+    min_fill_minus_adverse_rate: float = 0.0,
+) -> pd.DataFrame:
+    """Surface high-LCRI passive-fill pockets where fills are toxic or overstated.
+
+    Tail LCRI evidence is only tradable when selected-side passive fill odds are
+    calibrated *and* not dominated by adverse-selection odds. This diagnostic
+    cross-buckets tradable rows by absolute LCRI and selected-side predicted fill
+    probability, then compares realized fill rates with selected-side adverse-fill
+    probabilities and execution-adjusted edge. It is designed to catch seductive
+    high-LCRI/high-fill cells where fills happen, but mostly because the quote is
+    about to be picked off.
+    """
+    for name, value in {
+        "lcri_bins": lcri_bins,
+        "fill_probability_bins": fill_probability_bins,
+    }.items():
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ValueError(f"{name} must be an integer")
+        if value < 1:
+            raise ValueError(f"{name} must be at least 1")
+    for name, value in {
+        "max_abs_fill_residual": max_abs_fill_residual,
+        "min_fill_minus_adverse_rate": min_fill_minus_adverse_rate,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if max_abs_fill_residual < 0.0:
+        raise ValueError("max_abs_fill_residual must be non-negative")
+
+    required = {
+        side_col,
+        lcri_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+        bid_realized_col,
+        ask_realized_col,
+        "execution_adjusted_edge_ticks",
+    }
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(frame, required, "queue position LCRI tail adverse selection")
+
+    columns = [
+        "regime",
+        "best_execution_side",
+        "lcri_tail_bin",
+        "fill_probability_bin",
+        "rows",
+        "mean_abs_lcri",
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+        "mean_selected_adverse_probability",
+        "fill_residual",
+        "absolute_fill_residual",
+        "fill_minus_adverse_rate",
+        "mean_execution_adjusted_edge_ticks",
+        "tail_adverse_selection_label",
+    ]
+    if frame.empty:
+        output = pd.DataFrame(columns=columns)
+        return output if regime_col is None else output.rename(columns={"regime": regime_col})
+
+    numeric_columns = [
+        lcri_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+        bid_realized_col,
+        ask_realized_col,
+        "execution_adjusted_edge_ticks",
+    ]
+    values = _finite_values(frame, numeric_columns, "queue position LCRI tail adverse selection")
+    side = frame[side_col].astype(str)
+    tradable = side.isin(["long", "short"])
+    if not bool(tradable.any()):
+        output = pd.DataFrame(columns=columns)
+        return output if regime_col is None else output.rename(columns={"regime": regime_col})
+
+    selected = pd.DataFrame(index=frame.index[tradable])
+    selected_side = side.loc[tradable]
+    selected["regime"] = (
+        frame.loc[tradable, regime_col].astype(str) if regime_col is not None else "all"
+    )
+    selected["best_execution_side"] = selected_side
+    selected["abs_lcri"] = values.loc[tradable, lcri_col].abs()
+    selected["predicted_fill_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_fill_probability"],
+        values.loc[tradable, "ask_fill_probability"],
+    )
+    selected["selected_adverse_probability"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, "bid_adverse_fill_probability"],
+        values.loc[tradable, "ask_adverse_fill_probability"],
+    )
+    selected["realized_fill"] = np.where(
+        selected_side == "long",
+        values.loc[tradable, bid_realized_col],
+        values.loc[tradable, ask_realized_col],
+    )
+    selected["execution_adjusted_edge_ticks"] = values.loc[
+        tradable, "execution_adjusted_edge_ticks"
+    ]
+    probability_columns = [
+        "predicted_fill_probability",
+        "selected_adverse_probability",
+        "realized_fill",
+    ]
+    for column in probability_columns:
+        if not selected[column].between(0.0, 1.0).all():
+            raise ValueError("queue position LCRI tail adverse selection probabilities must be in [0, 1]")
+
+    rows: list[dict[str, float | int | str]] = []
+    for (regime, execution_side), side_group in selected.groupby(
+        ["regime", "best_execution_side"], sort=True
+    ):
+        side_group = side_group.copy()
+        side_group["lcri_tail_bin"] = _rank_probability_bins(side_group["abs_lcri"], lcri_bins)
+        side_group["fill_probability_bin"] = _rank_probability_bins(
+            side_group["predicted_fill_probability"], fill_probability_bins
+        )
+        for (tail_bin, fill_bin), group in side_group.groupby(
+            ["lcri_tail_bin", "fill_probability_bin"], sort=True
+        ):
+            predicted = float(group["predicted_fill_probability"].mean())
+            realized = float(group["realized_fill"].mean())
+            adverse = float(group["selected_adverse_probability"].mean())
+            residual = realized - predicted
+            abs_residual = abs(residual)
+            fill_minus_adverse = realized - adverse
+            edge = float(group["execution_adjusted_edge_ticks"].mean())
+            if fill_minus_adverse < min_fill_minus_adverse_rate - 1e-12 or edge < 0.0:
+                label = "tail_adverse_toxic"
+            elif abs_residual > max_abs_fill_residual + 1e-12 and residual < 0.0:
+                label = "tail_fill_overstated"
+            elif abs_residual > max_abs_fill_residual + 1e-12:
+                label = "tail_fill_understated"
+            else:
+                label = "tail_adverse_publishable"
+            rows.append(
+                {
+                    "regime": str(regime),
+                    "best_execution_side": str(execution_side),
+                    "lcri_tail_bin": int(tail_bin),
+                    "fill_probability_bin": int(fill_bin),
+                    "rows": int(len(group)),
+                    "mean_abs_lcri": float(group["abs_lcri"].mean()),
+                    "mean_predicted_fill_probability": predicted,
+                    "realized_fill_rate": realized,
+                    "mean_selected_adverse_probability": adverse,
+                    "fill_residual": residual,
+                    "absolute_fill_residual": abs_residual,
+                    "fill_minus_adverse_rate": fill_minus_adverse,
+                    "mean_execution_adjusted_edge_ticks": edge,
+                    "tail_adverse_selection_label": label,
+                }
+            )
+    output = pd.DataFrame(rows, columns=columns)
+    if regime_col is not None:
+        output = output.rename(columns={"regime": regime_col})
+    return output
+
+
+def _empty_queue_position_lcri_tail_adverse_selection_release_scorecard() -> dict[str, float | int | str]:
+    return {
+        "observed_tail_cells": 0,
+        "eligible_tail_cells": 0,
+        "total_tail_rows": 0,
+        "toxic_tail_cells": 0,
+        "toxic_tail_rows": 0,
+        "toxic_tail_row_share": 0.0,
+        "miscalibrated_tail_cells": 0,
+        "miscalibrated_tail_rows": 0,
+        "miscalibrated_tail_row_share": 0.0,
+        "worst_tail_cell": "none",
+        "worst_tail_cell_rows": 0,
+        "worst_tail_cell_fill_minus_adverse_rate": 0.0,
+        "worst_tail_cell_absolute_fill_residual": 0.0,
+        "worst_tail_cell_mean_execution_adjusted_edge_ticks": 0.0,
+        "candidate_weighted_fill_minus_adverse_rate": 0.0,
+        "candidate_weighted_absolute_fill_residual": 0.0,
+        "candidate_weighted_execution_adjusted_edge_ticks": 0.0,
+        "tail_adverse_release_label": "pass",
+        "blocking_reasons": "none",
+        "review_reasons": "none",
+    }
+
+
+def queue_position_lcri_tail_adverse_selection_release_scorecard(
+    surface: pd.DataFrame,
+    *,
+    min_cell_rows: int = 1,
+    block_toxic_row_share: float = 0.35,
+    review_toxic_row_share: float = 0.15,
+    block_fill_minus_adverse_rate: float = -0.05,
+    review_fill_residual: float = 0.20,
+) -> dict[str, float | int | str]:
+    """Gate queue-position LCRI tail cells on toxicity and fill calibration.
+
+    The tail adverse-selection surface is reviewer-friendly, but demos and CI need
+    a compact release label. This scorecard weights each LCRI/fill-probability
+    cell by observed rows, blocks when toxic tail fills dominate or candidate
+    weighted fill-minus-adverse turns negative, and otherwise reviews large tail
+    fill-calibration misses before raw LCRI tails are presented as tradable alpha.
+    """
+    if not isinstance(min_cell_rows, int) or isinstance(min_cell_rows, bool):
+        raise ValueError("min_cell_rows must be a positive integer")
+    if min_cell_rows < 1:
+        raise ValueError("min_cell_rows must be a positive integer")
+    for name, value in {
+        "block_toxic_row_share": block_toxic_row_share,
+        "review_toxic_row_share": review_toxic_row_share,
+    }.items():
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be finite and between 0 and 1")
+    for name, value in {
+        "block_fill_minus_adverse_rate": block_fill_minus_adverse_rate,
+        "review_fill_residual": review_fill_residual,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if review_fill_residual < 0.0:
+        raise ValueError("review_fill_residual must be non-negative")
+    if surface.empty:
+        return _empty_queue_position_lcri_tail_adverse_selection_release_scorecard()
+
+    required = {
+        "best_execution_side",
+        "lcri_tail_bin",
+        "fill_probability_bin",
+        "rows",
+        "fill_minus_adverse_rate",
+        "absolute_fill_residual",
+        "mean_execution_adjusted_edge_ticks",
+        "tail_adverse_selection_label",
+    }
+    regime_col = "regime" if "regime" in surface.columns else None
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(
+        surface,
+        required,
+        "queue position LCRI tail adverse selection release scorecard",
+    )
+    numeric_columns = [
+        "lcri_tail_bin",
+        "fill_probability_bin",
+        "rows",
+        "fill_minus_adverse_rate",
+        "absolute_fill_residual",
+        "mean_execution_adjusted_edge_ticks",
+    ]
+    values = _finite_values(
+        surface,
+        numeric_columns,
+        "queue position LCRI tail adverse selection release scorecard",
+    )
+    if (values["rows"] < 0.0).any():
+        raise ValueError("queue position LCRI tail adverse selection release scorecard rows must be non-negative")
+    data = values.copy()
+    data["best_execution_side"] = surface["best_execution_side"].astype(str)
+    data["tail_adverse_selection_label"] = surface["tail_adverse_selection_label"].astype(str)
+    data["regime"] = surface[regime_col].astype(str) if regime_col is not None else "all"
+    total_rows = int(data["rows"].sum())
+    if total_rows == 0:
+        scorecard = _empty_queue_position_lcri_tail_adverse_selection_release_scorecard()
+        scorecard["observed_tail_cells"] = int(len(surface))
+        return scorecard
+
+    eligible = data[data["rows"] >= float(min_cell_rows)].copy()
+    weights = data["rows"] / float(total_rows)
+    scorecard = _empty_queue_position_lcri_tail_adverse_selection_release_scorecard()
+    scorecard.update(
+        {
+            "observed_tail_cells": int(len(surface)),
+            "total_tail_rows": total_rows,
+            "candidate_weighted_fill_minus_adverse_rate": float(
+                (data["fill_minus_adverse_rate"] * weights).sum()
+            ),
+            "candidate_weighted_absolute_fill_residual": float(
+                (data["absolute_fill_residual"] * weights).sum()
+            ),
+            "candidate_weighted_execution_adjusted_edge_ticks": float(
+                (data["mean_execution_adjusted_edge_ticks"] * weights).sum()
+            ),
+        }
+    )
+    if eligible.empty:
+        scorecard["tail_adverse_release_label"] = "review"
+        scorecard["review_reasons"] = "insufficient_tail_cell_rows"
+        return scorecard
+
+    toxic = eligible[eligible["tail_adverse_selection_label"] == "tail_adverse_toxic"]
+    miscalibrated = eligible[
+        eligible["tail_adverse_selection_label"].isin(
+            ["tail_fill_overstated", "tail_fill_understated"]
+        )
+        | (eligible["absolute_fill_residual"] >= review_fill_residual)
+    ]
+    toxic_rows = int(toxic["rows"].sum())
+    miscalibrated_rows = int(miscalibrated["rows"].sum())
+    toxic_row_share = float(toxic_rows) / float(total_rows)
+    miscalibrated_row_share = float(miscalibrated_rows) / float(total_rows)
+
+    worst_idx = eligible.sort_values(
+        [
+            "fill_minus_adverse_rate",
+            "mean_execution_adjusted_edge_ticks",
+            "absolute_fill_residual",
+            "rows",
+        ],
+        ascending=[True, True, False, False],
+    ).index[0]
+    worst = data.loc[worst_idx]
+    worst_cell = (
+        f"{worst['regime']}:{worst['best_execution_side']}:"
+        f"lcri_tail={int(worst['lcri_tail_bin'])}:fill_bin={int(worst['fill_probability_bin'])}"
+    )
+
+    blocking_reasons = []
+    if toxic_row_share >= block_toxic_row_share:
+        blocking_reasons.append("toxic_tail_row_share")
+    if scorecard["candidate_weighted_fill_minus_adverse_rate"] <= block_fill_minus_adverse_rate:
+        blocking_reasons.append("negative_tail_fill_minus_adverse")
+    review_reasons = []
+    if not blocking_reasons and toxic_row_share >= review_toxic_row_share:
+        review_reasons.append("toxic_tail_row_share")
+    if not blocking_reasons and not miscalibrated.empty:
+        review_reasons.append("tail_fill_miscalibration")
+    label = "block" if blocking_reasons else "review" if review_reasons else "pass"
+
+    scorecard.update(
+        {
+            "eligible_tail_cells": int(len(eligible)),
+            "toxic_tail_cells": int(len(toxic)),
+            "toxic_tail_rows": toxic_rows,
+            "toxic_tail_row_share": toxic_row_share,
+            "miscalibrated_tail_cells": int(len(miscalibrated)),
+            "miscalibrated_tail_rows": miscalibrated_rows,
+            "miscalibrated_tail_row_share": miscalibrated_row_share,
+            "worst_tail_cell": worst_cell,
+            "worst_tail_cell_rows": int(worst["rows"]),
+            "worst_tail_cell_fill_minus_adverse_rate": float(worst["fill_minus_adverse_rate"]),
+            "worst_tail_cell_absolute_fill_residual": float(worst["absolute_fill_residual"]),
+            "worst_tail_cell_mean_execution_adjusted_edge_ticks": float(
+                worst["mean_execution_adjusted_edge_ticks"]
+            ),
+            "tail_adverse_release_label": label,
+            "blocking_reasons": ",".join(blocking_reasons) if blocking_reasons else "none",
+            "review_reasons": ",".join(review_reasons) if review_reasons else "none",
+        }
+    )
+    return scorecard
+
+
 def queue_position_fraction_sweep(
     frame: pd.DataFrame,
     *,
