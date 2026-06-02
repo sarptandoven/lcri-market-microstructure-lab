@@ -3434,6 +3434,195 @@ def queue_position_expected_value_policy_scorecard(selection: pd.DataFrame) -> p
     )
 
 
+def queue_position_expected_value_oos_validation(
+    selection: pd.DataFrame,
+    holdout_frontier: pd.DataFrame,
+    *,
+    min_holdout_candidate_share: float = 0.10,
+    max_ev_decay_ratio: float = 0.50,
+    min_holdout_expected_value_ticks: float = 0.0,
+) -> pd.DataFrame:
+    """Replay selected queue-position EV policies on a holdout frontier.
+
+    ``queue_position_expected_value_policy_selection`` chooses the best in-sample
+    fill/queue cutoff per regime. This validator joins those exact policy cutoffs
+    onto an independently computed holdout frontier so execution claims are not
+    promoted when the chosen passive policy loses capacity, flips negative EV, or
+    suffers severe out-of-sample expected-value decay.
+    """
+    columns = [
+        "regime",
+        "selected_min_fill_probability",
+        "selected_max_queue_share",
+        "train_candidate_rows",
+        "train_candidate_share",
+        "train_risk_adjusted_expected_value_ticks",
+        "holdout_tradable_rows",
+        "holdout_candidate_rows",
+        "holdout_candidate_share",
+        "holdout_risk_adjusted_expected_value_ticks",
+        "holdout_expected_value_ticks",
+        "holdout_mean_fill_probability",
+        "holdout_mean_queue_share",
+        "holdout_mean_adverse_fill_probability",
+        "ev_decay_ticks",
+        "ev_decay_ratio",
+        "oos_validation_label",
+        "review_reasons",
+    ]
+    if not math.isfinite(min_holdout_candidate_share) or not 0.0 <= min_holdout_candidate_share <= 1.0:
+        raise ValueError("min_holdout_candidate_share must be finite and in [0.0, 1.0]")
+    if not math.isfinite(max_ev_decay_ratio) or max_ev_decay_ratio < 0.0:
+        raise ValueError("max_ev_decay_ratio must be finite and non-negative")
+    if not math.isfinite(min_holdout_expected_value_ticks):
+        raise ValueError("min_holdout_expected_value_ticks must be finite")
+
+    selection_required = {
+        "regime",
+        "selected_min_fill_probability",
+        "selected_max_queue_share",
+        "candidate_rows",
+        "candidate_share",
+        "risk_adjusted_expected_value_ticks",
+    }
+    holdout_required = {
+        "regime",
+        "min_fill_probability",
+        "max_queue_share",
+        "tradable_rows",
+        "candidate_rows",
+        "candidate_share",
+        "risk_adjusted_expected_value_ticks",
+        "expected_value_ticks",
+        "mean_fill_probability",
+        "mean_queue_share",
+        "mean_adverse_fill_probability",
+    }
+    _require_columns(selection, selection_required, "queue position expected value OOS validation")
+    _require_columns(holdout_frontier, holdout_required, "queue position expected value OOS validation")
+    if selection.empty:
+        return pd.DataFrame(columns=columns)
+
+    selection_numeric = [
+        "selected_min_fill_probability",
+        "selected_max_queue_share",
+        "candidate_rows",
+        "candidate_share",
+        "risk_adjusted_expected_value_ticks",
+    ]
+    holdout_numeric = sorted(holdout_required - {"regime"})
+    selected_values = _finite_values(
+        selection, selection_numeric, "queue position expected value OOS validation"
+    )
+    holdout_values = _finite_values(
+        holdout_frontier, holdout_numeric, "queue position expected value OOS validation"
+    )
+    selected_share_columns = [
+        "selected_min_fill_probability",
+        "selected_max_queue_share",
+        "candidate_share",
+    ]
+    holdout_share_columns = [
+        "min_fill_probability",
+        "max_queue_share",
+        "candidate_share",
+        "mean_fill_probability",
+        "mean_queue_share",
+        "mean_adverse_fill_probability",
+    ]
+    if not selected_values[selected_share_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("queue position expected value OOS validation selection shares must be in [0, 1]")
+    if not holdout_values[holdout_share_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("queue position expected value OOS validation holdout shares must be in [0, 1]")
+    if (selected_values["candidate_rows"] < 0.0).any() or (
+        holdout_values[["tradable_rows", "candidate_rows"]] < 0.0
+    ).any().any():
+        raise ValueError("queue position expected value OOS validation row counts must be non-negative")
+
+    selected = selection.copy()
+    selected[selection_numeric] = selected_values
+    holdout = holdout_frontier.copy()
+    holdout[holdout_numeric] = holdout_values
+    holdout["_regime_key"] = holdout["regime"].astype(str)
+    rows: list[dict[str, float | int | str]] = []
+    for _, policy in selected.iterrows():
+        regime = str(policy["regime"])
+        min_fill = float(policy["selected_min_fill_probability"])
+        max_queue = float(policy["selected_max_queue_share"])
+        match = holdout[
+            (holdout["_regime_key"] == regime)
+            & np.isclose(holdout["min_fill_probability"], min_fill)
+            & np.isclose(holdout["max_queue_share"], max_queue)
+        ]
+        train_ev = float(policy["risk_adjusted_expected_value_ticks"])
+        if match.empty:
+            holdout_tradable = 0
+            holdout_candidates = 0
+            holdout_share = 0.0
+            holdout_ev = 0.0
+            holdout_expected_value = 0.0
+            holdout_fill = 0.0
+            holdout_queue = 0.0
+            holdout_adverse = 0.0
+            ev_decay = train_ev
+            ev_decay_ratio = 1.0 if train_ev > 0.0 else 0.0
+            label = "oos_missing_policy"
+            review_reasons = "missing_holdout_policy"
+        else:
+            selected_holdout = match.sort_values(
+                ["candidate_share", "risk_adjusted_expected_value_ticks"], ascending=[False, False]
+            ).iloc[0]
+            holdout_tradable = int(selected_holdout["tradable_rows"])
+            holdout_candidates = int(selected_holdout["candidate_rows"])
+            holdout_share = float(selected_holdout["candidate_share"])
+            holdout_ev = float(selected_holdout["risk_adjusted_expected_value_ticks"])
+            holdout_expected_value = float(selected_holdout["expected_value_ticks"])
+            holdout_fill = float(selected_holdout["mean_fill_probability"])
+            holdout_queue = float(selected_holdout["mean_queue_share"])
+            holdout_adverse = float(selected_holdout["mean_adverse_fill_probability"])
+            ev_decay = train_ev - holdout_ev
+            ev_decay_ratio = ev_decay / abs(train_ev) if train_ev != 0.0 else 0.0
+            reasons: list[str] = []
+            if holdout_share < min_holdout_candidate_share:
+                reasons.append("capacity")
+            if holdout_ev < min_holdout_expected_value_ticks:
+                reasons.append("negative_ev")
+            if ev_decay_ratio > max_ev_decay_ratio:
+                reasons.append("ev_decay")
+            if not reasons:
+                label = "oos_stable"
+                review_reasons = "none"
+            elif "negative_ev" in reasons or "capacity" in reasons:
+                label = "oos_broken"
+                review_reasons = ";".join(reasons)
+            else:
+                label = "oos_degraded"
+                review_reasons = ";".join(reasons)
+        rows.append(
+            {
+                "regime": regime,
+                "selected_min_fill_probability": min_fill,
+                "selected_max_queue_share": max_queue,
+                "train_candidate_rows": int(policy["candidate_rows"]),
+                "train_candidate_share": float(policy["candidate_share"]),
+                "train_risk_adjusted_expected_value_ticks": train_ev,
+                "holdout_tradable_rows": holdout_tradable,
+                "holdout_candidate_rows": holdout_candidates,
+                "holdout_candidate_share": holdout_share,
+                "holdout_risk_adjusted_expected_value_ticks": holdout_ev,
+                "holdout_expected_value_ticks": holdout_expected_value,
+                "holdout_mean_fill_probability": holdout_fill,
+                "holdout_mean_queue_share": holdout_queue,
+                "holdout_mean_adverse_fill_probability": holdout_adverse,
+                "ev_decay_ticks": ev_decay,
+                "ev_decay_ratio": ev_decay_ratio,
+                "oos_validation_label": label,
+                "review_reasons": review_reasons,
+            }
+        )
+    return pd.DataFrame(rows)[columns]
+
+
 def queue_position_expected_value_stress_table(
     selection: pd.DataFrame,
     *,

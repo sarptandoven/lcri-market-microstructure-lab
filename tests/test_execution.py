@@ -73,6 +73,7 @@ from lcri_lab.execution import (
     queue_position_expected_value_frontier,
     queue_position_expected_value_policy_selection,
     queue_position_expected_value_policy_scorecard,
+    queue_position_expected_value_oos_validation,
     queue_position_expected_value_stress_table,
     queue_position_latency_sensitivity,
     queue_position_latency_edge_regime_surface,
@@ -4527,6 +4528,94 @@ def test_queue_position_latency_regime_surface_segments_decision_regimes() -> No
 def test_queue_position_latency_regime_surface_requires_regime_column() -> None:
     with pytest.raises(ValueError, match="missing queue position latency regime surface columns"):
         queue_position_latency_regime_surface(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_expected_value_oos_validation_flags_policy_decay() -> None:
+    selection = pd.DataFrame(
+        {
+            "regime": ["calm", "event"],
+            "selected_min_fill_probability": [0.60, 0.70],
+            "selected_max_queue_share": [0.50, 0.25],
+            "candidate_rows": [12, 8],
+            "candidate_share": [0.40, 0.25],
+            "risk_adjusted_expected_value_ticks": [0.30, 0.20],
+            "selection_label": ["deployable", "deployable"],
+        }
+    )
+    holdout_frontier = pd.DataFrame(
+        {
+            "regime": ["calm", "calm", "event"],
+            "min_fill_probability": [0.60, 0.70, 0.70],
+            "max_queue_share": [0.50, 0.50, 0.25],
+            "tradable_rows": [30, 30, 20],
+            "candidate_rows": [9, 6, 1],
+            "candidate_share": [0.30, 0.20, 0.05],
+            "risk_adjusted_expected_value_ticks": [0.18, 0.24, -0.05],
+            "expected_value_ticks": [0.24, 0.30, 0.02],
+            "mean_fill_probability": [0.72, 0.80, 0.75],
+            "mean_queue_share": [0.32, 0.35, 0.20],
+            "mean_adverse_fill_probability": [0.20, 0.18, 0.45],
+        }
+    )
+
+    validation = queue_position_expected_value_oos_validation(
+        selection,
+        holdout_frontier,
+        min_holdout_candidate_share=0.10,
+        max_ev_decay_ratio=0.50,
+        min_holdout_expected_value_ticks=0.0,
+    )
+
+    assert validation["regime"].tolist() == ["calm", "event"]
+    assert validation["holdout_candidate_rows"].tolist() == [9, 1]
+    assert validation["holdout_risk_adjusted_expected_value_ticks"].tolist() == pytest.approx(
+        [0.18, -0.05]
+    )
+    assert validation["ev_decay_ratio"].tolist() == pytest.approx([0.40, 1.25])
+    assert validation["oos_validation_label"].tolist() == ["oos_stable", "oos_broken"]
+    assert validation["review_reasons"].tolist() == ["none", "capacity;negative_ev;ev_decay"]
+
+
+def test_queue_position_expected_value_oos_validation_marks_missing_policy() -> None:
+    selection = pd.DataFrame(
+        {
+            "regime": ["event"],
+            "selected_min_fill_probability": [0.80],
+            "selected_max_queue_share": [0.25],
+            "candidate_rows": [5],
+            "candidate_share": [0.20],
+            "risk_adjusted_expected_value_ticks": [0.10],
+            "selection_label": ["deployable"],
+        }
+    )
+    holdout_frontier = pd.DataFrame(
+        {
+            "regime": ["event"],
+            "min_fill_probability": [0.60],
+            "max_queue_share": [0.50],
+            "tradable_rows": [20],
+            "candidate_rows": [8],
+            "candidate_share": [0.40],
+            "risk_adjusted_expected_value_ticks": [0.20],
+            "expected_value_ticks": [0.25],
+            "mean_fill_probability": [0.70],
+            "mean_queue_share": [0.30],
+            "mean_adverse_fill_probability": [0.20],
+        }
+    )
+
+    validation = queue_position_expected_value_oos_validation(selection, holdout_frontier)
+
+    assert validation.loc[0, "oos_validation_label"] == "oos_missing_policy"
+    assert validation.loc[0, "review_reasons"] == "missing_holdout_policy"
+
+
+def test_queue_position_expected_value_oos_validation_rejects_missing_columns() -> None:
+    with pytest.raises(ValueError, match="missing queue position expected value OOS validation columns"):
+        queue_position_expected_value_oos_validation(
+            pd.DataFrame({"regime": ["calm"]}),
+            pd.DataFrame({"regime": ["calm"]}),
+        )
 
 
 def test_queue_position_latency_edge_regime_surface_prices_fragile_event_windows() -> None:
