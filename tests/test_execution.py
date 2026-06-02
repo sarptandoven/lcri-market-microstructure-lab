@@ -84,6 +84,7 @@ from lcri_lab.execution import (
     queue_position_path_risk_concentration,
     queue_position_path_risk_release_gate,
     queue_position_path_risk_scorecard,
+    queue_position_path_tail_loss_scorecard,
     queue_position_regime_fraction_sweep,
 )
 
@@ -4497,6 +4498,44 @@ def test_queue_position_latency_release_scorecard_passes_latency_robust_surface(
 def test_queue_position_latency_release_scorecard_rejects_missing_columns() -> None:
     with pytest.raises(ValueError, match="missing queue position latency release scorecard columns"):
         queue_position_latency_release_scorecard(pd.DataFrame({"latency_steps": [0]}))
+
+
+def test_queue_position_path_tail_loss_scorecard_flags_clustered_left_tail() -> None:
+    frame = pd.DataFrame(
+        {
+            "session": ["am", "am", "am", "am", "pm", "pm", "pm"],
+            "best_execution_side": ["long", "long", "short", "abstain", "short", "short", "long"],
+            "execution_adjusted_edge_ticks": [1.0, -3.0, -2.0, 9.0, 0.5, -0.5, 0.25],
+        }
+    )
+
+    output = queue_position_path_tail_loss_scorecard(
+        frame,
+        group_cols="session",
+        tail_probability=0.50,
+        max_tail_loss_ticks=2.0,
+        max_severe_loss_share=0.40,
+        max_loss_run_length=1,
+        severe_loss_ticks=2.0,
+    )
+
+    assert output["path_id"].tolist() == ["am", "pm", "overall"]
+    assert output["tradable_rows"].tolist() == [3, 3, 6]
+    assert output["loss_rows"].tolist() == [2, 1, 3]
+    assert output["tail_loss_threshold_ticks"].tolist() == pytest.approx([2.0, 0.0, 0.25])
+    assert output["conditional_tail_loss_ticks"].tolist() == pytest.approx([2.5, 0.5, 5.5 / 3.0])
+    assert output["severe_loss_share"].tolist() == pytest.approx([2.0 / 3.0, 0.0, 2.0 / 6.0])
+    assert output["max_loss_run_length"].tolist() == [2, 1, 2]
+    assert output["tail_loss_label"].tolist() == [
+        "execution_tail_loss_fragile",
+        "execution_tail_loss_stable",
+        "execution_tail_loss_fragile",
+    ]
+
+
+def test_queue_position_path_tail_loss_scorecard_rejects_missing_edge() -> None:
+    with pytest.raises(ValueError, match="missing queue position path tail loss columns"):
+        queue_position_path_tail_loss_scorecard(pd.DataFrame({"best_execution_side": ["long"]}))
 
 
 def test_queue_position_path_risk_scorecard_tracks_drawdown_and_turnover() -> None:

@@ -10228,6 +10228,133 @@ def queue_position_path_drawdown_summary(
     }
 
 
+def queue_position_path_tail_loss_scorecard(
+    frame: pd.DataFrame,
+    *,
+    group_cols: str | list[str] | tuple[str, ...] | None = None,
+    side_col: str = "best_execution_side",
+    edge_col: str = "execution_adjusted_edge_ticks",
+    tail_probability: float = 0.95,
+    severe_loss_ticks: float = 1.0,
+    max_tail_loss_ticks: float = 1.0,
+    max_severe_loss_share: float = 0.25,
+    max_loss_run_length: int = 2,
+) -> pd.DataFrame:
+    """Score path-level left-tail loss for queue-position-aware execution.
+
+    Mean execution-adjusted edge can hide concentrated downside: a passive policy
+    may look publishable while losing most of its edge in clustered adverse fills.
+    This diagnostic keeps only non-abstain rows, converts negative edge into loss
+    ticks, and reports VaR/CVaR-style tail loss, severe-loss share, and the longest
+    consecutive loss run for each optional path group plus an overall row.
+    """
+    for name, value in {
+        "tail_probability": tail_probability,
+        "severe_loss_ticks": severe_loss_ticks,
+        "max_tail_loss_ticks": max_tail_loss_ticks,
+        "max_severe_loss_share": max_severe_loss_share,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= tail_probability <= 1.0:
+        raise ValueError("tail_probability must be in [0, 1]")
+    if severe_loss_ticks < 0.0:
+        raise ValueError("severe_loss_ticks must be non-negative")
+    if max_tail_loss_ticks < 0.0:
+        raise ValueError("max_tail_loss_ticks must be non-negative")
+    if not 0.0 <= max_severe_loss_share <= 1.0:
+        raise ValueError("max_severe_loss_share must be in [0, 1]")
+    if not isinstance(max_loss_run_length, int) or isinstance(max_loss_run_length, bool):
+        raise ValueError("max_loss_run_length must be an integer")
+    if max_loss_run_length < 0:
+        raise ValueError("max_loss_run_length must be non-negative")
+
+    grouping_columns = _normalize_group_columns(frame, group_cols, "queue position path tail loss group")
+    required = {side_col, edge_col, *grouping_columns}
+    columns = [
+        "path_id",
+        "rows",
+        "tradable_rows",
+        "loss_rows",
+        "mean_loss_ticks",
+        "tail_loss_threshold_ticks",
+        "conditional_tail_loss_ticks",
+        "severe_loss_share",
+        "max_loss_run_length",
+        "tail_loss_label",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    _require_columns(frame, required, "queue position path tail loss")
+    values = _finite_values(frame, [edge_col], "queue position path tail loss")
+    sides = frame[side_col].astype(str)
+
+    def max_consecutive_losses(edges: pd.Series) -> int:
+        longest = 0
+        current = 0
+        for is_loss in (edges < 0.0).tolist():
+            if is_loss:
+                current += 1
+                longest = max(longest, current)
+            else:
+                current = 0
+        return longest
+
+    def score_path(path: pd.DataFrame, path_sides: pd.Series, path_id: str) -> dict[str, float | int | str]:
+        path_edges = values.loc[path.index, edge_col]
+        tradable = path_sides != "abstain"
+        executed_edges = path_edges.loc[tradable]
+        tradable_rows = int(tradable.sum())
+        if tradable_rows == 0:
+            loss_rows = 0
+            mean_loss = 0.0
+            tail_threshold = 0.0
+            conditional_tail_loss = 0.0
+            severe_loss_share = 0.0
+            loss_run = 0
+        else:
+            losses = (-executed_edges).clip(lower=0.0)
+            loss_rows = int((losses > 0.0).sum())
+            mean_loss = float(losses.mean())
+            tail_threshold = float(losses.quantile(tail_probability))
+            if tail_threshold <= 0.0:
+                tail_losses = losses.loc[losses > 0.0]
+            else:
+                tail_losses = losses.loc[losses >= tail_threshold]
+            conditional_tail_loss = float(tail_losses.mean()) if not tail_losses.empty else 0.0
+            severe_loss_share = float((losses >= severe_loss_ticks).mean()) if severe_loss_ticks > 0 else 0.0
+            loss_run = max_consecutive_losses(executed_edges)
+        fragile = (
+            conditional_tail_loss > max_tail_loss_ticks
+            or severe_loss_share > max_severe_loss_share
+            or loss_run > max_loss_run_length
+        )
+        return {
+            "path_id": path_id,
+            "rows": len(path),
+            "tradable_rows": tradable_rows,
+            "loss_rows": loss_rows,
+            "mean_loss_ticks": mean_loss,
+            "tail_loss_threshold_ticks": tail_threshold,
+            "conditional_tail_loss_ticks": conditional_tail_loss,
+            "severe_loss_share": severe_loss_share,
+            "max_loss_run_length": loss_run,
+            "tail_loss_label": "execution_tail_loss_fragile" if fragile else "execution_tail_loss_stable",
+        }
+
+    rows: list[dict[str, float | int | str]] = []
+    if grouping_columns:
+        groupby_arg: str | list[str] = grouping_columns[0] if len(grouping_columns) == 1 else grouping_columns
+        for key, group in frame.groupby(groupby_arg, sort=True, dropna=False):
+            if isinstance(key, tuple):
+                path_id = "|".join(str(part) for part in key)
+            else:
+                path_id = str(key)
+            rows.append(score_path(group, sides.loc[group.index], path_id))
+    rows.append(score_path(frame, sides, "overall"))
+    return pd.DataFrame(rows, columns=columns)
+
+
 def queue_position_path_risk_scorecard(
     frame: pd.DataFrame,
     *,
