@@ -19,6 +19,8 @@ from lcri_lab.baseline import (
     baseline_residual_liquidity_orthogonality,
     baseline_residual_liquidity_orthogonality_summary,
     baseline_regime_publishability_summary,
+    baseline_regime_residual_liquidity_orthogonality,
+    baseline_regime_residual_liquidity_orthogonality_summary,
     baseline_regime_tail_lift_diagnostics,
     baseline_regime_tail_lift_summary,
     baseline_rolling_basis_comparison,
@@ -299,6 +301,92 @@ def test_baseline_residual_liquidity_orthogonality_summary_gates_release() -> No
         "publishable": False,
         "review_note": "baseline_residual_liquidity_leakage",
     }
+
+
+def test_baseline_regime_residual_liquidity_orthogonality_exposes_masked_leakage() -> None:
+    books = simulate_order_books(SimulationConfig(rows=720, seed=94))
+    features = compute_features(books)
+    half = len(features) // 2
+    features["regime"] = np.where(np.arange(len(features)) < half, "calm", "stress")
+    features["imbalance_residual"] = np.where(
+        features["regime"] == "calm",
+        0.04 * features["spread_ticks"].to_numpy(dtype=float),
+        1.10 * features["spread_ticks"].to_numpy(dtype=float)
+        - 0.75 * features["volatility"].to_numpy(dtype=float),
+    )
+
+    diagnostics = baseline_regime_residual_liquidity_orthogonality(
+        features,
+        feature_cols=["spread_ticks", "volatility"],
+        max_abs_correlation=0.15,
+    )
+    stress_spread = diagnostics[
+        (diagnostics["regime"] == "stress") & (diagnostics["feature"] == "spread_ticks")
+    ].iloc[0]
+
+    assert diagnostics.columns.tolist() == [
+        "regime",
+        "feature",
+        "component",
+        "rows",
+        "residual_mean",
+        "feature_mean",
+        "correlation",
+        "abs_correlation",
+        "slope",
+        "r_squared",
+        "orthogonality_label",
+    ]
+    assert set(diagnostics["regime"]) == {"calm", "stress"}
+    assert stress_spread["abs_correlation"] > 0.15
+    assert stress_spread["orthogonality_label"] == "regime_residual_liquidity_leakage"
+
+
+def test_baseline_regime_residual_liquidity_orthogonality_summary_gates_each_regime() -> None:
+    diagnostics = pd.DataFrame(
+        {
+            "regime": ["calm", "calm", "stress", "stress"],
+            "feature": ["spread_ticks", "volatility", "spread_ticks", "volatility"],
+            "component": ["core", "core", "core", "core"],
+            "rows": [80, 80, 120, 120],
+            "residual_mean": [0.0, 0.0, 0.1, 0.1],
+            "feature_mean": [1.0, 2.0, 3.0, 4.0],
+            "correlation": [0.04, -0.06, 0.24, -0.09],
+            "abs_correlation": [0.04, 0.06, 0.24, 0.09],
+            "slope": [0.01, -0.02, 0.11, -0.03],
+            "r_squared": [0.0016, 0.0036, 0.0576, 0.0081],
+            "orthogonality_label": [
+                "regime_orthogonal",
+                "regime_orthogonal",
+                "regime_residual_liquidity_leakage",
+                "regime_orthogonal",
+            ],
+        }
+    )
+
+    summary = baseline_regime_residual_liquidity_orthogonality_summary(
+        diagnostics,
+        max_abs_correlation=0.10,
+        min_orthogonal_share=1.0,
+    )
+    by_regime = summary.set_index("regime")
+
+    assert summary.columns.tolist() == [
+        "regime",
+        "features",
+        "orthogonal_features",
+        "leaking_features",
+        "orthogonal_feature_share",
+        "max_abs_correlation",
+        "mean_abs_correlation",
+        "worst_feature",
+        "publishable",
+        "review_note",
+    ]
+    assert by_regime.loc["calm", "publishable"] is True
+    assert by_regime.loc["stress", "publishable"] is False
+    assert by_regime.loc["stress", "worst_feature"] == "spread_ticks"
+    assert by_regime.loc["stress", "review_note"] == "regime_residual_liquidity_leakage"
 
 
 def test_baseline_nonlinear_coefficient_stability_flags_sign_stable_stress_terms() -> None:

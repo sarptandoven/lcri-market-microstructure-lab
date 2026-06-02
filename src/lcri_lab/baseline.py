@@ -2096,6 +2096,186 @@ def baseline_residual_liquidity_orthogonality_summary(
     }
 
 
+def baseline_regime_residual_liquidity_orthogonality(
+    frame: pd.DataFrame,
+    *,
+    residual_col: str = "imbalance_residual",
+    regime_col: str = "regime",
+    feature_cols: list[str] | tuple[str, ...] | None = None,
+    max_abs_correlation: float = 0.10,
+) -> pd.DataFrame:
+    """Audit post-baseline residual leakage separately inside each liquidity regime.
+
+    Global residual-feature correlations can cancel when calm and stressed books
+    have different liquidity-response slopes. This regime-conditioned companion to
+    ``baseline_residual_liquidity_orthogonality`` exposes masked leakage so LCRI
+    baseline claims are gated where execution and adverse-selection risk differ.
+    """
+    columns = [
+        "regime",
+        "feature",
+        "component",
+        "rows",
+        "residual_mean",
+        "feature_mean",
+        "correlation",
+        "abs_correlation",
+        "slope",
+        "r_squared",
+        "orthogonality_label",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    if not isinstance(residual_col, str) or not residual_col:
+        raise ValueError("residual_col must be a non-empty string")
+    if not isinstance(regime_col, str) or not regime_col:
+        raise ValueError("regime_col must be a non-empty string")
+    if feature_cols is None:
+        selected_features = design_feature_names()
+    else:
+        selected_features = list(feature_cols)
+    if not selected_features:
+        raise ValueError("feature_cols must be non-empty when provided")
+    if not math.isfinite(max_abs_correlation) or not 0.0 <= max_abs_correlation <= 1.0:
+        raise ValueError("max_abs_correlation must be finite and in [0, 1]")
+
+    missing_base = [feature for feature in selected_features if feature not in design_feature_names()]
+    required = {residual_col, regime_col, *missing_base}
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise ValueError(f"missing regime residual orthogonality columns: {missing}")
+
+    design_values = pd.DataFrame(_design_matrix(frame), columns=design_feature_names(), index=frame.index)
+    feature_values = pd.DataFrame(index=frame.index)
+    for feature in selected_features:
+        if feature in design_values.columns:
+            feature_values[feature] = design_values[feature]
+        else:
+            feature_values[feature] = frame[feature].astype(float)
+    residual_series = frame[residual_col].astype(float)
+    regimes = frame[regime_col].astype(str)
+    values = pd.concat([regimes.rename(regime_col), residual_series.rename(residual_col), feature_values], axis=1)
+    numeric_values = values[[residual_col, *selected_features]].to_numpy(dtype=float)
+    if not np.isfinite(numeric_values).all():
+        raise ValueError("regime residual orthogonality inputs must be finite")
+
+    rows: list[dict[str, float | int | str]] = []
+    for regime, group in values.groupby(regime_col, sort=True):
+        residual = group[residual_col].to_numpy(dtype=float)
+        residual_centered = residual - residual.mean()
+        residual_variance = float(np.mean(residual_centered**2))
+        for feature in selected_features:
+            feature_array = group[feature].to_numpy(dtype=float)
+            feature_centered = feature_array - feature_array.mean()
+            feature_variance = float(np.mean(feature_centered**2))
+            covariance = float(np.mean(residual_centered * feature_centered))
+            if residual_variance > 0.0 and feature_variance > 0.0:
+                correlation = covariance / math.sqrt(residual_variance * feature_variance)
+                slope = covariance / feature_variance
+            else:
+                correlation = 0.0
+                slope = 0.0
+            abs_correlation = abs(float(correlation))
+            rows.append(
+                {
+                    "regime": str(regime),
+                    "feature": feature,
+                    "component": _component_for_feature(feature),
+                    "rows": int(len(group)),
+                    "residual_mean": float(residual.mean()),
+                    "feature_mean": float(feature_array.mean()),
+                    "correlation": float(correlation),
+                    "abs_correlation": abs_correlation,
+                    "slope": float(slope),
+                    "r_squared": float(abs_correlation**2),
+                    "orthogonality_label": (
+                        "regime_orthogonal"
+                        if abs_correlation <= max_abs_correlation
+                        else "regime_residual_liquidity_leakage"
+                    ),
+                }
+            )
+    return pd.DataFrame(rows, columns=columns).sort_values(
+        ["regime", "abs_correlation", "feature"], ascending=[True, False, True], ignore_index=True
+    )
+
+
+def baseline_regime_residual_liquidity_orthogonality_summary(
+    diagnostics: pd.DataFrame,
+    *,
+    max_abs_correlation: float = 0.10,
+    min_orthogonal_share: float = 1.0,
+) -> pd.DataFrame:
+    """Summarize regime-conditioned residual leakage as a nonlinear baseline gate."""
+    columns = [
+        "regime",
+        "features",
+        "orthogonal_features",
+        "leaking_features",
+        "orthogonal_feature_share",
+        "max_abs_correlation",
+        "mean_abs_correlation",
+        "worst_feature",
+        "publishable",
+        "review_note",
+    ]
+    if diagnostics.empty:
+        return pd.DataFrame(columns=columns)
+    required = {"regime", "feature", "abs_correlation", "orthogonality_label"}
+    missing = sorted(required - set(diagnostics.columns))
+    if missing:
+        raise ValueError(f"missing regime residual orthogonality summary columns: {missing}")
+    for name, value in {
+        "max_abs_correlation": max_abs_correlation,
+        "min_orthogonal_share": min_orthogonal_share,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= max_abs_correlation <= 1.0:
+        raise ValueError("max_abs_correlation must be in [0, 1]")
+    if not 0.0 <= min_orthogonal_share <= 1.0:
+        raise ValueError("min_orthogonal_share must be in [0, 1]")
+
+    numeric = diagnostics["abs_correlation"].astype(float)
+    if not np.isfinite(numeric.to_numpy()).all():
+        raise ValueError("regime residual orthogonality correlations must be finite")
+    if not numeric.between(0.0, 1.0).all():
+        raise ValueError("abs_correlation must be in [0, 1]")
+
+    rows: list[dict[str, bool | float | int | str]] = []
+    for regime, group in diagnostics.groupby("regime", sort=True):
+        correlations = group["abs_correlation"].astype(float)
+        features = int(len(group))
+        orthogonal_mask = (correlations <= max_abs_correlation) & (
+            group["orthogonality_label"].astype(str) == "regime_orthogonal"
+        )
+        orthogonal_features = int(orthogonal_mask.sum())
+        orthogonal_share = orthogonal_features / features if features else 0.0
+        worst_index = correlations.idxmax()
+        publishable = bool(features > 0 and orthogonal_share >= min_orthogonal_share)
+        rows.append(
+            {
+                "regime": str(regime),
+                "features": features,
+                "orthogonal_features": orthogonal_features,
+                "leaking_features": int(features - orthogonal_features),
+                "orthogonal_feature_share": float(orthogonal_share),
+                "max_abs_correlation": float(correlations.max()),
+                "mean_abs_correlation": float(correlations.mean()),
+                "worst_feature": str(group.loc[worst_index, "feature"]),
+                "publishable": publishable,
+                "review_note": (
+                    "regime_residual_liquidity_orthogonal"
+                    if publishable
+                    else "regime_residual_liquidity_leakage"
+                ),
+            }
+        )
+    output = pd.DataFrame(rows, columns=columns)
+    output["publishable"] = output["publishable"].astype(object)
+    return output
+
+
 def baseline_nonlinear_coefficient_stability_summary(
     stability: pd.DataFrame,
     *,
