@@ -8,6 +8,7 @@ from lcri_lab.execution import (
     add_passive_fill_probabilities,
     add_latency_adjusted_passive_fill_probabilities,
     add_event_level_realized_fill_proxy,
+    execution_adjusted_edge_venue_economics_sensitivity,
     passive_fill_proxy_disagreement,
     trade_confirmed_passive_fill_latency_summary,
     queue_position_trade_confirmation_competing_risk_curve,
@@ -224,6 +225,76 @@ def test_latency_adjusted_passive_fill_probabilities_accept_latency_column_and_r
         add_latency_adjusted_passive_fill_probabilities(
             probabilities.assign(decision_latency=[0.0, -1.0]), latency_col="decision_latency"
         )
+
+
+def test_execution_adjusted_edge_can_include_passive_spread_rebate_and_adverse_slippage() -> None:
+    frame = pd.DataFrame(
+        {
+            "lcri": [1.0, -1.0, 0.2],
+            "lcri_probability": [0.8, 0.2, 0.5],
+            "long_net_return_ticks": [0.4, -0.5, -0.2],
+            "short_net_return_ticks": [-0.3, 0.3, -0.1],
+            "bid_fill_probability": [0.5, 0.2, 0.1],
+            "ask_fill_probability": [0.2, 0.6, 0.1],
+            "bid_adverse_fill_probability": [0.1, 0.1, 0.8],
+            "ask_adverse_fill_probability": [0.1, 0.2, 0.8],
+        }
+    )
+
+    base = add_execution_adjusted_edge(frame)
+    adjusted = add_execution_adjusted_edge(
+        frame,
+        passive_spread_capture_ticks=0.5,
+        maker_rebate_ticks=0.1,
+        adverse_slippage_ticks=0.2,
+    )
+
+    assert adjusted["long_fill_adjusted_edge_ticks"].iloc[0] == pytest.approx(
+        0.5 * (0.4 + 0.6) - 0.1 * (0.4 + 0.2)
+    )
+    assert adjusted["short_fill_adjusted_edge_ticks"].iloc[1] == pytest.approx(
+        0.6 * (0.3 + 0.6) - 0.2 * (0.3 + 0.2)
+    )
+    assert adjusted["execution_adjusted_edge_ticks"].iloc[0] > base["execution_adjusted_edge_ticks"].iloc[0]
+    assert adjusted["best_execution_side"].tolist() == ["long", "short", "abstain"]
+    assert adjusted["execution_adjusted_edge_ticks"].iloc[2] == pytest.approx(-0.19)
+
+
+def test_execution_adjusted_edge_venue_economics_sensitivity_reprices_scenarios() -> None:
+    frame = pd.DataFrame(
+        {
+            "lcri": [1.0, -1.0, 0.2],
+            "lcri_probability": [0.8, 0.2, 0.5],
+            "long_net_return_ticks": [0.4, -0.5, -0.2],
+            "short_net_return_ticks": [-0.3, 0.3, -0.1],
+            "bid_fill_probability": [0.5, 0.2, 0.1],
+            "ask_fill_probability": [0.2, 0.6, 0.1],
+            "bid_adverse_fill_probability": [0.1, 0.1, 0.8],
+            "ask_adverse_fill_probability": [0.1, 0.2, 0.8],
+        }
+    )
+
+    sensitivity = execution_adjusted_edge_venue_economics_sensitivity(
+        frame,
+        scenarios={
+            "base": (0.0, 0.0, 0.0),
+            "rebate_plus_slip": (0.5, 0.1, 0.2),
+        },
+    )
+
+    assert sensitivity["scenario"].tolist() == ["base", "rebate_plus_slip"]
+    assert sensitivity["rows"].tolist() == [3, 3]
+    assert sensitivity["passive_spread_capture_ticks"].tolist() == pytest.approx([0.0, 0.5])
+    assert sensitivity["maker_rebate_ticks"].tolist() == pytest.approx([0.0, 0.1])
+    assert sensitivity["adverse_slippage_ticks"].tolist() == pytest.approx([0.0, 0.2])
+    assert sensitivity["tradable_rows"].tolist() == [2, 2]
+    assert sensitivity["tradable_share"].tolist() == pytest.approx([2.0 / 3.0, 2.0 / 3.0])
+    assert sensitivity["abstain_share"].tolist() == pytest.approx([1.0 / 3.0, 1.0 / 3.0])
+    assert sensitivity["mean_execution_adjusted_edge_ticks"].iloc[1] > sensitivity[
+        "mean_execution_adjusted_edge_ticks"
+    ].iloc[0]
+    assert sensitivity["worst_row_edge_ticks"].iloc[1] == pytest.approx(-0.19)
+    assert sensitivity["economics_label"].tolist() == ["positive_after_costs", "positive_after_costs"]
 
 
 def test_execution_adjusted_edge_component_attribution_decomposes_fill_and_adverse_drag() -> None:

@@ -199,6 +199,18 @@ scored = model.score_frame(order_book_snapshots)
 
 Persisted models include a `schema_version` field so incompatible artifact changes fail fast.
 
+### Venue-economics stress for execution-adjusted LCRI
+
+`add_execution_adjusted_edge` accepts optional `passive_spread_capture_ticks`,
+`maker_rebate_ticks`, and `adverse_slippage_ticks` arguments. These let reviewers
+rerun queue-position-aware edge claims under venue-specific maker economics: normal
+passive fills receive the spread/rebate uplift, while adverse-selection fills pay
+extra slippage drag. The defaults remain zero so existing cost-aware labels are not
+silently double-counted. `execution_adjusted_edge_venue_economics_sensitivity`
+wraps those knobs into a scenario table (`base`, `maker_rebate`, and
+`wide_spread_toxic_fill` by default) with tradable-side shares, positive-edge
+share, worst-row edge, and an `economics_label` for execution-aware release review.
+
 ### Queue-position fill monotonicity review
 
 `queue_position_fill_monotonicity_scorecard` reduces the side-aware

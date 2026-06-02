@@ -1263,8 +1263,17 @@ def add_execution_adjusted_edge(
     probability_col: str = "lcri_probability",
     long_net_col: str = "long_net_return_ticks",
     short_net_col: str = "short_net_return_ticks",
+    passive_spread_capture_ticks: float = 0.0,
+    maker_rebate_ticks: float = 0.0,
+    adverse_slippage_ticks: float = 0.0,
 ) -> pd.DataFrame:
-    """Convert directional LCRI edge into passive-fill-adjusted tradable edge."""
+    """Convert directional LCRI edge into passive-fill-adjusted tradable edge.
+
+    ``long_net_col`` and ``short_net_col`` encode the directional markout/label in
+    ticks. Optional passive economics let reviewers stress execution-adjusted LCRI
+    under venue-specific maker spread capture, rebates, and extra adverse-fill
+    slippage without rebuilding labels.
+    """
     required = {
         signal_col,
         probability_col,
@@ -1278,6 +1287,16 @@ def add_execution_adjusted_edge(
     _require_columns(frame, required, "execution edge")
     values = _finite_values(frame, sorted(required), "execution edge")
 
+    for name, value in {
+        "passive_spread_capture_ticks": passive_spread_capture_ticks,
+        "maker_rebate_ticks": maker_rebate_ticks,
+        "adverse_slippage_ticks": adverse_slippage_ticks,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+        if value < 0.0:
+            raise ValueError(f"{name} must be non-negative")
+
     signal = values[signal_col]
     long_return = values[long_net_col]
     short_return = values[short_net_col]
@@ -1286,8 +1305,13 @@ def add_execution_adjusted_edge(
     bid_adverse = values["bid_adverse_fill_probability"].clip(0.0, 1.0)
     ask_adverse = values["ask_adverse_fill_probability"].clip(0.0, 1.0)
 
-    long_edge = bid_fill * long_return - bid_adverse * long_return.abs()
-    short_edge = ask_fill * short_return - ask_adverse * short_return.abs()
+    passive_uplift = passive_spread_capture_ticks + maker_rebate_ticks
+    long_edge = bid_fill * (long_return + passive_uplift) - bid_adverse * (
+        long_return.abs() + adverse_slippage_ticks
+    )
+    short_edge = ask_fill * (short_return + passive_uplift) - ask_adverse * (
+        short_return.abs() + adverse_slippage_ticks
+    )
     best_edge = np.maximum(long_edge, short_edge)
     best_side = np.select(
         [(long_edge > 0.0) & (long_edge >= short_edge), (short_edge > 0.0) & (short_edge > long_edge)],
@@ -1306,6 +1330,140 @@ def add_execution_adjusted_edge(
         default=0.0,
     )
     return output
+
+
+def execution_adjusted_edge_venue_economics_sensitivity(
+    frame: pd.DataFrame,
+    *,
+    scenarios: dict[str, Any] | None = None,
+    signal_col: str = "lcri",
+    probability_col: str = "lcri_probability",
+    long_net_col: str = "long_net_return_ticks",
+    short_net_col: str = "short_net_return_ticks",
+    min_mean_edge_ticks: float = 0.0,
+) -> pd.DataFrame:
+    """Reprice execution-adjusted LCRI under venue economics scenarios.
+
+    Each scenario is a ``(passive_spread_capture_ticks, maker_rebate_ticks,
+    adverse_slippage_ticks)`` tuple passed through ``add_execution_adjusted_edge``.
+    The resulting table turns venue fee/rebate and adverse-fill assumptions into a
+    compact sensitivity artifact: reviewers can see whether queue-aware LCRI stays
+    tradable after maker economics, or only works in a zero-cost venue abstraction.
+    """
+    columns = [
+        "scenario",
+        "passive_spread_capture_ticks",
+        "maker_rebate_ticks",
+        "adverse_slippage_ticks",
+        "rows",
+        "tradable_rows",
+        "tradable_share",
+        "long_share",
+        "short_share",
+        "abstain_share",
+        "positive_edge_share",
+        "mean_long_edge_ticks",
+        "mean_short_edge_ticks",
+        "mean_execution_adjusted_edge_ticks",
+        "median_execution_adjusted_edge_ticks",
+        "worst_row_edge_ticks",
+        "economics_label",
+    ]
+    if not math.isfinite(min_mean_edge_ticks):
+        raise ValueError("min_mean_edge_ticks must be finite")
+    if scenarios is None:
+        scenarios = {
+            "base": (0.0, 0.0, 0.0),
+            "maker_rebate": (0.0, 0.1, 0.0),
+            "wide_spread_toxic_fill": (0.5, 0.0, 0.25),
+        }
+    if not scenarios:
+        raise ValueError("scenarios must be a non-empty mapping")
+
+    parsed_scenarios: list[tuple[str, float, float, float]] = []
+    for scenario, settings in scenarios.items():
+        if isinstance(settings, (str, bytes)):
+            raise ValueError(
+                "scenarios values must be (passive_spread_capture_ticks, maker_rebate_ticks, adverse_slippage_ticks) triples"
+            )
+        try:
+            spread_raw, rebate_raw, slippage_raw = settings
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "scenarios values must be (passive_spread_capture_ticks, maker_rebate_ticks, adverse_slippage_ticks) triples"
+            ) from exc
+        parsed_scenarios.append((str(scenario), float(spread_raw), float(rebate_raw), float(slippage_raw)))
+
+    rows: list[dict[str, float | int | str]] = []
+    for scenario, spread_ticks, rebate_ticks, slippage_ticks in parsed_scenarios:
+        adjusted = add_execution_adjusted_edge(
+            frame,
+            signal_col=signal_col,
+            probability_col=probability_col,
+            long_net_col=long_net_col,
+            short_net_col=short_net_col,
+            passive_spread_capture_ticks=spread_ticks,
+            maker_rebate_ticks=rebate_ticks,
+            adverse_slippage_ticks=slippage_ticks,
+        )
+        if adjusted.empty:
+            rows.append(
+                {
+                    "scenario": scenario,
+                    "passive_spread_capture_ticks": spread_ticks,
+                    "maker_rebate_ticks": rebate_ticks,
+                    "adverse_slippage_ticks": slippage_ticks,
+                    "rows": 0,
+                    "tradable_rows": 0,
+                    "tradable_share": 0.0,
+                    "long_share": 0.0,
+                    "short_share": 0.0,
+                    "abstain_share": 0.0,
+                    "positive_edge_share": 0.0,
+                    "mean_long_edge_ticks": 0.0,
+                    "mean_short_edge_ticks": 0.0,
+                    "mean_execution_adjusted_edge_ticks": 0.0,
+                    "median_execution_adjusted_edge_ticks": 0.0,
+                    "worst_row_edge_ticks": 0.0,
+                    "economics_label": "no_evidence",
+                }
+            )
+            continue
+
+        side = adjusted["best_execution_side"].astype(str)
+        edge = adjusted["execution_adjusted_edge_ticks"].astype(float)
+        total_rows = int(len(adjusted))
+        tradable_rows = int(side.isin(["long", "short"]).sum())
+        mean_edge = float(edge.mean())
+        positive_edge_share = float((edge > 0.0).mean())
+        if mean_edge >= min_mean_edge_ticks and tradable_rows > 0:
+            economics_label = "positive_after_costs"
+        elif tradable_rows > 0:
+            economics_label = "cost_fragile"
+        else:
+            economics_label = "no_tradable_edge"
+        rows.append(
+            {
+                "scenario": scenario,
+                "passive_spread_capture_ticks": spread_ticks,
+                "maker_rebate_ticks": rebate_ticks,
+                "adverse_slippage_ticks": slippage_ticks,
+                "rows": total_rows,
+                "tradable_rows": tradable_rows,
+                "tradable_share": tradable_rows / total_rows,
+                "long_share": float((side == "long").mean()),
+                "short_share": float((side == "short").mean()),
+                "abstain_share": float((side == "abstain").mean()),
+                "positive_edge_share": positive_edge_share,
+                "mean_long_edge_ticks": float(adjusted["long_fill_adjusted_edge_ticks"].mean()),
+                "mean_short_edge_ticks": float(adjusted["short_fill_adjusted_edge_ticks"].mean()),
+                "mean_execution_adjusted_edge_ticks": mean_edge,
+                "median_execution_adjusted_edge_ticks": float(edge.median()),
+                "worst_row_edge_ticks": float(edge.min()),
+                "economics_label": economics_label,
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
 
 
 def execution_adjusted_edge_component_attribution(
