@@ -7265,6 +7265,242 @@ def passive_fill_event_window_transition_scorecard(
     }
 
 
+def _empty_passive_fill_event_window_transition_stability() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "transition_path",
+            "from_passive_fill_event_window_regime",
+            "to_passive_fill_event_window_regime",
+            "rows_train",
+            "rows_heldout",
+            "transition_share_train",
+            "transition_share_heldout",
+            "transition_share_drift",
+            "mean_edge_delta_ticks_train",
+            "mean_edge_delta_ticks_heldout",
+            "edge_delta_drift_ticks",
+            "to_negative_edge_share_train",
+            "to_negative_edge_share_heldout",
+            "negative_edge_share_drift",
+            "mean_to_passive_fill_event_toxicity_probability_train",
+            "mean_to_passive_fill_event_toxicity_probability_heldout",
+            "toxicity_probability_drift",
+            "transition_stability_label",
+        ]
+    )
+
+
+def passive_fill_event_window_transition_stability(
+    train_transition_matrix: pd.DataFrame,
+    heldout_transition_matrix: pd.DataFrame,
+    *,
+    min_train_rows: int = 1,
+    min_heldout_rows: int = 1,
+    block_edge_delta_drift_ticks: float = -0.50,
+    block_negative_edge_share_drift: float = 0.25,
+    block_toxicity_probability_drift: float = 0.25,
+    review_edge_delta_drift_ticks: float = -0.25,
+    review_negative_edge_share_drift: float = 0.15,
+    review_toxicity_probability_drift: float = 0.15,
+) -> pd.DataFrame:
+    """Compare in-sample and heldout event-window transition fragility.
+
+    A publishable execution demo should not only pass the transition scorecard on
+    a single split: the same event-window paths should remain economically stable
+    out of sample. This helper joins train/heldout transition matrices by path and
+    flags paths where heldout edge decay, negative-edge share, or toxicity worsens.
+    """
+    for name, value in {"min_train_rows": min_train_rows, "min_heldout_rows": min_heldout_rows}.items():
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            raise ValueError(f"{name} must be a positive integer")
+    for name, value in {
+        "block_edge_delta_drift_ticks": block_edge_delta_drift_ticks,
+        "block_negative_edge_share_drift": block_negative_edge_share_drift,
+        "block_toxicity_probability_drift": block_toxicity_probability_drift,
+        "review_edge_delta_drift_ticks": review_edge_delta_drift_ticks,
+        "review_negative_edge_share_drift": review_negative_edge_share_drift,
+        "review_toxicity_probability_drift": review_toxicity_probability_drift,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if train_transition_matrix.empty or heldout_transition_matrix.empty:
+        return _empty_passive_fill_event_window_transition_stability()
+
+    required = {
+        "from_passive_fill_event_window_regime",
+        "to_passive_fill_event_window_regime",
+        "rows",
+        "transition_share",
+        "mean_edge_delta_ticks",
+        "to_negative_edge_share",
+        "mean_to_passive_fill_event_toxicity_probability",
+    }
+    _require_columns(
+        train_transition_matrix,
+        required,
+        "train passive fill event window transition stability",
+    )
+    _require_columns(
+        heldout_transition_matrix,
+        required,
+        "heldout passive fill event window transition stability",
+    )
+    numeric_columns = sorted(required - {"from_passive_fill_event_window_regime", "to_passive_fill_event_window_regime"})
+
+    def _prepared(matrix: pd.DataFrame, label: str) -> pd.DataFrame:
+        values = _finite_values(matrix, numeric_columns, label)
+        if (values["rows"] < 0.0).any():
+            raise ValueError(f"{label} rows must be non-negative")
+        data = values.copy()
+        data["from_passive_fill_event_window_regime"] = matrix[
+            "from_passive_fill_event_window_regime"
+        ].astype(str)
+        data["to_passive_fill_event_window_regime"] = matrix[
+            "to_passive_fill_event_window_regime"
+        ].astype(str)
+        data["transition_path"] = (
+            data["from_passive_fill_event_window_regime"]
+            + "->"
+            + data["to_passive_fill_event_window_regime"]
+        )
+        return data
+
+    train = _prepared(train_transition_matrix, "train passive fill event window transition stability")
+    heldout = _prepared(heldout_transition_matrix, "heldout passive fill event window transition stability")
+    joined = train.merge(heldout, on="transition_path", suffixes=("_train", "_heldout"))
+    if joined.empty:
+        return _empty_passive_fill_event_window_transition_stability()
+    joined = joined[
+        (joined["rows_train"] >= float(min_train_rows))
+        & (joined["rows_heldout"] >= float(min_heldout_rows))
+    ].copy()
+    if joined.empty:
+        return _empty_passive_fill_event_window_transition_stability()
+
+    joined["from_passive_fill_event_window_regime"] = joined[
+        "from_passive_fill_event_window_regime_train"
+    ]
+    joined["to_passive_fill_event_window_regime"] = joined[
+        "to_passive_fill_event_window_regime_train"
+    ]
+    joined["transition_share_drift"] = (
+        joined["transition_share_heldout"] - joined["transition_share_train"]
+    )
+    joined["edge_delta_drift_ticks"] = (
+        joined["mean_edge_delta_ticks_heldout"] - joined["mean_edge_delta_ticks_train"]
+    )
+    joined["negative_edge_share_drift"] = (
+        joined["to_negative_edge_share_heldout"] - joined["to_negative_edge_share_train"]
+    )
+    joined["toxicity_probability_drift"] = (
+        joined["mean_to_passive_fill_event_toxicity_probability_heldout"]
+        - joined["mean_to_passive_fill_event_toxicity_probability_train"]
+    )
+
+    block_mask = (
+        (joined["edge_delta_drift_ticks"] <= block_edge_delta_drift_ticks)
+        | (joined["negative_edge_share_drift"] >= block_negative_edge_share_drift)
+        | (joined["toxicity_probability_drift"] >= block_toxicity_probability_drift)
+    )
+    review_mask = (
+        (joined["edge_delta_drift_ticks"] <= review_edge_delta_drift_ticks)
+        | (joined["negative_edge_share_drift"] >= review_negative_edge_share_drift)
+        | (joined["toxicity_probability_drift"] >= review_toxicity_probability_drift)
+    )
+    joined["transition_stability_label"] = np.select(
+        [block_mask, review_mask],
+        ["transition_stability_block", "transition_stability_review"],
+        default="transition_stability_pass",
+    )
+    columns = list(_empty_passive_fill_event_window_transition_stability().columns)
+    return (
+        joined[columns]
+        .sort_values(
+            ["transition_stability_label", "edge_delta_drift_ticks", "negative_edge_share_drift", "rows_heldout"],
+            ascending=[True, True, False, False],
+        )
+        .reset_index(drop=True)
+    )
+
+
+def _empty_passive_fill_event_window_transition_stability_scorecard() -> dict[str, float | int | str | bool]:
+    return {
+        "evaluated_transition_paths": 0,
+        "blocked_transition_paths": 0,
+        "review_transition_paths": 0,
+        "worst_transition_path": "none",
+        "worst_edge_delta_drift_ticks": 0.0,
+        "worst_negative_edge_share_drift": 0.0,
+        "worst_toxicity_probability_drift": 0.0,
+        "transition_stability_release_label": "pass",
+        "publishable": True,
+        "blocking_reasons": "none",
+        "review_reasons": "none",
+    }
+
+
+def passive_fill_event_window_transition_stability_scorecard(
+    stability: pd.DataFrame,
+) -> dict[str, float | int | str | bool]:
+    """Gate train-vs-heldout stability for passive-fill transition artifacts."""
+    if stability.empty:
+        return _empty_passive_fill_event_window_transition_stability_scorecard()
+    required = {
+        "transition_path",
+        "rows_train",
+        "rows_heldout",
+        "edge_delta_drift_ticks",
+        "negative_edge_share_drift",
+        "toxicity_probability_drift",
+        "transition_stability_label",
+    }
+    _require_columns(stability, required, "passive fill event window transition stability scorecard")
+    values = _finite_values(
+        stability,
+        [
+            "rows_train",
+            "rows_heldout",
+            "edge_delta_drift_ticks",
+            "negative_edge_share_drift",
+            "toxicity_probability_drift",
+        ],
+        "passive fill event window transition stability scorecard",
+    )
+    data = values.copy()
+    data["transition_path"] = stability["transition_path"].astype(str)
+    data["transition_stability_label"] = stability["transition_stability_label"].astype(str)
+    blocked = data[data["transition_stability_label"] == "transition_stability_block"]
+    review = data[data["transition_stability_label"] == "transition_stability_review"]
+    worst_source = blocked if not blocked.empty else review if not review.empty else data
+    worst_idx = worst_source.sort_values(
+        ["edge_delta_drift_ticks", "negative_edge_share_drift", "toxicity_probability_drift", "rows_heldout"],
+        ascending=[True, False, False, False],
+    ).index[0]
+    event_post_block = (
+        not blocked[blocked["transition_path"] == "event->post_event"].empty
+    )
+    blocking_reasons: list[str] = []
+    if event_post_block:
+        blocking_reasons.append("event_post_holdout_decay")
+    if not blocked.empty:
+        blocking_reasons.append("unstable_transition_paths")
+    review_reasons = ["transition_stability_review_paths"] if blocked.empty and not review.empty else []
+    label = "block" if blocking_reasons else "review" if review_reasons else "pass"
+    return {
+        "evaluated_transition_paths": int(len(stability)),
+        "blocked_transition_paths": int(len(blocked)),
+        "review_transition_paths": int(len(review)),
+        "worst_transition_path": str(data.loc[worst_idx, "transition_path"]),
+        "worst_edge_delta_drift_ticks": float(data.loc[worst_idx, "edge_delta_drift_ticks"]),
+        "worst_negative_edge_share_drift": float(data.loc[worst_idx, "negative_edge_share_drift"]),
+        "worst_toxicity_probability_drift": float(data.loc[worst_idx, "toxicity_probability_drift"]),
+        "transition_stability_release_label": label,
+        "publishable": label == "pass",
+        "blocking_reasons": ",".join(blocking_reasons) if blocking_reasons else "none",
+        "review_reasons": ",".join(review_reasons) if review_reasons else "none",
+    }
+
+
 def passive_fill_event_window_diagnostics(
     frame: pd.DataFrame,
     *,

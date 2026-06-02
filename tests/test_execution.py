@@ -39,6 +39,8 @@ from lcri_lab.execution import (
     passive_fill_event_policy_stability_scorecard,
     passive_fill_event_toxicity_scorecard,
     passive_fill_event_window_sensitivity,
+    passive_fill_event_window_transition_stability,
+    passive_fill_event_window_transition_stability_scorecard,
     passive_fill_event_window_transition_matrix,
     passive_fill_event_window_transition_scorecard,
     passive_fill_event_transition_policy_curve,
@@ -6063,3 +6065,67 @@ def test_queue_position_fill_monotonicity_scorecard_reviews_thin_queue_ladder() 
 
     assert scorecard["queue_steps"].tolist() == [0]
     assert scorecard["monotonicity_label"].tolist() == ["queue_fill_monotonicity_review"]
+
+
+def test_passive_fill_event_window_transition_stability_flags_holdout_edge_decay() -> None:
+    train = pd.DataFrame(
+        {
+            "from_passive_fill_event_window_regime": ["event", "pre_event"],
+            "to_passive_fill_event_window_regime": ["post_event", "event"],
+            "rows": [40, 60],
+            "transition_share": [0.40, 0.60],
+            "mean_edge_delta_ticks": [-0.10, 0.20],
+            "to_negative_edge_share": [0.20, 0.10],
+            "mean_to_passive_fill_event_toxicity_probability": [0.30, 0.20],
+        }
+    )
+    heldout = pd.DataFrame(
+        {
+            "from_passive_fill_event_window_regime": ["event", "pre_event"],
+            "to_passive_fill_event_window_regime": ["post_event", "event"],
+            "rows": [50, 50],
+            "transition_share": [0.50, 0.50],
+            "mean_edge_delta_ticks": [-0.90, 0.10],
+            "to_negative_edge_share": [0.80, 0.20],
+            "mean_to_passive_fill_event_toxicity_probability": [0.85, 0.25],
+        }
+    )
+
+    stability = passive_fill_event_window_transition_stability(train, heldout)
+
+    assert stability["transition_path"].tolist() == ["event->post_event", "pre_event->event"]
+    event_post = stability.iloc[0]
+    assert event_post["mean_edge_delta_ticks_train"] == pytest.approx(-0.10)
+    assert event_post["mean_edge_delta_ticks_heldout"] == pytest.approx(-0.90)
+    assert event_post["edge_delta_drift_ticks"] == pytest.approx(-0.80)
+    assert event_post["negative_edge_share_drift"] == pytest.approx(0.60)
+    assert event_post["toxicity_probability_drift"] == pytest.approx(0.55)
+    assert event_post["transition_stability_label"] == "transition_stability_block"
+
+
+def test_passive_fill_event_window_transition_stability_scorecard_blocks_unstable_event_post_path() -> None:
+    stability = pd.DataFrame(
+        {
+            "transition_path": ["event->post_event", "pre_event->event"],
+            "rows_train": [40, 60],
+            "rows_heldout": [50, 50],
+            "transition_share_train": [0.40, 0.60],
+            "transition_share_heldout": [0.50, 0.50],
+            "mean_edge_delta_ticks_train": [-0.10, 0.20],
+            "mean_edge_delta_ticks_heldout": [-0.90, 0.10],
+            "edge_delta_drift_ticks": [-0.80, -0.10],
+            "negative_edge_share_drift": [0.60, 0.10],
+            "toxicity_probability_drift": [0.55, 0.05],
+            "transition_stability_label": ["transition_stability_block", "transition_stability_pass"],
+        }
+    )
+
+    scorecard = passive_fill_event_window_transition_stability_scorecard(stability)
+
+    assert scorecard["transition_stability_release_label"] == "block"
+    assert scorecard["publishable"] is False
+    assert scorecard["evaluated_transition_paths"] == 2
+    assert scorecard["blocked_transition_paths"] == 1
+    assert scorecard["worst_transition_path"] == "event->post_event"
+    assert scorecard["worst_edge_delta_drift_ticks"] == pytest.approx(-0.80)
+    assert scorecard["blocking_reasons"] == "event_post_holdout_decay,unstable_transition_paths"
