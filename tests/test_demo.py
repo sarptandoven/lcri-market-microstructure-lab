@@ -121,6 +121,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_queue_position_lcri_tail_fill_residuals.csv").exists()
     assert (tmp_path / "execution_publishability_release_gate.json").exists()
     assert (tmp_path / "heldout_execution_publishability_release_gate.json").exists()
+    assert (tmp_path / "execution_adjusted_lcri_event_window_release_scorecard.json").exists()
+    assert (tmp_path / "heldout_execution_adjusted_lcri_event_window_release_scorecard.json").exists()
     assert (tmp_path / "passive_fill_event_windows.csv").exists()
     assert (tmp_path / "passive_fill_event_lead_lag_profile.csv").exists()
     assert (tmp_path / "passive_fill_event_lead_lag_scorecard.csv").exists()
@@ -314,6 +316,17 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     }.issubset(baseline_regime_basis.columns)
     assert baseline_regime_basis["regime"].nunique() >= 2
     release_gate = json.loads((tmp_path / "execution_publishability_release_gate.json").read_text())
+    execution_lcri_event_release = json.loads(
+        (tmp_path / "execution_adjusted_lcri_event_window_release_scorecard.json").read_text()
+    )
+    assert execution_lcri_event_release["release_decision"] in {"pass", "review", "block"}
+    assert {
+        "high_lcri_rows",
+        "toxic_high_lcri_row_share",
+        "weighted_high_lcri_signal_survival_ratio",
+        "worst_event_window_regime",
+        "release_label",
+    }.issubset(execution_lcri_event_release)
     tail_residuals = pd.read_csv(tmp_path / "queue_position_lcri_tail_fill_residuals.csv")
     assert {
         "regime",
@@ -731,6 +744,18 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert manifest["artifact_metadata"]["heldout_execution_adjusted_lcri_side_attribution.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["execution_publishability_release_gate.json"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["heldout_execution_publishability_release_gate.json"]["size_bytes"] > 0
+    assert (
+        manifest["artifact_metadata"][
+            "execution_adjusted_lcri_event_window_release_scorecard.json"
+        ]["size_bytes"]
+        > 0
+    )
+    assert (
+        manifest["artifact_metadata"][
+            "heldout_execution_adjusted_lcri_event_window_release_scorecard.json"
+        ]["size_bytes"]
+        > 0
+    )
     assert manifest["artifact_metadata"]["passive_fill_event_windows.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_regime_summary.csv"]["size_bytes"] > 0
     assert manifest["artifact_metadata"]["passive_fill_event_window_sensitivity.csv"]["size_bytes"] > 0

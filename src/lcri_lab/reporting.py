@@ -720,6 +720,112 @@ def verify_execution_adjusted_lcri_quantile_diagnostics(
     return errors
 
 
+def verify_execution_adjusted_lcri_event_window_release_scorecard(
+    output_dir: Path,
+    artifact: str = "execution_adjusted_lcri_event_window_release_scorecard.json",
+) -> list[str]:
+    """Return errors for execution-adjusted LCRI event-window release scorecards."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing execution-adjusted LCRI event-window release scorecard: {artifact}"]
+    try:
+        payload = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        return [f"invalid execution-adjusted LCRI event-window release scorecard JSON {artifact}: {exc}"]
+    required = {
+        "high_lcri_rows",
+        "toxic_high_lcri_rows",
+        "toxic_high_lcri_row_share",
+        "event_high_lcri_rows",
+        "event_toxic_high_lcri_rows",
+        "event_toxic_high_lcri_row_share",
+        "weighted_high_lcri_signal_survival_ratio",
+        "weighted_high_lcri_fill_adverse_spread",
+        "weighted_high_lcri_negative_edge_share",
+        "worst_event_window_regime",
+        "worst_event_window_bucket",
+        "worst_event_window_label",
+        "release_decision",
+        "release_label",
+        "blocking_reasons",
+        "review_reasons",
+    }
+    missing = sorted(required - set(payload))
+    if missing:
+        return [f"incomplete execution-adjusted LCRI event-window release scorecard {artifact}: {missing}"]
+
+    errors: list[str] = []
+    numeric_columns = [
+        "high_lcri_rows",
+        "toxic_high_lcri_rows",
+        "toxic_high_lcri_row_share",
+        "event_high_lcri_rows",
+        "event_toxic_high_lcri_rows",
+        "event_toxic_high_lcri_row_share",
+        "weighted_high_lcri_signal_survival_ratio",
+        "weighted_high_lcri_fill_adverse_spread",
+        "weighted_high_lcri_negative_edge_share",
+    ]
+    numeric = {column: float(payload[column]) for column in numeric_columns}
+    if not all(math.isfinite(value) for value in numeric.values()):
+        errors.append(f"non-finite execution-adjusted LCRI event-window scorecard values in {artifact}")
+    count_columns = [
+        "high_lcri_rows",
+        "toxic_high_lcri_rows",
+        "event_high_lcri_rows",
+        "event_toxic_high_lcri_rows",
+    ]
+    if not all(numeric[column] >= 0.0 and numeric[column].is_integer() for column in count_columns):
+        errors.append(f"negative execution-adjusted LCRI event-window scorecard row counts in {artifact}")
+    if (
+        numeric["toxic_high_lcri_rows"] > numeric["high_lcri_rows"]
+        or numeric["event_toxic_high_lcri_rows"] > numeric["event_high_lcri_rows"]
+        or numeric["event_high_lcri_rows"] > numeric["high_lcri_rows"]
+    ):
+        errors.append(
+            f"impossible execution-adjusted LCRI event-window scorecard row counts in {artifact}"
+        )
+    bounded_columns = [
+        "toxic_high_lcri_row_share",
+        "event_toxic_high_lcri_row_share",
+        "weighted_high_lcri_signal_survival_ratio",
+        "weighted_high_lcri_negative_edge_share",
+    ]
+    if not all(0.0 <= numeric[column] <= 1.0 for column in bounded_columns):
+        errors.append(f"bounded execution-adjusted LCRI event-window scorecard shares violated in {artifact}")
+    expected_toxic_share = (
+        numeric["toxic_high_lcri_rows"] / numeric["high_lcri_rows"]
+        if numeric["high_lcri_rows"] > 0.0
+        else 0.0
+    )
+    expected_event_toxic_share = (
+        numeric["event_toxic_high_lcri_rows"] / numeric["event_high_lcri_rows"]
+        if numeric["event_high_lcri_rows"] > 0.0
+        else 0.0
+    )
+    if abs(numeric["toxic_high_lcri_row_share"] - expected_toxic_share) > 1e-9 or abs(
+        numeric["event_toxic_high_lcri_row_share"] - expected_event_toxic_share
+    ) > 1e-9:
+        errors.append(f"inconsistent execution-adjusted LCRI event-window scorecard shares in {artifact}")
+    valid_decisions = {"pass", "review", "block"}
+    decision = str(payload["release_decision"])
+    if decision not in valid_decisions:
+        errors.append(f"invalid execution-adjusted LCRI event-window scorecard decision in {artifact}")
+    expected_label = f"execution_lcri_event_window_{'blocked' if decision == 'block' else decision}"
+    if str(payload["release_label"]) != expected_label:
+        errors.append(f"inconsistent execution-adjusted LCRI event-window scorecard label in {artifact}")
+    text_columns = [
+        "worst_event_window_regime",
+        "worst_event_window_bucket",
+        "worst_event_window_label",
+        "blocking_reasons",
+        "review_reasons",
+    ]
+    if any(not str(payload[column]) for column in text_columns):
+        errors.append(f"blank execution-adjusted LCRI event-window scorecard text fields in {artifact}")
+    return errors
+
+
 def verify_queue_position_lcri_tail_fill_residuals(
     output_dir: Path, artifact: str = "queue_position_lcri_tail_fill_residuals.csv"
 ) -> list[str]:

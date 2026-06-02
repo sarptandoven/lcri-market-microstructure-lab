@@ -100,6 +100,7 @@ from lcri_lab.execution import (
     execution_adjusted_edge_component_attribution,
     execution_adjusted_edge_summary,
     execution_adjusted_lcri_event_window_attribution,
+    execution_adjusted_lcri_event_window_release_scorecard,
     execution_adjusted_lcri_quantile_diagnostics,
     execution_adjusted_lcri_regime_attribution,
     execution_adjusted_lcri_side_attribution,
@@ -196,6 +197,7 @@ from lcri_lab.reporting import (
     verify_hidden_resiliency_asymmetry_summary,
     verify_adverse_selection_phase_shift_summary,
     verify_execution_adjusted_edge_component_attribution,
+    verify_execution_adjusted_lcri_event_window_release_scorecard,
     verify_execution_adjusted_lcri_quantile_diagnostics,
     verify_execution_adjusted_lcri_side_attribution,
     verify_execution_publishability_review_artifacts,
@@ -968,6 +970,16 @@ def run_demo(
     heldout_execution_lcri_event_window_attribution = execution_adjusted_lcri_event_window_attribution(
         heldout_scored
     )
+    execution_lcri_event_window_release_scorecard = (
+        execution_adjusted_lcri_event_window_release_scorecard(
+            execution_lcri_event_window_attribution
+        )
+    )
+    heldout_execution_lcri_event_window_release_scorecard = (
+        execution_adjusted_lcri_event_window_release_scorecard(
+            heldout_execution_lcri_event_window_attribution
+        )
+    )
     baseline_regime_basis = baseline_regime_basis_comparison(
         scored,
         train_window=max(200, rows // 2),
@@ -1121,6 +1133,8 @@ def run_demo(
         "heldout_queue_position_lcri_tail_fill_residuals.csv",
         "execution_adjusted_lcri_event_window_attribution.csv",
         "heldout_execution_adjusted_lcri_event_window_attribution.csv",
+        "execution_adjusted_lcri_event_window_release_scorecard.json",
+        "heldout_execution_adjusted_lcri_event_window_release_scorecard.json",
         "execution_publishability_review_packet.csv",
         "heldout_execution_publishability_review_packet.csv",
         "execution_publishability_release_gate.json",
@@ -1731,6 +1745,14 @@ def run_demo(
     )
     heldout_execution_lcri_event_window_attribution.to_csv(
         output / "heldout_execution_adjusted_lcri_event_window_attribution.csv", index=False
+    )
+    write_json(
+        output / "execution_adjusted_lcri_event_window_release_scorecard.json",
+        execution_lcri_event_window_release_scorecard,
+    )
+    write_json(
+        output / "heldout_execution_adjusted_lcri_event_window_release_scorecard.json",
+        heldout_execution_lcri_event_window_release_scorecard,
     )
     scored[
         [
@@ -2784,6 +2806,19 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_execution_publishability_release_gate.json"
             )
             if "heldout_execution_publishability_release_gate.json" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_execution_adjusted_lcri_event_window_release_scorecard(report_dir)
+            if "execution_adjusted_lcri_event_window_release_scorecard.json" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_execution_adjusted_lcri_event_window_release_scorecard(
+                report_dir, "heldout_execution_adjusted_lcri_event_window_release_scorecard.json"
+            )
+            if "heldout_execution_adjusted_lcri_event_window_release_scorecard.json"
+            in manifest_artifacts
             else []
         ),
         *(

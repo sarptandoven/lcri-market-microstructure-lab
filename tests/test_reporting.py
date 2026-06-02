@@ -28,6 +28,7 @@ from lcri_lab.reporting import (
     verify_execution_publishability_review_artifacts,
     verify_passive_fill_event_policy_stability,
     verify_passive_fill_event_policy_stability_scorecard,
+    verify_execution_adjusted_lcri_event_window_release_scorecard,
     verify_execution_adjusted_lcri_quantile_diagnostics,
     verify_queue_position_lcri_tail_fill_residuals,
     verify_queue_position_path_drawdown_artifacts,
@@ -248,6 +249,63 @@ def test_verify_execution_adjusted_lcri_quantile_diagnostics_checks_schema(tmp_p
     errors = verify_execution_adjusted_lcri_quantile_diagnostics(tmp_path)
     assert any("bounded execution-adjusted LCRI quantile probabilities" in error for error in errors)
     assert any("non-positive execution-adjusted LCRI quantile rows" in error for error in errors)
+
+
+def test_verify_execution_adjusted_lcri_event_window_release_scorecard_checks_schema_and_bounds(
+    tmp_path,
+) -> None:
+    (tmp_path / "execution_adjusted_lcri_event_window_release_scorecard.json").write_text(
+        json.dumps(
+            {
+                "high_lcri_rows": 20,
+                "toxic_high_lcri_rows": 3,
+                "toxic_high_lcri_row_share": 0.15,
+                "event_high_lcri_rows": 10,
+                "event_toxic_high_lcri_rows": 2,
+                "event_toxic_high_lcri_row_share": 0.20,
+                "weighted_high_lcri_signal_survival_ratio": 0.70,
+                "weighted_high_lcri_fill_adverse_spread": 0.12,
+                "weighted_high_lcri_negative_edge_share": 0.25,
+                "worst_event_window_regime": "event",
+                "worst_event_window_bucket": "high_abs_lcri",
+                "worst_event_window_label": "event_window_edge_survives",
+                "release_decision": "pass",
+                "release_label": "execution_lcri_event_window_pass",
+                "blocking_reasons": "none",
+                "review_reasons": "none",
+            }
+        )
+    )
+
+    assert verify_execution_adjusted_lcri_event_window_release_scorecard(tmp_path) == []
+
+    (tmp_path / "execution_adjusted_lcri_event_window_release_scorecard.json").write_text(
+        json.dumps(
+            {
+                "high_lcri_rows": 5,
+                "toxic_high_lcri_rows": 8,
+                "toxic_high_lcri_row_share": 1.6,
+                "event_high_lcri_rows": 2,
+                "event_toxic_high_lcri_rows": 3,
+                "event_toxic_high_lcri_row_share": 1.5,
+                "weighted_high_lcri_signal_survival_ratio": -0.1,
+                "weighted_high_lcri_fill_adverse_spread": 0.02,
+                "weighted_high_lcri_negative_edge_share": 1.2,
+                "worst_event_window_regime": "event",
+                "worst_event_window_bucket": "high_abs_lcri",
+                "worst_event_window_label": "event_window_edge_survives",
+                "release_decision": "pass",
+                "release_label": "execution_lcri_event_window_blocked",
+                "blocking_reasons": "none",
+                "review_reasons": "none",
+            }
+        )
+    )
+
+    errors = verify_execution_adjusted_lcri_event_window_release_scorecard(tmp_path)
+    assert any("bounded execution-adjusted LCRI event-window scorecard shares" in error for error in errors)
+    assert any("impossible execution-adjusted LCRI event-window scorecard row counts" in error for error in errors)
+    assert any("inconsistent execution-adjusted LCRI event-window scorecard label" in error for error in errors)
 
 
 def test_verify_queue_position_lcri_tail_fill_residuals_checks_schema_and_bounds(tmp_path) -> None:
