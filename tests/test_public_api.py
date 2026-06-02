@@ -182,6 +182,11 @@ def test_public_api_exports_queue_position_latency_release_scorecard() -> None:
     assert "queue_position_latency_release_scorecard" in lcri_lab.__all__
 
 
+def test_public_api_exports_trade_confirmed_passive_fill_latency_summary() -> None:
+    assert callable(lcri_lab.trade_confirmed_passive_fill_latency_summary)
+    assert "trade_confirmed_passive_fill_latency_summary" in lcri_lab.__all__
+
+
 def test_public_api_exports_passive_fill_event_lead_lag_scorecard() -> None:
     assert callable(lcri_lab.passive_fill_event_lead_lag_scorecard)
     assert "passive_fill_event_lead_lag_scorecard" in lcri_lab.__all__

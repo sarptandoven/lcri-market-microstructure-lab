@@ -8,6 +8,7 @@ from lcri_lab.execution import (
     add_passive_fill_probabilities,
     add_event_level_realized_fill_proxy,
     passive_fill_proxy_disagreement,
+    trade_confirmed_passive_fill_latency_summary,
     add_passive_fill_event_window_regimes,
     add_queue_position_features,
     add_queue_position_order_size_features,
@@ -514,6 +515,72 @@ def test_event_level_trade_confirmed_fill_proxy_respects_child_order_clearance_a
     assert output["bid_event_total_queue_advance"].tolist() == pytest.approx([39.0, 41.0])
     assert output["bid_trade_confirmed_fill"].tolist() == pytest.approx([0.0, 1.0])
     assert output["bid_trade_confirmed_fill_latency"].tolist()[1] == pytest.approx(0.20)
+
+
+def test_trade_confirmed_passive_fill_latency_summary_surfaces_latency_and_cancel_only_risk() -> None:
+    frame = pd.DataFrame(
+        {
+            "bid_trade_confirmed_fill": [1.0, 0.0, 1.0, 0.0],
+            "ask_trade_confirmed_fill": [0.0, 1.0, 0.0, 0.0],
+            "bid_trade_confirmed_fill_latency": [0.20, pd.NA, 0.50, pd.NA],
+            "ask_trade_confirmed_fill_latency": [pd.NA, 0.40, pd.NA, pd.NA],
+            "bid_queue_advance_without_trade": [0.0, 1.0, 0.0, 0.0],
+            "ask_queue_advance_without_trade": [0.0, 0.0, 1.0, 0.0],
+            "bid_event_trade_depletion": [30.0, 0.0, 10.0, 0.0],
+            "ask_event_trade_depletion": [0.0, 20.0, 0.0, 0.0],
+            "bid_event_cancel_depletion": [0.0, 35.0, 5.0, 0.0],
+            "ask_event_cancel_depletion": [0.0, 0.0, 40.0, 0.0],
+        }
+    )
+
+    summary = trade_confirmed_passive_fill_latency_summary(
+        frame,
+        max_mean_latency=0.30,
+        max_cancel_only_clear_rate=0.20,
+    )
+    by_side = summary.set_index("side")
+
+    assert summary.columns.tolist() == [
+        "side",
+        "rows",
+        "trade_confirmed_fill_rate",
+        "cancel_only_clear_rate",
+        "mean_fill_latency",
+        "p95_fill_latency",
+        "mean_trade_depletion",
+        "mean_cancel_depletion",
+        "review_label",
+    ]
+    assert by_side.loc["bid", "trade_confirmed_fill_rate"] == pytest.approx(0.50)
+    assert by_side.loc["bid", "cancel_only_clear_rate"] == pytest.approx(0.25)
+    assert by_side.loc["bid", "mean_fill_latency"] == pytest.approx(0.35)
+    assert by_side.loc["bid", "p95_fill_latency"] == pytest.approx(0.485)
+    assert by_side.loc["bid", "review_label"] == "cancel_only_and_latency_risk"
+    assert by_side.loc["ask", "trade_confirmed_fill_rate"] == pytest.approx(0.25)
+    assert by_side.loc["ask", "mean_fill_latency"] == pytest.approx(0.40)
+    assert by_side.loc["ask", "review_label"] == "cancel_only_and_latency_risk"
+    assert by_side.loc["all", "rows"] == 8
+    assert by_side.loc["all", "cancel_only_clear_rate"] == pytest.approx(0.25)
+
+
+def test_trade_confirmed_passive_fill_latency_summary_rejects_invalid_fill_flags() -> None:
+    with pytest.raises(ValueError, match=r"fill flags must be in \[0, 1\]"):
+        trade_confirmed_passive_fill_latency_summary(
+            pd.DataFrame(
+                {
+                    "bid_trade_confirmed_fill": [1.2],
+                    "ask_trade_confirmed_fill": [0.0],
+                    "bid_trade_confirmed_fill_latency": [0.1],
+                    "ask_trade_confirmed_fill_latency": [pd.NA],
+                    "bid_queue_advance_without_trade": [0.0],
+                    "ask_queue_advance_without_trade": [0.0],
+                    "bid_event_trade_depletion": [1.0],
+                    "ask_event_trade_depletion": [0.0],
+                    "bid_event_cancel_depletion": [0.0],
+                    "ask_event_cancel_depletion": [0.0],
+                }
+            )
+        )
 
 
 def test_passive_fill_proxy_disagreement_audits_snapshot_vs_event_labels() -> None:

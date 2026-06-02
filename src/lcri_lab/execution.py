@@ -716,6 +716,147 @@ def add_event_level_trade_confirmed_fill_proxy(
     return output
 
 
+def trade_confirmed_passive_fill_latency_summary(
+    frame: pd.DataFrame,
+    *,
+    fill_cols: tuple[str, ...] = ("bid_trade_confirmed_fill", "ask_trade_confirmed_fill"),
+    latency_cols: tuple[str, ...] = ("bid_trade_confirmed_fill_latency", "ask_trade_confirmed_fill_latency"),
+    cancel_only_cols: tuple[str, ...] = ("bid_queue_advance_without_trade", "ask_queue_advance_without_trade"),
+    trade_depletion_cols: tuple[str, ...] = ("bid_event_trade_depletion", "ask_event_trade_depletion"),
+    cancel_depletion_cols: tuple[str, ...] = ("bid_event_cancel_depletion", "ask_event_cancel_depletion"),
+    sides: tuple[str, ...] = ("bid", "ask"),
+    max_mean_latency: float = 0.50,
+    max_cancel_only_clear_rate: float = 0.05,
+) -> pd.DataFrame:
+    """Summarize trade-confirmed passive-fill latency and cancel-only clearance risk.
+
+    This diagnostic is designed for rows produced by
+    ``add_event_level_trade_confirmed_fill_proxy``. It quantifies whether passive
+    fills are promptly trade-confirmed or mostly inferred from cancel-only queue
+    advancement, which is a key publishability risk for queue-position-aware
+    execution-adjusted LCRI.
+    """
+    column_groups = [
+        fill_cols,
+        latency_cols,
+        cancel_only_cols,
+        trade_depletion_cols,
+        cancel_depletion_cols,
+        sides,
+    ]
+    lengths = {len(group) for group in column_groups}
+    if lengths != {len(sides)} or not sides:
+        raise ValueError("all side column tuples must be non-empty and have the same length")
+    if not math.isfinite(max_mean_latency) or max_mean_latency < 0.0:
+        raise ValueError("max_mean_latency must be finite and non-negative")
+    if not math.isfinite(max_cancel_only_clear_rate) or not 0.0 <= max_cancel_only_clear_rate <= 1.0:
+        raise ValueError("max_cancel_only_clear_rate must be finite and in [0, 1]")
+
+    required = set(fill_cols) | set(latency_cols) | set(cancel_only_cols) | set(trade_depletion_cols) | set(cancel_depletion_cols)
+    _require_columns(frame, required, "trade-confirmed passive fill latency summary")
+    columns = [
+        "side",
+        "rows",
+        "trade_confirmed_fill_rate",
+        "cancel_only_clear_rate",
+        "mean_fill_latency",
+        "p95_fill_latency",
+        "mean_trade_depletion",
+        "mean_cancel_depletion",
+        "review_label",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    fill_values = _finite_values(frame, list(fill_cols), "trade-confirmed passive fill latency summary")
+    cancel_only_values = _finite_values(frame, list(cancel_only_cols), "trade-confirmed passive fill latency summary")
+    depletion_values = _finite_values(
+        frame,
+        list(trade_depletion_cols) + list(cancel_depletion_cols),
+        "trade-confirmed passive fill latency summary",
+    )
+    if not fill_values.apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("trade-confirmed passive fill latency summary fill flags must be in [0, 1]")
+    if not cancel_only_values.apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("trade-confirmed passive fill latency summary cancel-only flags must be in [0, 1]")
+    if (depletion_values < 0.0).any().any():
+        raise ValueError("trade-confirmed passive fill latency summary depletions must be non-negative")
+
+    latency_values = pd.DataFrame(index=frame.index)
+    for latency_col in latency_cols:
+        latency = pd.to_numeric(frame[latency_col], errors="coerce")
+        if (latency.dropna() < 0.0).any() or not np.isfinite(latency.dropna().to_numpy()).all():
+            raise ValueError("trade-confirmed passive fill latency summary latencies must be non-negative")
+        latency_values[latency_col] = latency
+
+    def summarize(
+        side: str,
+        fill: pd.Series,
+        latency: pd.Series,
+        cancel_only: pd.Series,
+        trade_depletion: pd.Series,
+        cancel_depletion: pd.Series,
+    ) -> dict[str, float | int | str]:
+        fill_bool = fill >= 0.5
+        rows = int(len(fill))
+        filled_latency = latency[fill_bool].dropna()
+        mean_latency = float(filled_latency.mean()) if not filled_latency.empty else 0.0
+        p95_latency = float(filled_latency.quantile(0.95)) if not filled_latency.empty else 0.0
+        cancel_only_rate = float((cancel_only >= 0.5).mean())
+        latency_risk = mean_latency > max_mean_latency
+        cancel_risk = cancel_only_rate > max_cancel_only_clear_rate
+        if latency_risk and cancel_risk:
+            label = "cancel_only_and_latency_risk"
+        elif cancel_risk:
+            label = "cancel_only_clear_risk"
+        elif latency_risk:
+            label = "latency_risk"
+        else:
+            label = "trade_confirmed_execution_ok"
+        return {
+            "side": side,
+            "rows": rows,
+            "trade_confirmed_fill_rate": float(fill_bool.mean()),
+            "cancel_only_clear_rate": cancel_only_rate,
+            "mean_fill_latency": mean_latency,
+            "p95_fill_latency": p95_latency,
+            "mean_trade_depletion": float(trade_depletion.mean()),
+            "mean_cancel_depletion": float(cancel_depletion.mean()),
+            "review_label": label,
+        }
+
+    rows = [
+        summarize(
+            side,
+            fill_values[fill_col],
+            latency_values[latency_col],
+            cancel_only_values[cancel_only_col],
+            depletion_values[trade_depletion_col],
+            depletion_values[cancel_depletion_col],
+        )
+        for side, fill_col, latency_col, cancel_only_col, trade_depletion_col, cancel_depletion_col in zip(
+            sides,
+            fill_cols,
+            latency_cols,
+            cancel_only_cols,
+            trade_depletion_cols,
+            cancel_depletion_cols,
+            strict=True,
+        )
+    ]
+    rows.append(
+        summarize(
+            "all",
+            pd.concat([fill_values[column] for column in fill_cols], ignore_index=True),
+            pd.concat([latency_values[column] for column in latency_cols], ignore_index=True),
+            pd.concat([cancel_only_values[column] for column in cancel_only_cols], ignore_index=True),
+            pd.concat([depletion_values[column] for column in trade_depletion_cols], ignore_index=True),
+            pd.concat([depletion_values[column] for column in cancel_depletion_cols], ignore_index=True),
+        )
+    )
+    return pd.DataFrame(rows, columns=columns)
+
+
 def passive_fill_proxy_disagreement(
     frame: pd.DataFrame,
     *,

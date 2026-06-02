@@ -205,6 +205,7 @@ from lcri_lab.reporting import (
     verify_execution_adjusted_lcri_side_attribution,
     verify_execution_publishability_review_artifacts,
     verify_execution_publishability_release_gate,
+    verify_trade_confirmed_passive_fill_latency_summary,
     verify_passive_fill_realization_horizon_sweep,
     verify_queue_position_lcri_tail_fill_residuals,
     verify_queue_position_path_drawdown_artifacts,
@@ -2864,6 +2865,18 @@ def verify_report(report_dir: Path) -> None:
             )
             if "heldout_execution_adjusted_lcri_event_window_release_scorecard.json"
             in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_trade_confirmed_passive_fill_latency_summary(report_dir)
+            if "trade_confirmed_passive_fill_latency_summary.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_trade_confirmed_passive_fill_latency_summary(
+                report_dir, "heldout_trade_confirmed_passive_fill_latency_summary.csv"
+            )
+            if "heldout_trade_confirmed_passive_fill_latency_summary.csv" in manifest_artifacts
             else []
         ),
         *(

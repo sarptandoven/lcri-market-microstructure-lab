@@ -30,6 +30,7 @@ from lcri_lab.reporting import (
     verify_passive_fill_event_policy_stability_scorecard,
     verify_execution_adjusted_lcri_event_window_release_scorecard,
     verify_execution_adjusted_lcri_quantile_diagnostics,
+    verify_trade_confirmed_passive_fill_latency_summary,
     verify_queue_position_lcri_tail_fill_residuals,
     verify_queue_position_path_drawdown_artifacts,
     verify_figure_artifacts,
@@ -205,6 +206,57 @@ def test_verify_hidden_resiliency_asymmetry_summary_checks_schema(tmp_path) -> N
     assert verify_hidden_resiliency_asymmetry_summary(tmp_path) == []
     write_json(tmp_path / "hidden_resiliency_asymmetry_summary.json", {"interpretation": "x"})
     assert "incomplete hidden resiliency" in verify_hidden_resiliency_asymmetry_summary(tmp_path)[0]
+
+
+def test_verify_trade_confirmed_passive_fill_latency_summary_checks_schema_and_bounds(tmp_path) -> None:
+    pd.DataFrame(
+        [
+            {
+                "side": "bid",
+                "rows": 4,
+                "trade_confirmed_fill_rate": 0.50,
+                "cancel_only_clear_rate": 0.25,
+                "mean_fill_latency": 0.35,
+                "p95_fill_latency": 0.49,
+                "mean_trade_depletion": 10.0,
+                "mean_cancel_depletion": 8.0,
+                "review_label": "cancel_only_and_latency_risk",
+            },
+            {
+                "side": "all",
+                "rows": 8,
+                "trade_confirmed_fill_rate": 0.375,
+                "cancel_only_clear_rate": 0.25,
+                "mean_fill_latency": 0.36,
+                "p95_fill_latency": 0.50,
+                "mean_trade_depletion": 7.5,
+                "mean_cancel_depletion": 7.5,
+                "review_label": "cancel_only_and_latency_risk",
+            },
+        ]
+    ).to_csv(tmp_path / "trade_confirmed_passive_fill_latency_summary.csv", index=False)
+
+    assert verify_trade_confirmed_passive_fill_latency_summary(tmp_path) == []
+
+    pd.DataFrame(
+        [
+            {
+                "side": "bid",
+                "rows": 4,
+                "trade_confirmed_fill_rate": 1.20,
+                "cancel_only_clear_rate": 0.25,
+                "mean_fill_latency": 0.35,
+                "p95_fill_latency": 0.49,
+                "mean_trade_depletion": 10.0,
+                "mean_cancel_depletion": 8.0,
+                "review_label": "mystery",
+            }
+        ]
+    ).to_csv(tmp_path / "trade_confirmed_passive_fill_latency_summary.csv", index=False)
+
+    errors = verify_trade_confirmed_passive_fill_latency_summary(tmp_path)
+    assert any("bounded trade-confirmed passive fill rates" in error for error in errors)
+    assert any("invalid trade-confirmed passive fill review labels" in error for error in errors)
 
 
 def test_verify_execution_adjusted_lcri_quantile_diagnostics_checks_schema(tmp_path) -> None:

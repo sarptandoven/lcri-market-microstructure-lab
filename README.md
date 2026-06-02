@@ -199,7 +199,10 @@ flagged as `*_queue_advance_without_trade` so execution-adjusted LCRI studies do
 not mistake queue movement for a tradable fill.
 
 ```python
-from lcri_lab import add_event_level_trade_confirmed_fill_proxy
+from lcri_lab import (
+    add_event_level_trade_confirmed_fill_proxy,
+    trade_confirmed_passive_fill_latency_summary,
+)
 
 fills = add_event_level_trade_confirmed_fill_proxy(
     queued_snapshots,
@@ -207,7 +210,20 @@ fills = add_event_level_trade_confirmed_fill_proxy(
     horizon=0.250,
     group_cols=("symbol", "session"),
 )
+latency_review = trade_confirmed_passive_fill_latency_summary(
+    fills,
+    max_mean_latency=0.300,
+    max_cancel_only_clear_rate=0.025,
+)
 ```
+
+`trade_confirmed_passive_fill_latency_summary` returns typed side-level review
+rows for `bid`, `ask`, and `all`, including trade-confirmed fill rate,
+cancel-only clear rate, mean/p95 fill latency, mean trade/cancel depletion, and a
+bounded `review_label`. The companion report verifier accepts both in-sample and
+heldout `*_trade_confirmed_passive_fill_latency_summary.csv` artifacts so API
+users can gate publication on whether fills are promptly trade-confirmed rather
+than inferred from cancel-only queue movement.
 
 ### Queue-position drawdown episodes
 

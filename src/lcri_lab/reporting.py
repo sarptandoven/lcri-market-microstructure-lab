@@ -486,6 +486,65 @@ _ALPHA_EVENT_ERROR_ARTIFACT_HINTS = {
 }
 
 
+def verify_trade_confirmed_passive_fill_latency_summary(
+    output_dir: Path, artifact: str = "trade_confirmed_passive_fill_latency_summary.csv"
+) -> list[str]:
+    """Return errors for trade-confirmed passive-fill latency review artifacts."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing trade-confirmed passive fill latency summary: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "side",
+        "rows",
+        "trade_confirmed_fill_rate",
+        "cancel_only_clear_rate",
+        "mean_fill_latency",
+        "p95_fill_latency",
+        "mean_trade_depletion",
+        "mean_cancel_depletion",
+        "review_label",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete trade-confirmed passive fill latency summary {artifact}: {missing}"]
+
+    numeric_columns = list(required - {"side", "review_label"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    known_sides = {"bid", "ask", "all"}
+    unknown_sides = sorted(set(frame["side"].astype(str)) - known_sides)
+    if unknown_sides:
+        errors.append(f"unknown trade-confirmed passive fill sides in {artifact}: {unknown_sides}")
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite trade-confirmed passive fill latency values in {artifact}")
+    if not numeric["rows"].ge(0.0).all():
+        errors.append(f"negative trade-confirmed passive fill latency row counts in {artifact}")
+    rate_columns = ["trade_confirmed_fill_rate", "cancel_only_clear_rate"]
+    if not numeric[rate_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        errors.append(f"bounded trade-confirmed passive fill rates violated in {artifact}")
+    nonnegative_columns = [
+        "mean_fill_latency",
+        "p95_fill_latency",
+        "mean_trade_depletion",
+        "mean_cancel_depletion",
+    ]
+    if not numeric[nonnegative_columns].ge(0.0).all().all():
+        errors.append(f"negative trade-confirmed passive fill latency/depletion values in {artifact}")
+    if (numeric["p95_fill_latency"] + 1e-12 < numeric["mean_fill_latency"]).any():
+        errors.append(f"trade-confirmed passive fill p95 latency below mean in {artifact}")
+    labels = {
+        "trade_confirmed_execution_ok",
+        "latency_risk",
+        "cancel_only_clear_risk",
+        "cancel_only_and_latency_risk",
+    }
+    unknown_labels = sorted(set(frame["review_label"].astype(str)) - labels)
+    if unknown_labels:
+        errors.append(f"invalid trade-confirmed passive fill review labels in {artifact}: {unknown_labels}")
+    return errors
+
+
 def verify_execution_publishability_review_artifacts(
     output_dir: Path, artifact: str = "execution_publishability_review_packet.csv"
 ) -> list[str]:
