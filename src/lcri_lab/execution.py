@@ -12070,3 +12070,218 @@ def execution_adjusted_lcri_event_window_release_scorecard(
         "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
         "review_reasons": ";".join(review_reasons) if review_reasons else "none",
     }
+
+
+def _empty_queue_position_trade_confirmation_surface() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "regime",
+            "queue_clear_bucket",
+            "rows",
+            "mean_queue_clear_share",
+            "mean_predicted_fill_probability",
+            "trade_confirmed_fill_rate",
+            "cancel_only_clear_rate",
+            "mean_trade_confirmed_fill_latency",
+            "stale_trade_confirmed_fill_share",
+            "confirmation_calibration_error",
+            "confirmation_shortfall",
+            "confirmation_surface_label",
+        ]
+    )
+
+
+def _trade_confirmation_surface_label(
+    *,
+    confirmation_shortfall: float,
+    cancel_only_clear_rate: float,
+    trade_confirmed_fill_rate: float,
+    stale_trade_confirmed_fill_share: float,
+) -> str:
+    if stale_trade_confirmed_fill_share > 0.50:
+        return "latency_risk"
+    if confirmation_shortfall >= 0.20:
+        return "high_prediction_not_trade_confirmed"
+    if cancel_only_clear_rate > trade_confirmed_fill_rate:
+        return "cancel_driven_queue_clearance"
+    return "trade_confirmed_execution_ok"
+
+
+def queue_position_trade_confirmation_surface(
+    frame: pd.DataFrame,
+    *,
+    bins: int = 5,
+    side_col: str = "best_execution_side",
+    regime_col: str | None = None,
+    max_latency: float | None = None,
+) -> pd.DataFrame:
+    """Audit queue-position fill probabilities against trade-confirmed fills.
+
+    Snapshot queue depletion can overstate passive executability when the queue
+    advance comes from cancels rather than aggressing trades, or when fills arrive
+    after a latency budget. This surface selects the probability/fill/latency fields
+    implied by ``best_execution_side``, buckets by selected queue-clear burden, and
+    reports where predicted passive fill probability is not trade-confirmed.
+    """
+    if not isinstance(bins, int) or isinstance(bins, bool):
+        raise ValueError("bins must be an integer")
+    if bins < 1:
+        raise ValueError("bins must be at least 1")
+    if max_latency is not None and (not math.isfinite(max_latency) or max_latency < 0.0):
+        raise ValueError("max_latency must be finite and non-negative when provided")
+
+    required = {
+        side_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_trade_confirmed_fill",
+        "ask_trade_confirmed_fill",
+        "bid_trade_confirmed_fill_latency",
+        "ask_trade_confirmed_fill_latency",
+        "bid_queue_advance_without_trade",
+        "ask_queue_advance_without_trade",
+        "bid_queue_clear_size",
+        "ask_queue_clear_size",
+        "bid_queue_clear_share",
+        "ask_queue_clear_share",
+    }
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(frame, required, "queue position trade confirmation surface")
+    if frame.empty:
+        return _empty_queue_position_trade_confirmation_surface()
+
+    numeric_columns = sorted(required - {side_col} - ({regime_col} if regime_col is not None else set()))
+    values = _finite_values(
+        frame,
+        [
+            column
+            for column in numeric_columns
+            if column
+            not in {
+                "bid_trade_confirmed_fill_latency",
+                "ask_trade_confirmed_fill_latency",
+            }
+        ],
+        "queue position trade confirmation surface",
+    )
+    latency_values = frame[
+        ["bid_trade_confirmed_fill_latency", "ask_trade_confirmed_fill_latency"]
+    ].astype(float)
+    finite_latency = latency_values.to_numpy(dtype=float)
+    finite_latency = finite_latency[~np.isnan(finite_latency)]
+    if not np.isfinite(finite_latency).all():
+        raise ValueError("queue position trade confirmation surface latencies must be finite or NaN")
+    if not values[
+        [
+            "bid_fill_probability",
+            "ask_fill_probability",
+            "bid_trade_confirmed_fill",
+            "ask_trade_confirmed_fill",
+        ]
+    ].apply(lambda column: column.between(0.0, 1.0).all()).all():
+        raise ValueError("queue position trade confirmation probabilities must be in [0, 1]")
+    nonnegative_columns = [
+        "bid_queue_advance_without_trade",
+        "ask_queue_advance_without_trade",
+        "bid_queue_clear_size",
+        "ask_queue_clear_size",
+        "bid_queue_clear_share",
+        "ask_queue_clear_share",
+    ]
+    if not values[nonnegative_columns].ge(0.0).all().all():
+        raise ValueError("queue position trade confirmation queue values must be non-negative")
+
+    side = frame[side_col].astype(str)
+    selected = pd.DataFrame(index=frame.index)
+    selected["regime"] = frame[regime_col].astype(str) if regime_col is not None else "all"
+    selected["side"] = side
+    selected["predicted_fill_probability"] = np.select(
+        [side == "long", side == "short"],
+        [values["bid_fill_probability"], values["ask_fill_probability"]],
+        default=np.nan,
+    )
+    selected["trade_confirmed_fill"] = np.select(
+        [side == "long", side == "short"],
+        [values["bid_trade_confirmed_fill"], values["ask_trade_confirmed_fill"]],
+        default=np.nan,
+    )
+    selected["queue_advance_without_trade"] = np.select(
+        [side == "long", side == "short"],
+        [values["bid_queue_advance_without_trade"], values["ask_queue_advance_without_trade"]],
+        default=np.nan,
+    )
+    selected["queue_clear_size"] = np.select(
+        [side == "long", side == "short"],
+        [values["bid_queue_clear_size"], values["ask_queue_clear_size"]],
+        default=np.nan,
+    )
+    selected["queue_clear_share"] = np.select(
+        [side == "long", side == "short"],
+        [values["bid_queue_clear_share"], values["ask_queue_clear_share"]],
+        default=np.nan,
+    )
+    selected["trade_confirmed_fill_latency"] = np.select(
+        [side == "long", side == "short"],
+        [latency_values["bid_trade_confirmed_fill_latency"], latency_values["ask_trade_confirmed_fill_latency"]],
+        default=np.nan,
+    )
+    selected = selected.loc[side.isin(["long", "short"])].copy()
+    if selected.empty:
+        return _empty_queue_position_trade_confirmation_surface()
+    selected["cancel_only_clear"] = (
+        (selected["trade_confirmed_fill"] <= 0.0)
+        & (
+            selected["queue_advance_without_trade"]
+            >= selected["queue_clear_size"].where(selected["queue_clear_size"] > 0.0, np.inf)
+        )
+    ).astype(float)
+    if max_latency is None:
+        selected["stale_trade_confirmed_fill"] = 0.0
+    else:
+        selected["stale_trade_confirmed_fill"] = (
+            (selected["trade_confirmed_fill"] > 0.0)
+            & (selected["trade_confirmed_fill_latency"] > max_latency)
+        ).astype(float)
+
+    actual_bins = min(bins, len(selected))
+    ranks = selected["queue_clear_share"].rank(method="first")
+    selected["bucket_id"] = pd.qcut(ranks, q=actual_bins, labels=False, duplicates="drop")
+    actual_bins = int(selected["bucket_id"].max()) + 1
+    labels = [f"q{index + 1:02d}" for index in range(actual_bins)]
+    selected["queue_clear_bucket"] = selected["bucket_id"].map(lambda bucket_id: labels[int(bucket_id)])
+
+    rows: list[dict[str, float | int | str]] = []
+    for (regime, bucket), group in selected.groupby(["regime", "queue_clear_bucket"], sort=True):
+        confirmed = group.loc[group["trade_confirmed_fill"] > 0.0, "trade_confirmed_fill_latency"]
+        predicted = float(group["predicted_fill_probability"].mean())
+        confirmed_rate = float(group["trade_confirmed_fill"].mean())
+        cancel_rate = float(group["cancel_only_clear"].mean())
+        stale_share = (
+            float(group.loc[group["trade_confirmed_fill"] > 0.0, "stale_trade_confirmed_fill"].mean())
+            if not confirmed.empty
+            else 0.0
+        )
+        confirmation_shortfall = float(predicted - confirmed_rate)
+        rows.append(
+            {
+                "regime": str(regime),
+                "queue_clear_bucket": str(bucket),
+                "rows": int(len(group)),
+                "mean_queue_clear_share": float(group["queue_clear_share"].mean()),
+                "mean_predicted_fill_probability": predicted,
+                "trade_confirmed_fill_rate": confirmed_rate,
+                "cancel_only_clear_rate": cancel_rate,
+                "mean_trade_confirmed_fill_latency": float(confirmed.mean()) if not confirmed.empty else 0.0,
+                "stale_trade_confirmed_fill_share": stale_share,
+                "confirmation_calibration_error": float(confirmed_rate - predicted),
+                "confirmation_shortfall": confirmation_shortfall,
+                "confirmation_surface_label": _trade_confirmation_surface_label(
+                    confirmation_shortfall=confirmation_shortfall,
+                    cancel_only_clear_rate=cancel_rate,
+                    trade_confirmed_fill_rate=confirmed_rate,
+                    stale_trade_confirmed_fill_share=stale_share,
+                ),
+            }
+        )
+    return pd.DataFrame(rows)[list(_empty_queue_position_trade_confirmation_surface().columns)]

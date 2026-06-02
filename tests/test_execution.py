@@ -9,6 +9,7 @@ from lcri_lab.execution import (
     add_event_level_realized_fill_proxy,
     passive_fill_proxy_disagreement,
     trade_confirmed_passive_fill_latency_summary,
+    queue_position_trade_confirmation_surface,
     add_passive_fill_event_window_regimes,
     add_queue_position_features,
     add_queue_position_order_size_features,
@@ -5245,3 +5246,56 @@ def test_queue_position_lcri_tail_adverse_selection_release_scorecard_rejects_mi
         match="missing queue position LCRI tail adverse selection release scorecard columns",
     ):
         queue_position_lcri_tail_adverse_selection_release_scorecard(pd.DataFrame({"rows": [1]}))
+
+
+def test_queue_position_trade_confirmation_surface_flags_cancel_driven_overprediction() -> None:
+    frame = pd.DataFrame(
+        {
+            "regime": ["calm", "calm", "stress", "stress"],
+            "best_execution_side": ["long", "long", "short", "short"],
+            "bid_fill_probability": [0.80, 0.70, 0.20, 0.10],
+            "ask_fill_probability": [0.20, 0.10, 0.90, 0.85],
+            "bid_trade_confirmed_fill": [1.0, 0.0, 0.0, 0.0],
+            "ask_trade_confirmed_fill": [0.0, 0.0, 0.0, 1.0],
+            "bid_trade_confirmed_fill_latency": [0.20, float("nan"), float("nan"), float("nan")],
+            "ask_trade_confirmed_fill_latency": [float("nan"), float("nan"), float("nan"), 1.40],
+            "bid_queue_advance_without_trade": [0.0, 55.0, 0.0, 0.0],
+            "ask_queue_advance_without_trade": [0.0, 0.0, 60.0, 0.0],
+            "bid_queue_clear_size": [50.0, 50.0, 50.0, 50.0],
+            "ask_queue_clear_size": [60.0, 60.0, 60.0, 60.0],
+            "bid_queue_clear_share": [0.20, 0.40, 0.10, 0.10],
+            "ask_queue_clear_share": [0.30, 0.30, 0.70, 0.90],
+        }
+    )
+
+    surface = queue_position_trade_confirmation_surface(
+        frame,
+        bins=2,
+        regime_col="regime",
+        max_latency=1.0,
+    )
+
+    assert surface["queue_clear_bucket"].tolist() == ["q01", "q02"]
+    calm_low = surface.iloc[0]
+    assert calm_low["regime"] == "calm"
+    assert calm_low["rows"] == 2
+    assert calm_low["trade_confirmed_fill_rate"] == pytest.approx(0.5)
+    assert calm_low["cancel_only_clear_rate"] == pytest.approx(0.5)
+    assert calm_low["mean_trade_confirmed_fill_latency"] == pytest.approx(0.2)
+    assert calm_low["stale_trade_confirmed_fill_share"] == pytest.approx(0.0)
+    assert calm_low["confirmation_shortfall"] == pytest.approx(0.25)
+    assert calm_low["confirmation_surface_label"] == "high_prediction_not_trade_confirmed"
+
+    stress_high = surface.iloc[1]
+    assert stress_high["regime"] == "stress"
+    assert stress_high["rows"] == 2
+    assert stress_high["trade_confirmed_fill_rate"] == pytest.approx(0.5)
+    assert stress_high["cancel_only_clear_rate"] == pytest.approx(0.5)
+    assert stress_high["mean_trade_confirmed_fill_latency"] == pytest.approx(1.4)
+    assert stress_high["stale_trade_confirmed_fill_share"] == pytest.approx(1.0)
+    assert stress_high["confirmation_surface_label"] == "latency_risk"
+
+
+def test_queue_position_trade_confirmation_surface_rejects_missing_columns() -> None:
+    with pytest.raises(ValueError, match="missing queue position trade confirmation surface columns"):
+        queue_position_trade_confirmation_surface(pd.DataFrame({"best_execution_side": ["long"]}))

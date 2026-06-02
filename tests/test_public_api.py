@@ -141,6 +141,11 @@ def test_public_api_exports_queue_position_toxicity_surface() -> None:
     assert "queue_position_toxicity_surface" in lcri_lab.__all__
 
 
+def test_public_api_exports_queue_position_trade_confirmation_surface() -> None:
+    assert callable(lcri_lab.queue_position_trade_confirmation_surface)
+    assert "queue_position_trade_confirmation_surface" in lcri_lab.__all__
+
+
 def test_public_api_exports_queue_position_adverse_selection_policy_frontier() -> None:
     assert callable(lcri_lab.queue_position_adverse_selection_policy_frontier)
     assert callable(lcri_lab.queue_position_adverse_selection_policy_summary)
