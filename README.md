@@ -151,6 +151,10 @@ reports/
   heldout_queue_position_latency_edge_survival_scorecard.json
   queue_position_latency_release_scorecard.json
   heldout_queue_position_latency_release_scorecard.json
+  queue_position_expected_value_stress_table.csv
+  heldout_queue_position_expected_value_stress_table.csv
+  queue_position_expected_value_stress_summary.json
+  heldout_queue_position_expected_value_stress_summary.json
   transition_robustness.json
   heldout_transition_robustness.json
   research_summary.md
@@ -253,6 +257,30 @@ summary = queue_position_path_drawdown_summary(episodes)
 `queue_position_path_drawdown_summary.json` artifacts, and `verify-report` checks
 that drawdown magnitudes, open/recovered episode labels, and summary release labels
 remain coherent.
+
+### Queue-position EV stress summaries
+
+After selecting queue-position EV policies, `queue_position_expected_value_stress_table`
+reprices each selected regime under latency and toxicity haircuts. The companion
+`queue_position_expected_value_stress_summary` candidate-weights those stressed EV
+rows, reports the fragile candidate share, names the weakest scenario/regime, and
+returns a pass/review/block release label so demos cannot publish a passive policy
+that only works at optimistic queue-priority assumptions.
+
+```python
+from lcri_lab import (
+    queue_position_expected_value_policy_selection,
+    queue_position_expected_value_stress_summary,
+    queue_position_expected_value_stress_table,
+)
+
+selection = queue_position_expected_value_policy_selection(ev_frontier)
+stress = queue_position_expected_value_stress_table(selection)
+stress_gate = queue_position_expected_value_stress_summary(stress)
+```
+
+`lcri-lab run-demo` emits both `queue_position_expected_value_stress_table.csv` and
+`queue_position_expected_value_stress_summary.json` for in-sample and heldout splits.
 
 ### Nonlinear regularization audit
 

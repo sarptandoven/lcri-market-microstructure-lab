@@ -75,6 +75,7 @@ from lcri_lab.execution import (
     queue_position_expected_value_policy_scorecard,
     queue_position_expected_value_oos_validation,
     queue_position_expected_value_policy_drift,
+    queue_position_expected_value_stress_summary,
     queue_position_expected_value_stress_table,
     queue_position_latency_sensitivity,
     queue_position_latency_edge_regime_surface,
@@ -4316,6 +4317,81 @@ def test_queue_position_expected_value_stress_table_haircuts_selected_policies()
     assert calm_latency["stressed_expected_value_ticks"] == pytest.approx(0.80 * 0.75 * 0.75 - 0.20 * 0.50 - 0.20 * 0.25)
     assert calm_latency["stress_label"] == "stress_robust"
     assert event_latency["stress_label"] == "capacity_or_ev_fragile"
+
+
+def test_queue_position_expected_value_stress_summary_reduces_regime_scenario_fragility() -> None:
+    stress = pd.DataFrame(
+        {
+            "scenario": ["base", "base", "latency_hit", "latency_hit"],
+            "regime": ["calm", "event", "calm", "event"],
+            "candidate_rows": [10, 4, 10, 4],
+            "candidate_share": [0.50, 0.20, 0.50, 0.20],
+            "stressed_expected_value_ticks": [0.45, 0.12, 0.30, -0.05],
+            "expected_value_decay_ticks": [0.15, 0.20, 0.30, 0.37],
+            "stress_label": [
+                "stress_robust",
+                "capacity_fragile",
+                "stress_robust",
+                "capacity_or_ev_fragile",
+            ],
+        }
+    )
+
+    summary = queue_position_expected_value_stress_summary(
+        stress,
+        max_fragile_candidate_share=0.30,
+        review_fragile_candidate_share=0.10,
+        min_candidate_weighted_ev_ticks=0.05,
+        min_worst_scenario_ev_ticks=0.0,
+    )
+
+    assert summary == {
+        "stress_rows": 4,
+        "scenarios": 2,
+        "regimes": 2,
+        "candidate_rows": 28,
+        "fragile_candidate_rows": 8,
+        "fragile_candidate_share": pytest.approx(8 / 28),
+        "candidate_weighted_expected_value_ticks": pytest.approx(
+            (10 * 0.45 + 4 * 0.12 + 10 * 0.30 + 4 * -0.05) / 28
+        ),
+        "candidate_weighted_decay_ticks": pytest.approx(
+            (10 * 0.15 + 4 * 0.20 + 10 * 0.30 + 4 * 0.37) / 28
+        ),
+        "worst_scenario": "latency_hit",
+        "worst_scenario_expected_value_ticks": pytest.approx((10 * 0.30 + 4 * -0.05) / 14),
+        "worst_regime": "event",
+        "worst_regime_expected_value_ticks": pytest.approx((4 * 0.12 + 4 * -0.05) / 8),
+        "stress_release_decision": "review",
+        "stress_release_label": "queue_expected_value_stress_review",
+        "blocking_reasons": "none",
+        "review_reasons": "fragile_candidate_share",
+    }
+
+
+def test_queue_position_expected_value_stress_summary_blocks_negative_worst_scenario() -> None:
+    stress = pd.DataFrame(
+        {
+            "scenario": ["base", "toxicity_hit"],
+            "regime": ["all", "all"],
+            "candidate_rows": [5, 5],
+            "candidate_share": [1.0, 1.0],
+            "stressed_expected_value_ticks": [0.10, -0.20],
+            "expected_value_decay_ticks": [0.0, 0.30],
+            "stress_label": ["stress_robust", "expected_value_fragile"],
+        }
+    )
+
+    summary = queue_position_expected_value_stress_summary(
+        stress,
+        max_fragile_candidate_share=0.90,
+        min_candidate_weighted_ev_ticks=-1.0,
+        min_worst_scenario_ev_ticks=0.0,
+    )
+
+    assert summary["stress_release_decision"] == "block"
+    assert summary["stress_release_label"] == "queue_expected_value_stress_blocked"
+    assert summary["blocking_reasons"] == "worst_scenario_expected_value"
 
 
 def test_queue_position_expected_value_stress_table_rejects_invalid_scenarios() -> None:

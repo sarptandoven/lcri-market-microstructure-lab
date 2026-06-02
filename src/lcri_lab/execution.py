@@ -3946,6 +3946,164 @@ def queue_position_expected_value_stress_table(
     return pd.DataFrame(rows, columns=columns)
 
 
+def queue_position_expected_value_stress_summary(
+    stress: pd.DataFrame,
+    *,
+    max_fragile_candidate_share: float = 0.25,
+    review_fragile_candidate_share: float = 0.10,
+    min_candidate_weighted_ev_ticks: float = 0.0,
+    min_worst_scenario_ev_ticks: float = -0.05,
+) -> dict[str, float | int | str]:
+    """Summarize queue-position EV stress survival across regimes and scenarios.
+
+    The stress table is intentionally granular: each selected regime/policy is
+    repriced under latency and toxicity haircuts. This reducer converts that grid
+    into one release-facing decision by candidate-weighting stressed EV, tracking
+    how much selected capacity sits in fragile rows, and naming the weakest
+    scenario/regime pockets. It is designed to make optimistic queue EV policies
+    non-publishable when they only survive in the base scenario.
+    """
+    for name, value in {
+        "max_fragile_candidate_share": max_fragile_candidate_share,
+        "review_fragile_candidate_share": review_fragile_candidate_share,
+        "min_candidate_weighted_ev_ticks": min_candidate_weighted_ev_ticks,
+        "min_worst_scenario_ev_ticks": min_worst_scenario_ev_ticks,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if not 0.0 <= max_fragile_candidate_share <= 1.0:
+        raise ValueError("max_fragile_candidate_share must be in [0, 1]")
+    if not 0.0 <= review_fragile_candidate_share <= 1.0:
+        raise ValueError("review_fragile_candidate_share must be in [0, 1]")
+
+    empty: dict[str, float | int | str] = {
+        "stress_rows": 0,
+        "scenarios": 0,
+        "regimes": 0,
+        "candidate_rows": 0,
+        "fragile_candidate_rows": 0,
+        "fragile_candidate_share": 0.0,
+        "candidate_weighted_expected_value_ticks": 0.0,
+        "candidate_weighted_decay_ticks": 0.0,
+        "worst_scenario": "none",
+        "worst_scenario_expected_value_ticks": 0.0,
+        "worst_regime": "none",
+        "worst_regime_expected_value_ticks": 0.0,
+        "stress_release_decision": "review",
+        "stress_release_label": "queue_expected_value_stress_no_evidence",
+        "blocking_reasons": "none",
+        "review_reasons": "no_stress_evidence",
+    }
+    if stress.empty:
+        return empty
+
+    required = {
+        "scenario",
+        "regime",
+        "candidate_rows",
+        "candidate_share",
+        "stressed_expected_value_ticks",
+        "expected_value_decay_ticks",
+        "stress_label",
+    }
+    _require_columns(stress, required, "queue position expected value stress summary")
+    values = _finite_values(
+        stress,
+        [
+            "candidate_rows",
+            "candidate_share",
+            "stressed_expected_value_ticks",
+            "expected_value_decay_ticks",
+        ],
+        "queue position expected value stress summary",
+    )
+    if (values[["candidate_rows", "candidate_share"]] < 0.0).any().any():
+        raise ValueError("queue position expected value stress summary counts must be non-negative")
+    if not values["candidate_share"].between(0.0, 1.0).all():
+        raise ValueError("queue position expected value stress summary shares must be in [0, 1]")
+
+    candidate_rows = int(values["candidate_rows"].sum())
+    weights = values["candidate_rows"]
+    if candidate_rows == 0:
+        return empty | {
+            "stress_rows": int(len(stress)),
+            "scenarios": int(stress["scenario"].astype(str).nunique()),
+            "regimes": int(stress["regime"].astype(str).nunique()),
+            "review_reasons": "no_candidate_stress_evidence",
+        }
+
+    labels = stress["stress_label"].astype(str)
+    fragile_mask = labels != "stress_robust"
+    fragile_candidate_rows = int(values.loc[fragile_mask, "candidate_rows"].sum())
+    fragile_candidate_share = fragile_candidate_rows / candidate_rows
+    weighted_ev = float(np.average(values["stressed_expected_value_ticks"], weights=weights))
+    weighted_decay = float(np.average(values["expected_value_decay_ticks"], weights=weights))
+
+    working = stress.copy()
+    working[["candidate_rows", "stressed_expected_value_ticks"]] = values[
+        ["candidate_rows", "stressed_expected_value_ticks"]
+    ]
+
+    def weighted_ev_by(group_col: str) -> pd.Series:
+        grouped: dict[str, float] = {}
+        for key, group in working.groupby(working[group_col].astype(str), sort=False):
+            group_weights = group["candidate_rows"].astype(float)
+            total_weight = float(group_weights.sum())
+            grouped[str(key)] = (
+                0.0
+                if total_weight == 0.0
+                else float(np.average(group["stressed_expected_value_ticks"], weights=group_weights))
+            )
+        return pd.Series(grouped, dtype=float)
+
+    scenario_ev = weighted_ev_by("scenario")
+    regime_ev = weighted_ev_by("regime")
+    worst_scenario = str(scenario_ev.idxmin()) if not scenario_ev.empty else "none"
+    worst_regime = str(regime_ev.idxmin()) if not regime_ev.empty else "none"
+    worst_scenario_ev = float(scenario_ev.min()) if not scenario_ev.empty else 0.0
+    worst_regime_ev = float(regime_ev.min()) if not regime_ev.empty else 0.0
+
+    blocking_reasons: list[str] = []
+    review_reasons: list[str] = []
+    if fragile_candidate_share > max_fragile_candidate_share:
+        blocking_reasons.append("fragile_candidate_share")
+    elif fragile_candidate_share > review_fragile_candidate_share:
+        review_reasons.append("fragile_candidate_share")
+    if weighted_ev < min_candidate_weighted_ev_ticks:
+        blocking_reasons.append("candidate_weighted_expected_value")
+    if worst_scenario_ev < min_worst_scenario_ev_ticks:
+        blocking_reasons.append("worst_scenario_expected_value")
+
+    if blocking_reasons:
+        decision = "block"
+        label = "queue_expected_value_stress_blocked"
+    elif review_reasons:
+        decision = "review"
+        label = "queue_expected_value_stress_review"
+    else:
+        decision = "pass"
+        label = "queue_expected_value_stress_pass"
+
+    return {
+        "stress_rows": int(len(stress)),
+        "scenarios": int(stress["scenario"].astype(str).nunique()),
+        "regimes": int(stress["regime"].astype(str).nunique()),
+        "candidate_rows": candidate_rows,
+        "fragile_candidate_rows": fragile_candidate_rows,
+        "fragile_candidate_share": float(fragile_candidate_share),
+        "candidate_weighted_expected_value_ticks": weighted_ev,
+        "candidate_weighted_decay_ticks": weighted_decay,
+        "worst_scenario": worst_scenario,
+        "worst_scenario_expected_value_ticks": worst_scenario_ev,
+        "worst_regime": worst_regime,
+        "worst_regime_expected_value_ticks": worst_regime_ev,
+        "stress_release_decision": decision,
+        "stress_release_label": label,
+        "blocking_reasons": ";".join(blocking_reasons) if blocking_reasons else "none",
+        "review_reasons": ";".join(review_reasons) if review_reasons else "none",
+    }
+
+
 def queue_position_adverse_selection_policy_frontier(
     frame: pd.DataFrame,
     *,

@@ -164,11 +164,13 @@ def test_public_api_exports_queue_position_expected_value_frontier() -> None:
     assert callable(lcri_lab.queue_position_expected_value_policy_drift)
     assert callable(lcri_lab.queue_position_expected_value_policy_scorecard)
     assert callable(lcri_lab.queue_position_expected_value_stress_table)
+    assert callable(lcri_lab.queue_position_expected_value_stress_summary)
     assert "queue_position_expected_value_frontier" in lcri_lab.__all__
     assert "queue_position_expected_value_policy_drift" in lcri_lab.__all__
     assert "queue_position_expected_value_policy_selection" in lcri_lab.__all__
     assert "queue_position_expected_value_policy_scorecard" in lcri_lab.__all__
     assert "queue_position_expected_value_stress_table" in lcri_lab.__all__
+    assert "queue_position_expected_value_stress_summary" in lcri_lab.__all__
 
 
 def test_public_api_exports_queue_position_calibration_stability() -> None:

@@ -141,6 +141,7 @@ from lcri_lab.execution import (
     queue_position_expected_value_policy_drift,
     queue_position_expected_value_policy_scorecard,
     queue_position_expected_value_policy_selection,
+    queue_position_expected_value_stress_summary,
     queue_position_expected_value_stress_table,
     queue_position_fill_calibration_surface,
     queue_position_fill_surface,
@@ -929,6 +930,14 @@ def run_demo(
         min_candidate_share=0.05,
         min_stressed_expected_value_ticks=0.0,
     )
+    queue_expected_value_stress_summary = queue_position_expected_value_stress_summary(
+        queue_expected_value_stress_table,
+        min_candidate_weighted_ev_ticks=0.0,
+    )
+    heldout_queue_expected_value_stress_summary = queue_position_expected_value_stress_summary(
+        heldout_queue_expected_value_stress_table,
+        min_candidate_weighted_ev_ticks=0.0,
+    )
     queue_execution_quality_gate = queue_position_execution_quality_gate(
         queue_fill_surface,
         queue_edge_decay,
@@ -1263,6 +1272,8 @@ def run_demo(
         "heldout_queue_position_expected_value_policy_scorecard.csv",
         "queue_position_expected_value_stress_table.csv",
         "heldout_queue_position_expected_value_stress_table.csv",
+        "queue_position_expected_value_stress_summary.json",
+        "heldout_queue_position_expected_value_stress_summary.json",
         "queue_position_path_drawdown_episodes.csv",
         "heldout_queue_position_path_drawdown_episodes.csv",
         "queue_position_path_drawdown_summary.json",
@@ -1749,6 +1760,14 @@ def run_demo(
     )
     heldout_queue_expected_value_stress_table.to_csv(
         output / "heldout_queue_position_expected_value_stress_table.csv", index=False
+    )
+    write_json(
+        output / "queue_position_expected_value_stress_summary.json",
+        queue_expected_value_stress_summary,
+    )
+    write_json(
+        output / "heldout_queue_position_expected_value_stress_summary.json",
+        heldout_queue_expected_value_stress_summary,
     )
     execution_lcri_side_attribution.to_csv(
         output / "execution_adjusted_lcri_side_attribution.csv", index=False

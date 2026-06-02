@@ -208,6 +208,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_queue_position_expected_value_policy_scorecard.csv").exists()
     assert (tmp_path / "queue_position_expected_value_stress_table.csv").exists()
     assert (tmp_path / "heldout_queue_position_expected_value_stress_table.csv").exists()
+    assert (tmp_path / "queue_position_expected_value_stress_summary.json").exists()
+    assert (tmp_path / "heldout_queue_position_expected_value_stress_summary.json").exists()
     assert (tmp_path / "queue_position_path_drawdown_episodes.csv").exists()
     assert (tmp_path / "heldout_queue_position_path_drawdown_episodes.csv").exists()
     assert (tmp_path / "queue_position_path_drawdown_summary.json").exists()
@@ -531,6 +533,25 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert set(ev_stress["scenario"]) >= {"base", "latency_haircut", "toxicity_haircut"}
     heldout_ev_stress = pd.read_csv(tmp_path / "heldout_queue_position_expected_value_stress_table.csv")
     assert set(heldout_ev_stress["scenario"]) >= {"base", "latency_haircut", "toxicity_haircut"}
+    ev_stress_summary = json.loads(
+        (tmp_path / "queue_position_expected_value_stress_summary.json").read_text()
+    )
+    assert {
+        "stress_rows",
+        "scenarios",
+        "fragile_candidate_share",
+        "candidate_weighted_expected_value_ticks",
+        "worst_scenario",
+        "stress_release_decision",
+        "stress_release_label",
+    }.issubset(ev_stress_summary)
+    assert ev_stress_summary["stress_release_decision"] in {"pass", "review", "block"}
+    heldout_ev_stress_summary = json.loads(
+        (tmp_path / "heldout_queue_position_expected_value_stress_summary.json").read_text()
+    )
+    assert heldout_ev_stress_summary["stress_release_label"].startswith(
+        "queue_expected_value_stress_"
+    )
     heldout_release_gate = json.loads(
         (tmp_path / "heldout_execution_publishability_release_gate.json").read_text()
     )
