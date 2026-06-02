@@ -3434,6 +3434,186 @@ def queue_position_expected_value_policy_scorecard(selection: pd.DataFrame) -> p
     )
 
 
+def queue_position_expected_value_policy_drift(
+    train_selection: pd.DataFrame,
+    holdout_selection: pd.DataFrame,
+    *,
+    max_threshold_drift: float = 0.10,
+    max_ev_decay_ratio: float = 0.50,
+    min_holdout_candidate_share: float = 0.10,
+) -> pd.DataFrame:
+    """Compare train vs holdout EV policy cutoffs for recalibration risk.
+
+    OOS replay checks whether the *same* selected policy still works. This companion
+    diagnostic asks a different deployment question: if the policy is re-selected on
+    holdout data, did the required fill/queue cutoffs materially move? Large cutoff
+    drift implies the passive policy may be path- or regime-fragile even when average
+    EV remains positive.
+    """
+    columns = [
+        "regime",
+        "train_min_fill_probability",
+        "holdout_min_fill_probability",
+        "min_fill_probability_delta",
+        "train_max_queue_share",
+        "holdout_max_queue_share",
+        "max_queue_share_delta",
+        "threshold_l1_drift",
+        "train_candidate_share",
+        "holdout_candidate_share",
+        "candidate_share_delta",
+        "train_risk_adjusted_expected_value_ticks",
+        "holdout_risk_adjusted_expected_value_ticks",
+        "ev_decay_ticks",
+        "ev_decay_ratio",
+        "train_selection_label",
+        "holdout_selection_label",
+        "policy_drift_label",
+        "review_reasons",
+    ]
+    if not math.isfinite(max_threshold_drift) or max_threshold_drift < 0.0:
+        raise ValueError("max_threshold_drift must be finite and non-negative")
+    if not math.isfinite(max_ev_decay_ratio) or max_ev_decay_ratio < 0.0:
+        raise ValueError("max_ev_decay_ratio must be finite and non-negative")
+    if not math.isfinite(min_holdout_candidate_share) or not 0.0 <= min_holdout_candidate_share <= 1.0:
+        raise ValueError("min_holdout_candidate_share must be finite and in [0.0, 1.0]")
+
+    required = {
+        "regime",
+        "selected_min_fill_probability",
+        "selected_max_queue_share",
+        "candidate_share",
+        "risk_adjusted_expected_value_ticks",
+        "selection_label",
+    }
+    _require_columns(train_selection, required, "queue position expected value policy drift")
+    _require_columns(holdout_selection, required, "queue position expected value policy drift")
+    if train_selection.empty:
+        return pd.DataFrame(columns=columns)
+
+    numeric_columns = sorted(required - {"regime", "selection_label"})
+    train_values = _finite_values(
+        train_selection, numeric_columns, "queue position expected value policy drift"
+    )
+    if not holdout_selection.empty:
+        holdout_values = _finite_values(
+            holdout_selection, numeric_columns, "queue position expected value policy drift"
+        )
+        share_columns = [
+            "selected_min_fill_probability",
+            "selected_max_queue_share",
+            "candidate_share",
+        ]
+        if not holdout_values[share_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+            raise ValueError("queue position expected value policy drift shares must be in [0, 1]")
+    else:
+        holdout_values = pd.DataFrame(index=holdout_selection.index, columns=numeric_columns)
+    share_columns = ["selected_min_fill_probability", "selected_max_queue_share", "candidate_share"]
+    if not train_values[share_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("queue position expected value policy drift shares must be in [0, 1]")
+
+    train = train_selection.copy()
+    holdout = holdout_selection.copy()
+    train[numeric_columns] = train_values
+    if not holdout.empty:
+        holdout[numeric_columns] = holdout_values
+    holdout_by_regime = {
+        str(row["regime"]): row for _, row in holdout.drop_duplicates("regime", keep="first").iterrows()
+    }
+
+    rows: list[dict[str, float | str]] = []
+    for _, train_row in train.iterrows():
+        regime = str(train_row["regime"])
+        train_min_fill = float(train_row["selected_min_fill_probability"])
+        train_queue_share = float(train_row["selected_max_queue_share"])
+        train_candidate_share = float(train_row["candidate_share"])
+        train_ev = float(train_row["risk_adjusted_expected_value_ticks"])
+        train_label = str(train_row["selection_label"])
+        holdout_row = holdout_by_regime.get(regime)
+        if holdout_row is None:
+            rows.append(
+                {
+                    "regime": regime,
+                    "train_min_fill_probability": train_min_fill,
+                    "holdout_min_fill_probability": 0.0,
+                    "min_fill_probability_delta": 0.0,
+                    "train_max_queue_share": train_queue_share,
+                    "holdout_max_queue_share": 0.0,
+                    "max_queue_share_delta": 0.0,
+                    "threshold_l1_drift": 0.0,
+                    "train_candidate_share": train_candidate_share,
+                    "holdout_candidate_share": 0.0,
+                    "candidate_share_delta": -train_candidate_share,
+                    "train_risk_adjusted_expected_value_ticks": train_ev,
+                    "holdout_risk_adjusted_expected_value_ticks": 0.0,
+                    "ev_decay_ticks": max(train_ev, 0.0),
+                    "ev_decay_ratio": 1.0 if train_ev > 0.0 else 0.0,
+                    "train_selection_label": train_label,
+                    "holdout_selection_label": "missing",
+                    "policy_drift_label": "holdout_missing_regime",
+                    "review_reasons": "missing_holdout_regime",
+                }
+            )
+            continue
+
+        holdout_min_fill = float(holdout_row["selected_min_fill_probability"])
+        holdout_queue_share = float(holdout_row["selected_max_queue_share"])
+        holdout_candidate_share = float(holdout_row["candidate_share"])
+        holdout_ev = float(holdout_row["risk_adjusted_expected_value_ticks"])
+        holdout_label = str(holdout_row["selection_label"])
+        min_fill_delta = holdout_min_fill - train_min_fill
+        queue_share_delta = holdout_queue_share - train_queue_share
+        threshold_l1_drift = abs(min_fill_delta) + abs(queue_share_delta)
+        candidate_share_delta = holdout_candidate_share - train_candidate_share
+        ev_decay_ticks = train_ev - holdout_ev
+        if train_ev > 0.0:
+            ev_decay_ratio = max(0.0, ev_decay_ticks) / train_ev
+        else:
+            ev_decay_ratio = 1.0 if holdout_ev < train_ev else 0.0
+
+        reasons: list[str] = []
+        if train_label != "deployable" or holdout_label != "deployable":
+            reasons.append("not_deployable")
+        if threshold_l1_drift > max_threshold_drift:
+            reasons.append("threshold_drift")
+        if holdout_candidate_share < min_holdout_candidate_share:
+            reasons.append("holdout_capacity")
+        if ev_decay_ratio > max_ev_decay_ratio:
+            reasons.append("ev_decay")
+
+        if "not_deployable" in reasons:
+            policy_label = "not_deployable"
+        elif reasons:
+            policy_label = "policy_recalibration_required"
+        else:
+            policy_label = "policy_stable"
+
+        rows.append(
+            {
+                "regime": regime,
+                "train_min_fill_probability": train_min_fill,
+                "holdout_min_fill_probability": holdout_min_fill,
+                "min_fill_probability_delta": min_fill_delta,
+                "train_max_queue_share": train_queue_share,
+                "holdout_max_queue_share": holdout_queue_share,
+                "max_queue_share_delta": queue_share_delta,
+                "threshold_l1_drift": threshold_l1_drift,
+                "train_candidate_share": train_candidate_share,
+                "holdout_candidate_share": holdout_candidate_share,
+                "candidate_share_delta": candidate_share_delta,
+                "train_risk_adjusted_expected_value_ticks": train_ev,
+                "holdout_risk_adjusted_expected_value_ticks": holdout_ev,
+                "ev_decay_ticks": ev_decay_ticks,
+                "ev_decay_ratio": ev_decay_ratio,
+                "train_selection_label": train_label,
+                "holdout_selection_label": holdout_label,
+                "policy_drift_label": policy_label,
+                "review_reasons": ";".join(reasons) if reasons else "none",
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
 def queue_position_expected_value_oos_validation(
     selection: pd.DataFrame,
     holdout_frontier: pd.DataFrame,

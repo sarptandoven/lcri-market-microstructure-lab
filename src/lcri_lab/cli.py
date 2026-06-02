@@ -138,6 +138,7 @@ from lcri_lab.execution import (
     queue_position_edge_decay,
     queue_position_execution_quality_gate,
     queue_position_expected_value_frontier,
+    queue_position_expected_value_policy_drift,
     queue_position_expected_value_policy_scorecard,
     queue_position_expected_value_policy_selection,
     queue_position_expected_value_stress_table,
@@ -905,6 +906,13 @@ def run_demo(
         heldout_queue_expected_value_frontier,
         min_candidate_share=0.05,
     )
+    queue_expected_value_policy_drift = queue_position_expected_value_policy_drift(
+        queue_expected_value_policy_selection,
+        heldout_queue_expected_value_policy_selection,
+        max_threshold_drift=0.10,
+        max_ev_decay_ratio=0.50,
+        min_holdout_candidate_share=0.05,
+    )
     queue_expected_value_policy_scorecard = queue_position_expected_value_policy_scorecard(
         queue_expected_value_policy_selection
     )
@@ -1250,6 +1258,7 @@ def run_demo(
         "heldout_queue_position_expected_value_frontier.csv",
         "queue_position_expected_value_policy_selection.csv",
         "heldout_queue_position_expected_value_policy_selection.csv",
+        "queue_position_expected_value_policy_drift.csv",
         "queue_position_expected_value_policy_scorecard.csv",
         "heldout_queue_position_expected_value_policy_scorecard.csv",
         "queue_position_expected_value_stress_table.csv",
@@ -1725,6 +1734,9 @@ def run_demo(
     )
     heldout_queue_expected_value_policy_selection.to_csv(
         output / "heldout_queue_position_expected_value_policy_selection.csv", index=False
+    )
+    queue_expected_value_policy_drift.to_csv(
+        output / "queue_position_expected_value_policy_drift.csv", index=False
     )
     queue_expected_value_policy_scorecard.to_csv(
         output / "queue_position_expected_value_policy_scorecard.csv", index=False

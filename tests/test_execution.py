@@ -74,6 +74,7 @@ from lcri_lab.execution import (
     queue_position_expected_value_policy_selection,
     queue_position_expected_value_policy_scorecard,
     queue_position_expected_value_oos_validation,
+    queue_position_expected_value_policy_drift,
     queue_position_expected_value_stress_table,
     queue_position_latency_sensitivity,
     queue_position_latency_edge_regime_surface,
@@ -4528,6 +4529,87 @@ def test_queue_position_latency_regime_surface_segments_decision_regimes() -> No
 def test_queue_position_latency_regime_surface_requires_regime_column() -> None:
     with pytest.raises(ValueError, match="missing queue position latency regime surface columns"):
         queue_position_latency_regime_surface(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_expected_value_policy_drift_quantifies_recalibration_risk() -> None:
+    train_selection = pd.DataFrame(
+        {
+            "regime": ["calm", "stress", "auction"],
+            "selected_min_fill_probability": [0.30, 0.45, 0.55],
+            "selected_max_queue_share": [0.70, 0.50, 0.35],
+            "candidate_share": [0.50, 0.35, 0.00],
+            "risk_adjusted_expected_value_ticks": [0.40, 0.30, -0.10],
+            "selection_label": ["deployable", "deployable", "negative_expected_value"],
+        }
+    )
+    holdout_selection = pd.DataFrame(
+        {
+            "regime": ["calm", "stress", "auction"],
+            "selected_min_fill_probability": [0.35, 0.75, 0.55],
+            "selected_max_queue_share": [0.68, 0.20, 0.35],
+            "candidate_share": [0.48, 0.12, 0.00],
+            "risk_adjusted_expected_value_ticks": [0.36, 0.05, -0.20],
+            "selection_label": ["deployable", "deployable", "negative_expected_value"],
+        }
+    )
+
+    drift = queue_position_expected_value_policy_drift(
+        train_selection,
+        holdout_selection,
+        max_threshold_drift=0.10,
+        max_ev_decay_ratio=0.50,
+        min_holdout_candidate_share=0.15,
+    )
+
+    assert drift.columns.tolist() == [
+        "regime",
+        "train_min_fill_probability",
+        "holdout_min_fill_probability",
+        "min_fill_probability_delta",
+        "train_max_queue_share",
+        "holdout_max_queue_share",
+        "max_queue_share_delta",
+        "threshold_l1_drift",
+        "train_candidate_share",
+        "holdout_candidate_share",
+        "candidate_share_delta",
+        "train_risk_adjusted_expected_value_ticks",
+        "holdout_risk_adjusted_expected_value_ticks",
+        "ev_decay_ticks",
+        "ev_decay_ratio",
+        "train_selection_label",
+        "holdout_selection_label",
+        "policy_drift_label",
+        "review_reasons",
+    ]
+    assert drift["policy_drift_label"].tolist() == [
+        "policy_stable",
+        "policy_recalibration_required",
+        "not_deployable",
+    ]
+    assert drift["threshold_l1_drift"].tolist() == pytest.approx([0.07, 0.60, 0.0])
+    assert drift["ev_decay_ratio"].tolist() == pytest.approx([0.10, 5.0 / 6.0, 1.0])
+    assert drift.loc[1, "review_reasons"] == "threshold_drift;holdout_capacity;ev_decay"
+
+
+def test_queue_position_expected_value_policy_drift_marks_missing_holdout_regime() -> None:
+    train_selection = pd.DataFrame(
+        {
+            "regime": ["calm"],
+            "selected_min_fill_probability": [0.30],
+            "selected_max_queue_share": [0.70],
+            "candidate_share": [0.50],
+            "risk_adjusted_expected_value_ticks": [0.40],
+            "selection_label": ["deployable"],
+        }
+    )
+    holdout_selection = train_selection.iloc[0:0].copy()
+
+    drift = queue_position_expected_value_policy_drift(train_selection, holdout_selection)
+
+    assert drift.loc[0, "policy_drift_label"] == "holdout_missing_regime"
+    assert drift.loc[0, "review_reasons"] == "missing_holdout_regime"
+    assert drift.loc[0, "holdout_candidate_share"] == pytest.approx(0.0)
 
 
 def test_queue_position_expected_value_oos_validation_flags_policy_decay() -> None:

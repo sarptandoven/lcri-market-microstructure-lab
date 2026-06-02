@@ -203,6 +203,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_queue_position_expected_value_frontier.csv").exists()
     assert (tmp_path / "queue_position_expected_value_policy_selection.csv").exists()
     assert (tmp_path / "heldout_queue_position_expected_value_policy_selection.csv").exists()
+    assert (tmp_path / "queue_position_expected_value_policy_drift.csv").exists()
     assert (tmp_path / "queue_position_expected_value_policy_scorecard.csv").exists()
     assert (tmp_path / "heldout_queue_position_expected_value_policy_scorecard.csv").exists()
     assert (tmp_path / "queue_position_expected_value_stress_table.csv").exists()
@@ -505,6 +506,16 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "selected_max_queue_share",
         "selection_label",
     }.issubset(ev_selection_columns)
+    ev_drift_columns = set(
+        pd.read_csv(tmp_path / "queue_position_expected_value_policy_drift.csv", nrows=1).columns
+    )
+    assert {
+        "regime",
+        "threshold_l1_drift",
+        "ev_decay_ratio",
+        "policy_drift_label",
+        "review_reasons",
+    }.issubset(ev_drift_columns)
     ev_scorecard_columns = set(
         pd.read_csv(tmp_path / "queue_position_expected_value_policy_scorecard.csv", nrows=1).columns
     )
