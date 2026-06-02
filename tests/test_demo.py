@@ -172,6 +172,8 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "heldout_queue_position_fill_surface.csv").exists()
     assert (tmp_path / "queue_position_fill_calibration_surface.csv").exists()
     assert (tmp_path / "heldout_queue_position_fill_calibration_surface.csv").exists()
+    assert (tmp_path / "queue_position_fill_monotonicity_scorecard.csv").exists()
+    assert (tmp_path / "heldout_queue_position_fill_monotonicity_scorecard.csv").exists()
     assert (tmp_path / "queue_position_latency_regime_surface.csv").exists()
     assert (tmp_path / "heldout_queue_position_latency_regime_surface.csv").exists()
     assert (tmp_path / "queue_position_latency_edge_survival.csv").exists()
@@ -231,6 +233,26 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert proxy_disagreement["disagreement_rate"].between(0.0, 1.0).all()
     heldout_proxy_disagreement = pd.read_csv(tmp_path / "heldout_passive_fill_proxy_disagreement.csv")
     assert heldout_proxy_disagreement["side"].tolist() == ["bid", "ask", "all"]
+
+    queue_fill_monotonicity = pd.read_csv(
+        tmp_path / "queue_position_fill_monotonicity_scorecard.csv"
+    )
+    assert {
+        "pressure_memory_decay_state",
+        "best_execution_side",
+        "queue_bins",
+        "queue_steps",
+        "predicted_fill_inversions",
+        "realized_fill_inversions",
+        "monotonicity_label",
+    }.issubset(queue_fill_monotonicity.columns)
+    assert set(queue_fill_monotonicity["monotonicity_label"]) <= {
+        "queue_fill_monotonicity_pass",
+        "queue_fill_monotonicity_review",
+        "queue_fill_monotonicity_block",
+    }
+    assert queue_fill_monotonicity["queue_bins"].ge(1).all()
+    assert queue_fill_monotonicity["queue_steps"].ge(0).all()
 
     nonlinear_surface = pd.read_csv(tmp_path / "baseline_nonlinear_stress_surface.csv")
     assert nonlinear_surface.columns.tolist() == [

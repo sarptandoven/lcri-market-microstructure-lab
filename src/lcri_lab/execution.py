@@ -4875,6 +4875,141 @@ def queue_position_calibration_residual_summary(
     ).reset_index(drop=True)
 
 
+def queue_position_fill_monotonicity_scorecard(
+    surface: pd.DataFrame,
+    *,
+    regime_col: str = "regime",
+    inversion_tolerance: float = 0.02,
+) -> pd.DataFrame:
+    """Score whether deeper visible queues have worse passive-fill odds.
+
+    Queue-position-aware fill probabilities should not improve simply because a
+    passive child order sits farther back in the visible queue. This reducer takes
+    the side-aware fill calibration surface, collapses fill-probability bins into a
+    queue-depth ladder per regime/side, and flags predicted or realized fill-rate
+    inversions where a deeper queue bin exceeds the previous shallower bin by more
+    than ``inversion_tolerance``.
+    """
+    if not regime_col:
+        raise ValueError("regime_col must be non-empty")
+    if not math.isfinite(inversion_tolerance) or inversion_tolerance < 0.0:
+        raise ValueError("inversion_tolerance must be a finite non-negative value")
+
+    columns = list(_empty_queue_position_fill_monotonicity_scorecard().columns)
+    if surface.empty:
+        return _empty_queue_position_fill_monotonicity_scorecard()
+
+    required = {
+        regime_col,
+        "best_execution_side",
+        "queue_share_bin",
+        "rows",
+        "mean_queue_share",
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+    }
+    _require_columns(surface, required, "queue position fill monotonicity scorecard")
+    numeric_columns = [
+        "queue_share_bin",
+        "rows",
+        "mean_queue_share",
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+    ]
+    values = _finite_values(surface, numeric_columns, "queue position fill monotonicity scorecard")
+    if not values["rows"].ge(0.0).all():
+        raise ValueError("queue position fill monotonicity rows must be non-negative")
+    if not values["mean_queue_share"].ge(0.0).all():
+        raise ValueError("queue position fill monotonicity queue shares must be non-negative")
+    for column in ["mean_predicted_fill_probability", "realized_fill_rate"]:
+        if not values[column].between(0.0, 1.0).all():
+            raise ValueError(f"queue position fill monotonicity {column} must be in [0, 1]")
+
+    working = surface.copy()
+    working[regime_col] = working[regime_col].astype(str)
+    working["best_execution_side"] = working["best_execution_side"].astype(str)
+    for column in numeric_columns:
+        working[column] = values[column]
+    working = working[working["rows"] > 0.0]
+    if working.empty:
+        return _empty_queue_position_fill_monotonicity_scorecard()
+
+    rows: list[dict[str, float | int | str]] = []
+    for (regime, execution_side), group in working.groupby(
+        [regime_col, "best_execution_side"], sort=True
+    ):
+        ladder_rows: list[dict[str, float | int]] = []
+        for queue_bin, queue_group in group.groupby("queue_share_bin", sort=True):
+            weights = queue_group["rows"].to_numpy(dtype=float)
+            ladder_rows.append(
+                {
+                    "queue_share_bin": int(queue_bin),
+                    "rows": int(queue_group["rows"].sum()),
+                    "mean_queue_share": float(
+                        np.average(queue_group["mean_queue_share"], weights=weights)
+                    ),
+                    "mean_predicted_fill_probability": float(
+                        np.average(
+                            queue_group["mean_predicted_fill_probability"], weights=weights
+                        )
+                    ),
+                    "realized_fill_rate": float(
+                        np.average(queue_group["realized_fill_rate"], weights=weights)
+                    ),
+                }
+            )
+        ladder = pd.DataFrame(ladder_rows).sort_values("mean_queue_share")
+        predicted_inversions = 0
+        realized_inversions = 0
+        max_predicted_inversion = 0.0
+        max_realized_inversion = 0.0
+        previous_predicted: float | None = None
+        previous_realized: float | None = None
+        for _, row in ladder.iterrows():
+            predicted = float(row["mean_predicted_fill_probability"])
+            realized = float(row["realized_fill_rate"])
+            if previous_predicted is not None:
+                predicted_gap = predicted - previous_predicted
+                realized_gap = realized - previous_realized if previous_realized is not None else 0.0
+                if predicted_gap > inversion_tolerance:
+                    predicted_inversions += 1
+                    max_predicted_inversion = max(max_predicted_inversion, float(predicted_gap))
+                if realized_gap > inversion_tolerance:
+                    realized_inversions += 1
+                    max_realized_inversion = max(max_realized_inversion, float(realized_gap))
+            previous_predicted = predicted
+            previous_realized = realized
+        queue_steps = max(len(ladder) - 1, 0)
+        if queue_steps == 0:
+            label = "queue_fill_monotonicity_review"
+        elif realized_inversions:
+            label = "queue_fill_monotonicity_block"
+        elif predicted_inversions:
+            label = "queue_fill_monotonicity_review"
+        else:
+            label = "queue_fill_monotonicity_pass"
+        rows.append(
+            {
+                "regime": str(regime),
+                "best_execution_side": str(execution_side),
+                "queue_bins": int(len(ladder)),
+                "queue_steps": int(queue_steps),
+                "rows": int(ladder["rows"].sum()),
+                "predicted_fill_inversions": int(predicted_inversions),
+                "realized_fill_inversions": int(realized_inversions),
+                "max_predicted_fill_inversion": max_predicted_inversion,
+                "max_realized_fill_inversion": max_realized_inversion,
+                "monotonicity_label": label,
+            }
+        )
+    output = pd.DataFrame(rows, columns=columns)
+    if regime_col != "regime":
+        output = output.rename(columns={"regime": regime_col})
+    return output.sort_values(
+        ["realized_fill_inversions", "predicted_fill_inversions", "rows", regime_col],
+        ascending=[False, False, False, True],
+    ).reset_index(drop=True)
+
 
 def queue_position_calibration_drift(
     surface: pd.DataFrame,
@@ -9257,6 +9392,23 @@ def _empty_queue_position_calibration_residual_summary() -> pd.DataFrame:
             "worst_fill_probability_bin",
             "worst_absolute_calibration_error",
             "residual_label",
+        ]
+    )
+
+
+def _empty_queue_position_fill_monotonicity_scorecard() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "regime",
+            "best_execution_side",
+            "queue_bins",
+            "queue_steps",
+            "rows",
+            "predicted_fill_inversions",
+            "realized_fill_inversions",
+            "max_predicted_fill_inversion",
+            "max_realized_fill_inversion",
+            "monotonicity_label",
         ]
     )
 

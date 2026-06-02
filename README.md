@@ -195,6 +195,15 @@ scored = model.score_frame(order_book_snapshots)
 
 Persisted models include a `schema_version` field so incompatible artifact changes fail fast.
 
+### Queue-position fill monotonicity review
+
+`queue_position_fill_monotonicity_scorecard` reduces the side-aware
+`queue_position_fill_calibration_surface` into per-regime/passive-side queue-depth
+ladders. It flags cases where predicted or realized fill rates improve as a child
+order sits farther back in the visible queue, producing pass/review/block labels
+that catch queue-position model pathologies before execution-adjusted LCRI claims
+are treated as publishable.
+
 ### Trade-confirmed passive fill labels
 
 When order-level queue messages are available, `add_event_level_trade_confirmed_fill_proxy`

@@ -530,6 +530,28 @@ def test_verify_report_checks_execution_adjusted_lcri_quantile_diagnostics(tmp_p
         verify_report(tmp_path)
 
 
+def test_verify_report_checks_queue_position_fill_monotonicity_scorecard(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "queue_position_fill_monotonicity_scorecard.csv").write_text(
+        "pressure_memory_decay_state,best_execution_side,queue_bins,queue_steps,rows,"
+        "predicted_fill_inversions,realized_fill_inversions,max_predicted_fill_inversion,"
+        "max_realized_fill_inversion,monotonicity_label\n"
+        "calm,long,2,1,10,0,0,0.0,0.0,unknown\n"
+    )
+    (tmp_path / "artifact_manifest.json").write_text(
+        json.dumps(
+            {
+                "artifacts": ["queue_position_fill_monotonicity_scorecard.csv"],
+                "artifact_metadata": {},
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="queue-position fill monotonicity"):
+        verify_report(tmp_path)
+
+
 def test_verify_report_checks_passive_fill_threshold_policy_curve(tmp_path: Path) -> None:
     (tmp_path / "passive_fill_threshold_policy_curve.csv").write_text(
         "threshold,candidate_rows,trade_share,long_rows,short_rows,"

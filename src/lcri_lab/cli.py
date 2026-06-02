@@ -144,6 +144,7 @@ from lcri_lab.execution import (
     queue_position_expected_value_stress_summary,
     queue_position_expected_value_stress_table,
     queue_position_fill_calibration_surface,
+    queue_position_fill_monotonicity_scorecard,
     queue_position_fill_surface,
     queue_position_fraction_sweep,
     queue_position_latency_edge_survival,
@@ -209,6 +210,7 @@ from lcri_lab.reporting import (
     verify_execution_adjusted_lcri_side_attribution,
     verify_execution_publishability_review_artifacts,
     verify_execution_publishability_release_gate,
+    verify_queue_position_fill_monotonicity_scorecard,
     verify_queue_position_trade_confirmation_regime_scorecard,
     verify_queue_position_trade_confirmation_release_scorecard,
     verify_queue_position_unfilled_opportunity_scorecard,
@@ -781,6 +783,14 @@ def run_demo(
         heldout_passive_fill_labeled,
         regime_col="pressure_memory_decay_state",
     )
+    queue_fill_monotonicity_scorecard = queue_position_fill_monotonicity_scorecard(
+        queue_fill_calibration_surface,
+        regime_col="pressure_memory_decay_state",
+    )
+    heldout_queue_fill_monotonicity_scorecard = queue_position_fill_monotonicity_scorecard(
+        heldout_queue_fill_calibration_surface,
+        regime_col="pressure_memory_decay_state",
+    )
     queue_latency_regime_surface = queue_position_latency_regime_surface(passive_fill_labeled)
     heldout_queue_latency_regime_surface = queue_position_latency_regime_surface(
         heldout_passive_fill_labeled
@@ -1260,6 +1270,8 @@ def run_demo(
         "heldout_queue_position_fill_surface.csv",
         "queue_position_fill_calibration_surface.csv",
         "heldout_queue_position_fill_calibration_surface.csv",
+        "queue_position_fill_monotonicity_scorecard.csv",
+        "heldout_queue_position_fill_monotonicity_scorecard.csv",
         "queue_position_latency_regime_surface.csv",
         "heldout_queue_position_latency_regime_surface.csv",
         "queue_position_latency_edge_survival.csv",
@@ -1670,6 +1682,12 @@ def run_demo(
     )
     heldout_queue_fill_calibration_surface.to_csv(
         output / "heldout_queue_position_fill_calibration_surface.csv", index=False
+    )
+    queue_fill_monotonicity_scorecard.to_csv(
+        output / "queue_position_fill_monotonicity_scorecard.csv", index=False
+    )
+    heldout_queue_fill_monotonicity_scorecard.to_csv(
+        output / "heldout_queue_position_fill_monotonicity_scorecard.csv", index=False
     )
     queue_latency_regime_surface.to_csv(
         output / "queue_position_latency_regime_surface.csv", index=False
@@ -2914,6 +2932,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_queue_position_lcri_tail_fill_residuals.csv"
             )
             if "heldout_queue_position_lcri_tail_fill_residuals.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_queue_position_fill_monotonicity_scorecard(report_dir)
+            if "queue_position_fill_monotonicity_scorecard.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_queue_position_fill_monotonicity_scorecard(
+                report_dir, "heldout_queue_position_fill_monotonicity_scorecard.csv"
+            )
+            if "heldout_queue_position_fill_monotonicity_scorecard.csv" in manifest_artifacts
             else []
         ),
         *(

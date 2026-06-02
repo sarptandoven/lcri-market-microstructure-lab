@@ -69,6 +69,7 @@ from lcri_lab.execution import (
     queue_position_calibration_stability_summary,
     queue_position_edge_decay,
     queue_position_fill_calibration_surface,
+    queue_position_fill_monotonicity_scorecard,
     queue_position_fill_surface,
     queue_position_toxicity_surface,
     queue_position_fraction_sweep,
@@ -6011,3 +6012,54 @@ def test_queue_position_unfilled_opportunity_scorecard_reviews_thin_tail_evidenc
 def test_queue_position_unfilled_opportunity_scorecard_rejects_missing_columns() -> None:
     with pytest.raises(ValueError, match="missing queue position unfilled opportunity scorecard columns"):
         queue_position_unfilled_opportunity_scorecard(pd.DataFrame({"rows": [1]}))
+
+
+def test_queue_position_fill_monotonicity_scorecard_flags_deeper_queue_fill_inversions() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["calm", "calm", "calm", "calm", "stress", "stress"],
+            "best_execution_side": ["long", "long", "long", "long", "short", "short"],
+            "queue_share_bin": [1, 1, 2, 2, 1, 2],
+            "fill_probability_bin": [1, 2, 1, 2, 1, 1],
+            "rows": [10, 10, 10, 10, 8, 8],
+            "mean_queue_share": [0.10, 0.15, 0.55, 0.60, 0.20, 0.70],
+            "mean_predicted_fill_probability": [0.40, 0.50, 0.65, 0.75, 0.70, 0.62],
+            "realized_fill_rate": [0.35, 0.45, 0.70, 0.80, 0.65, 0.60],
+            "calibration_error": [-0.05, -0.05, 0.05, 0.05, -0.05, -0.02],
+            "absolute_calibration_error": [0.05, 0.05, 0.05, 0.05, 0.05, 0.02],
+            "brier_score": [0.20, 0.20, 0.18, 0.18, 0.16, 0.15],
+            "mean_execution_adjusted_edge_ticks": [0.5, 0.6, -0.2, -0.1, 0.4, 0.3],
+        }
+    )
+
+    scorecard = queue_position_fill_monotonicity_scorecard(surface, inversion_tolerance=0.05)
+
+    calm = scorecard[scorecard["regime"] == "calm"].iloc[0]
+    stress = scorecard[scorecard["regime"] == "stress"].iloc[0]
+    assert calm["queue_steps"] == 1
+    assert calm["predicted_fill_inversions"] == 1
+    assert calm["realized_fill_inversions"] == 1
+    assert calm["max_predicted_fill_inversion"] == pytest.approx(0.25)
+    assert calm["max_realized_fill_inversion"] == pytest.approx(0.35)
+    assert calm["monotonicity_label"] == "queue_fill_monotonicity_block"
+    assert stress["monotonicity_label"] == "queue_fill_monotonicity_pass"
+
+
+def test_queue_position_fill_monotonicity_scorecard_reviews_thin_queue_ladder() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["calm"],
+            "best_execution_side": ["long"],
+            "queue_share_bin": [1],
+            "fill_probability_bin": [1],
+            "rows": [10],
+            "mean_queue_share": [0.10],
+            "mean_predicted_fill_probability": [0.50],
+            "realized_fill_rate": [0.45],
+        }
+    )
+
+    scorecard = queue_position_fill_monotonicity_scorecard(surface)
+
+    assert scorecard["queue_steps"].tolist() == [0]
+    assert scorecard["monotonicity_label"].tolist() == ["queue_fill_monotonicity_review"]

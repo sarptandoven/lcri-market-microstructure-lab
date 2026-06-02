@@ -879,6 +879,79 @@ def verify_execution_publishability_review_artifacts(
     return errors
 
 
+def verify_queue_position_fill_monotonicity_scorecard(
+    output_dir: Path,
+    artifact: str = "queue_position_fill_monotonicity_scorecard.csv",
+    *,
+    regime_col: str = "pressure_memory_decay_state",
+) -> list[str]:
+    """Return errors for queue-depth passive-fill monotonicity scorecards."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing queue-position fill monotonicity scorecard: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        regime_col,
+        "best_execution_side",
+        "queue_bins",
+        "queue_steps",
+        "rows",
+        "predicted_fill_inversions",
+        "realized_fill_inversions",
+        "max_predicted_fill_inversion",
+        "max_realized_fill_inversion",
+        "monotonicity_label",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete queue-position fill monotonicity scorecard {artifact}: {missing}"]
+
+    numeric_columns = list(required - {regime_col, "best_execution_side", "monotonicity_label"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    if frame[regime_col].astype(str).str.len().eq(0).any():
+        errors.append(f"blank queue-position fill monotonicity regimes in {artifact}")
+    valid_sides = {"long", "short", "abstain"}
+    unknown_sides = sorted(set(frame["best_execution_side"].astype(str)) - valid_sides)
+    if unknown_sides:
+        errors.append(f"unknown queue-position fill monotonicity sides in {artifact}: {unknown_sides}")
+    valid_labels = {
+        "queue_fill_monotonicity_pass",
+        "queue_fill_monotonicity_review",
+        "queue_fill_monotonicity_block",
+    }
+    unknown_labels = sorted(set(frame["monotonicity_label"].astype(str)) - valid_labels)
+    if unknown_labels:
+        errors.append(
+            f"unknown queue-position fill monotonicity labels in {artifact}: {unknown_labels}"
+        )
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite queue-position fill monotonicity values in {artifact}")
+    count_columns = [
+        "queue_bins",
+        "queue_steps",
+        "rows",
+        "predicted_fill_inversions",
+        "realized_fill_inversions",
+    ]
+    if not numeric[count_columns].ge(0.0).all().all():
+        errors.append(f"negative queue-position fill monotonicity counts in {artifact}")
+    expected_steps = (numeric["queue_bins"] - 1.0).clip(lower=0.0)
+    if not numeric["queue_steps"].eq(expected_steps).all():
+        errors.append(f"queue-position fill monotonicity step counts contradict bins in {artifact}")
+    if (numeric["predicted_fill_inversions"] > numeric["queue_steps"]).any() or (
+        numeric["realized_fill_inversions"] > numeric["queue_steps"]
+    ).any():
+        errors.append(f"queue-position fill monotonicity inversions exceed queue steps in {artifact}")
+    if (numeric["max_predicted_fill_inversion"] > 1.0).any() or (
+        numeric["max_realized_fill_inversion"] > 1.0
+    ).any():
+        errors.append(
+            f"queue-position fill monotonicity inversion magnitudes exceed probability bounds in {artifact}"
+        )
+    return errors
+
+
 def verify_execution_adjusted_edge_component_attribution(
     output_dir: Path, artifact: str = "execution_adjusted_edge_component_attribution.csv"
 ) -> list[str]:
