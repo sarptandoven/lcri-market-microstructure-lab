@@ -85,6 +85,7 @@ from lcri_lab.execution import (
     queue_position_order_size_capacity_frontier,
     queue_position_order_size_sweep,
     queue_position_expected_value_frontier,
+    queue_position_expected_value_break_even_table,
     queue_position_expected_value_frontier_efficiency,
     queue_position_expected_value_policy_selection,
     queue_position_expected_value_policy_scorecard,
@@ -5038,6 +5039,77 @@ def test_queue_position_expected_value_frontier_scores_queue_and_fill_cutoffs() 
     assert calm_broad["policy_label"] == "broad_positive_ev_queue_policy"
     stress_broad = frontier[(frontier["regime"] == "stress") & (frontier["max_queue_share"] == 0.50)].iloc[0]
     assert stress_broad["policy_label"] == "queue_policy_toxicity_review"
+
+
+def test_queue_position_expected_value_break_even_table_quantifies_toxicity_headroom() -> None:
+    frontier = pd.DataFrame(
+        {
+            "regime": ["calm", "calm", "stress", "stress"],
+            "min_fill_probability": [0.60, 0.80, 0.60, 0.80],
+            "max_queue_share": [0.50, 0.25, 0.50, 0.25],
+            "candidate_rows": [20, 8, 12, 6],
+            "candidate_share": [0.50, 0.20, 0.30, 0.15],
+            "mean_queue_share": [0.30, 0.10, 0.40, 0.20],
+            "mean_fill_probability": [0.70, 0.85, 0.65, 0.90],
+            "mean_adverse_fill_probability": [0.20, 0.05, 0.40, 0.00],
+            "mean_execution_adjusted_edge_ticks": [0.60, 0.40, 0.25, 0.10],
+            "expected_value_ticks": [0.42, 0.34, 0.1625, 0.09],
+            "risk_adjusted_expected_value_ticks": [0.31, 0.315, -0.0175, 0.03],
+        }
+    )
+
+    break_even = queue_position_expected_value_break_even_table(
+        frontier,
+        queue_drag_cost_ticks=0.25,
+        deployment_adverse_selection_cost_ticks=0.50,
+        min_headroom_ticks=0.10,
+    )
+
+    assert break_even.columns.tolist() == [
+        "regime",
+        "min_fill_probability",
+        "max_queue_share",
+        "candidate_rows",
+        "candidate_share",
+        "expected_value_ticks",
+        "queue_drag_ticks",
+        "mean_adverse_fill_probability",
+        "break_even_adverse_selection_cost_ticks",
+        "deployment_adverse_selection_cost_ticks",
+        "adverse_selection_cost_headroom_ticks",
+        "break_even_label",
+    ]
+    calm_broad = break_even[(break_even["regime"] == "calm") & (break_even["max_queue_share"] == 0.50)].iloc[0]
+    assert calm_broad["queue_drag_ticks"] == pytest.approx(0.075)
+    assert calm_broad["break_even_adverse_selection_cost_ticks"] == pytest.approx((0.42 - 0.075) / 0.20)
+    assert calm_broad["adverse_selection_cost_headroom_ticks"] == pytest.approx(1.225)
+    assert calm_broad["break_even_label"] == "toxicity_headroom_supported"
+    stress_broad = break_even[(break_even["regime"] == "stress") & (break_even["max_queue_share"] == 0.50)].iloc[0]
+    assert stress_broad["break_even_label"] == "toxicity_break_even_breached"
+    zero_adverse = break_even[(break_even["regime"] == "stress") & (break_even["min_fill_probability"] == 0.80)].iloc[0]
+    assert zero_adverse["break_even_adverse_selection_cost_ticks"] == pytest.approx(float("inf"))
+    assert zero_adverse["break_even_label"] == "no_observed_adverse_fills"
+
+
+def test_queue_position_expected_value_break_even_table_rejects_invalid_inputs() -> None:
+    with pytest.raises(ValueError, match="missing queue position expected value break-even columns"):
+        queue_position_expected_value_break_even_table(pd.DataFrame({"regime": ["all"]}))
+    with pytest.raises(ValueError, match="queue_drag_cost_ticks must be finite and non-negative"):
+        queue_position_expected_value_break_even_table(
+            pd.DataFrame(
+                {
+                    "regime": ["all"],
+                    "min_fill_probability": [0.5],
+                    "max_queue_share": [0.5],
+                    "candidate_rows": [1],
+                    "candidate_share": [0.5],
+                    "mean_queue_share": [0.2],
+                    "mean_adverse_fill_probability": [0.1],
+                    "expected_value_ticks": [0.2],
+                }
+            ),
+            queue_drag_cost_ticks=-0.1,
+        )
 
 
 def test_queue_position_expected_value_frontier_efficiency_marks_capacity_edge_tradeoffs() -> None:

@@ -4079,6 +4079,110 @@ def queue_position_expected_value_frontier(
     return pd.DataFrame(rows)[columns]
 
 
+def queue_position_expected_value_break_even_table(
+    frontier: pd.DataFrame,
+    *,
+    queue_drag_cost_ticks: float = 0.25,
+    deployment_adverse_selection_cost_ticks: float = 0.50,
+    min_headroom_ticks: float = 0.05,
+) -> pd.DataFrame:
+    """Convert queue EV frontiers into adverse-selection break-even budgets.
+
+    Frontier rows can look attractive while being one toxicity-cost assumption away
+    from negative expected value. This diagnostic strips out queue drag and solves
+    the adverse-selection cost per toxic fill that would make each policy's EV zero:
+    ``(expected_value - queue_drag) / adverse_probability``. Release artifacts can
+    then distinguish robust queue policies from policies whose apparent edge only
+    survives because adverse fills were underpriced.
+    """
+    columns = [
+        "regime",
+        "min_fill_probability",
+        "max_queue_share",
+        "candidate_rows",
+        "candidate_share",
+        "expected_value_ticks",
+        "queue_drag_ticks",
+        "mean_adverse_fill_probability",
+        "break_even_adverse_selection_cost_ticks",
+        "deployment_adverse_selection_cost_ticks",
+        "adverse_selection_cost_headroom_ticks",
+        "break_even_label",
+    ]
+    for name, value in {
+        "queue_drag_cost_ticks": queue_drag_cost_ticks,
+        "deployment_adverse_selection_cost_ticks": deployment_adverse_selection_cost_ticks,
+        "min_headroom_ticks": min_headroom_ticks,
+    }.items():
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"{name} must be finite and non-negative")
+
+    required = {
+        "regime",
+        "min_fill_probability",
+        "max_queue_share",
+        "candidate_rows",
+        "candidate_share",
+        "mean_queue_share",
+        "mean_adverse_fill_probability",
+        "expected_value_ticks",
+    }
+    _require_columns(frontier, required, "queue position expected value break-even")
+    if frontier.empty:
+        return pd.DataFrame(columns=columns)
+
+    numeric_columns = [
+        "min_fill_probability",
+        "max_queue_share",
+        "candidate_rows",
+        "candidate_share",
+        "mean_queue_share",
+        "mean_adverse_fill_probability",
+        "expected_value_ticks",
+    ]
+    values = _finite_values(frontier, numeric_columns, "queue position expected value break-even")
+    if (values[["candidate_rows", "candidate_share", "mean_queue_share"]] < 0.0).any().any():
+        raise ValueError("queue position expected value break-even capacity values must be non-negative")
+    bounded_columns = [
+        "min_fill_probability",
+        "max_queue_share",
+        "candidate_share",
+        "mean_adverse_fill_probability",
+    ]
+    if not values[bounded_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        raise ValueError("queue position expected value break-even probabilities and shares must be in [0, 1]")
+
+    output = frontier.copy()
+    output[numeric_columns] = values
+    output["queue_drag_ticks"] = output["mean_queue_share"] * queue_drag_cost_ticks
+    numerator = output["expected_value_ticks"] - output["queue_drag_ticks"]
+    adverse_probability = output["mean_adverse_fill_probability"]
+    output["break_even_adverse_selection_cost_ticks"] = np.where(
+        adverse_probability > 0.0,
+        numerator / adverse_probability.replace(0.0, np.nan),
+        np.where(numerator >= 0.0, float("inf"), 0.0),
+    )
+    output["deployment_adverse_selection_cost_ticks"] = float(deployment_adverse_selection_cost_ticks)
+    output["adverse_selection_cost_headroom_ticks"] = (
+        output["break_even_adverse_selection_cost_ticks"] - deployment_adverse_selection_cost_ticks
+    )
+
+    def label(row: pd.Series) -> str:
+        if int(row["candidate_rows"]) <= 0:
+            return "no_candidate_capacity"
+        if float(row["mean_adverse_fill_probability"]) == 0.0:
+            return "no_observed_adverse_fills"
+        headroom = float(row["adverse_selection_cost_headroom_ticks"])
+        if headroom < 0.0:
+            return "toxicity_break_even_breached"
+        if headroom < min_headroom_ticks:
+            return "toxicity_headroom_thin"
+        return "toxicity_headroom_supported"
+
+    output["break_even_label"] = output.apply(label, axis=1)
+    return output[columns]
+
+
 def queue_position_expected_value_frontier_efficiency(
     frontier: pd.DataFrame,
     *,
