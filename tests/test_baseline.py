@@ -13,6 +13,7 @@ from lcri_lab.baseline import (
     baseline_nonlinear_coefficient_stability_summary,
     baseline_nonlinear_feature_ablation,
     baseline_nonlinear_extrapolation_risk,
+    baseline_nonlinear_extrapolation_risk_summary,
     baseline_nonlinear_feature_ablation_summary,
     baseline_nonlinear_regularization_path,
     baseline_nonlinear_regularization_summary,
@@ -1453,3 +1454,55 @@ def test_baseline_nonlinear_extrapolation_risk_rejects_invalid_inputs() -> None:
         baseline_nonlinear_extrapolation_risk(features, features, train_quantile=1.0)
     with pytest.raises(ValueError, match="unknown nonlinear extrapolation features"):
         baseline_nonlinear_extrapolation_risk(features, features, feature_names=("spread_ticks",))
+
+
+def test_baseline_nonlinear_extrapolation_risk_summary_gates_holdout_support() -> None:
+    risk = pd.DataFrame(
+        {
+            "feature": ["spread_stress_squared", "volatility_stress_squared", "replenishment_inverse"],
+            "out_of_support_share": [0.35, 0.05, 0.12],
+            "mean_standardized_shift": [2.4, 0.8, 1.1],
+            "max_standardized_shift": [7.0, 2.0, 3.5],
+            "risk_label": ["extrapolation_risk", "inside_train_support", "extrapolation_risk"],
+        }
+    )
+
+    summary = baseline_nonlinear_extrapolation_risk_summary(
+        risk,
+        max_safe_risky_terms=1,
+        max_safe_out_of_support_share=0.20,
+    )
+
+    assert summary == {
+        "terms": 3,
+        "risky_terms": 2,
+        "max_out_of_support_share": pytest.approx(0.35),
+        "mean_out_of_support_share": pytest.approx((0.35 + 0.05 + 0.12) / 3.0),
+        "max_standardized_shift": pytest.approx(7.0),
+        "worst_feature": "spread_stress_squared",
+        "publishable": False,
+        "review_note": "nonlinear_extrapolation_fragile",
+    }
+
+
+def test_baseline_nonlinear_extrapolation_risk_summary_accepts_supported_holdout() -> None:
+    risk = pd.DataFrame(
+        {
+            "feature": ["spread_stress_squared", "volatility_stress_squared"],
+            "out_of_support_share": [0.04, 0.08],
+            "mean_standardized_shift": [0.7, 0.9],
+            "max_standardized_shift": [1.9, 2.2],
+            "risk_label": ["inside_train_support", "inside_train_support"],
+        }
+    )
+
+    summary = baseline_nonlinear_extrapolation_risk_summary(risk)
+
+    assert summary["publishable"] is True
+    assert summary["review_note"] == "nonlinear_extrapolation_supported"
+    assert summary["worst_feature"] == "volatility_stress_squared"
+
+
+def test_baseline_nonlinear_extrapolation_risk_summary_rejects_malformed_input() -> None:
+    with pytest.raises(ValueError, match="missing nonlinear extrapolation risk summary columns"):
+        baseline_nonlinear_extrapolation_risk_summary(pd.DataFrame({"feature": ["x"]}))

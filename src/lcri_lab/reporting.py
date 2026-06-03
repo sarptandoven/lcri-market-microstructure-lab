@@ -5187,6 +5187,7 @@ def write_research_summary(
     baseline_tail_lift_diagnostics: pd.DataFrame | None = None,
     baseline_stress_residual_drift: pd.DataFrame | None = None,
     baseline_nonlinear_extrapolation_risk: pd.DataFrame | None = None,
+    baseline_nonlinear_extrapolation_risk_summary: dict[str, Any] | None = None,
     baseline_regime_publishability_summary: dict[str, Any] | None = None,
     regime_generalization_gap: pd.DataFrame | None = None,
     transition_generalization_gap: pd.DataFrame | None = None,
@@ -5301,6 +5302,14 @@ def write_research_summary(
                 _markdown_table(baseline_nonlinear_extrapolation_risk)
                 if baseline_nonlinear_extrapolation_risk is not None
                 else "_Not generated._",
+                "",
+                "## Nonlinear baseline extrapolation risk summary",
+                "",
+                *[
+                    f"- {key}: {_format_value(value)}"
+                    for key, value in (baseline_nonlinear_extrapolation_risk_summary or {}).items()
+                ],
+                "" if baseline_nonlinear_extrapolation_risk_summary else "_Not generated._",
                 "",
                 "## Nonlinear baseline regime publishability",
                 "",
@@ -5836,6 +5845,7 @@ _RESEARCH_SUMMARY_ARTIFACT_SECTIONS = {
     "Nonlinear baseline tail lift diagnostics": "baseline_tail_lift_diagnostics.csv",
     "Nonlinear baseline stress residual drift": "baseline_stress_residual_drift.csv",
     "Nonlinear baseline extrapolation risk": "baseline_nonlinear_extrapolation_risk.csv",
+    "Nonlinear baseline extrapolation risk summary": "baseline_nonlinear_extrapolation_risk_summary.json",
     "Regime generalization gap": "regime_generalization_gap.csv",
     "Transition generalization gap": "transition_generalization_gap.csv",
     "Generalization fragility diagnostics": "generalization_fragility_diagnostics.csv",

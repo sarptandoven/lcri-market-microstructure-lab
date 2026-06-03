@@ -22,6 +22,7 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert (tmp_path / "baseline_nonlinear_stress_surface_summary.json").exists()
     assert (tmp_path / "baseline_nonlinear_feature_ablation.csv").exists()
     assert (tmp_path / "baseline_nonlinear_extrapolation_risk.csv").exists()
+    assert (tmp_path / "baseline_nonlinear_extrapolation_risk_summary.json").exists()
     assert (tmp_path / "regime_metrics.csv").exists()
     assert (tmp_path / "heldout_regime_metrics.csv").exists()
     assert (tmp_path / "regime_generalization_gap.csv").exists()
@@ -360,6 +361,16 @@ def test_run_demo_writes_reports(tmp_path: Path, capsys: pytest.CaptureFixture[s
         "inside_train_support",
         "extrapolation_risk",
     }
+    nonlinear_extrapolation_summary = json.loads(
+        (tmp_path / "baseline_nonlinear_extrapolation_risk_summary.json").read_text()
+    )
+    assert nonlinear_extrapolation_summary["terms"] == 4
+    assert 0 <= nonlinear_extrapolation_summary["risky_terms"] <= 4
+    assert nonlinear_extrapolation_summary["review_note"] in {
+        "nonlinear_extrapolation_supported",
+        "nonlinear_extrapolation_fragile",
+    }
+    assert isinstance(nonlinear_extrapolation_summary["publishable"], bool)
 
     monotonicity = json.loads((tmp_path / "lcri_signal_monotonicity_summary.json").read_text())
     assert "passes_monotonicity_gate" in monotonicity

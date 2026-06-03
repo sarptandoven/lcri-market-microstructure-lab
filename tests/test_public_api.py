@@ -74,7 +74,9 @@ def test_public_api_exports_baseline_nonlinear_feature_ablation() -> None:
 
 def test_public_api_exports_baseline_nonlinear_extrapolation_risk() -> None:
     assert callable(lcri_lab.baseline_nonlinear_extrapolation_risk)
+    assert callable(lcri_lab.baseline_nonlinear_extrapolation_risk_summary)
     assert "baseline_nonlinear_extrapolation_risk" in lcri_lab.__all__
+    assert "baseline_nonlinear_extrapolation_risk_summary" in lcri_lab.__all__
 
 
 def test_public_api_exports_baseline_nonlinear_coefficient_stability_summary() -> None:

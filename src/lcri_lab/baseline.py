@@ -2661,6 +2661,93 @@ def baseline_nonlinear_extrapolation_risk(
     return pd.DataFrame(rows, columns=columns)
 
 
+def baseline_nonlinear_extrapolation_risk_summary(
+    risk: pd.DataFrame,
+    *,
+    max_safe_risky_terms: int = 0,
+    max_safe_out_of_support_share: float = 0.10,
+) -> dict[str, float | int | str | bool]:
+    """Summarize nonlinear-baseline holdout support risk for release review.
+
+    ``baseline_nonlinear_extrapolation_risk`` is feature-level; this release gate
+    condenses it into a single publishability decision so demo/reporting artifacts
+    can block nonlinear neutralizers whose holdout window materially leaves the
+    training support.
+    """
+    required = {
+        "feature",
+        "out_of_support_share",
+        "mean_standardized_shift",
+        "max_standardized_shift",
+        "risk_label",
+    }
+    missing = sorted(required - set(risk.columns))
+    if missing:
+        raise ValueError(f"missing nonlinear extrapolation risk summary columns: {missing}")
+    if not isinstance(max_safe_risky_terms, int) or isinstance(max_safe_risky_terms, bool):
+        raise ValueError("max_safe_risky_terms must be an integer")
+    if max_safe_risky_terms < 0:
+        raise ValueError("max_safe_risky_terms must be non-negative")
+    if (
+        not math.isfinite(max_safe_out_of_support_share)
+        or not 0.0 <= max_safe_out_of_support_share <= 1.0
+    ):
+        raise ValueError("max_safe_out_of_support_share must be finite and in [0, 1]")
+
+    if risk.empty:
+        return {
+            "terms": 0,
+            "risky_terms": 0,
+            "max_out_of_support_share": 0.0,
+            "mean_out_of_support_share": 0.0,
+            "max_standardized_shift": 0.0,
+            "worst_feature": "",
+            "publishable": False,
+            "review_note": "nonlinear_extrapolation_missing",
+        }
+
+    numeric_columns = [
+        "out_of_support_share",
+        "mean_standardized_shift",
+        "max_standardized_shift",
+    ]
+    numeric = risk[numeric_columns].astype(float)
+    if not np.isfinite(numeric.to_numpy()).all():
+        raise ValueError("nonlinear extrapolation risk summary values must be finite")
+    if not numeric["out_of_support_share"].between(0.0, 1.0).all():
+        raise ValueError("out_of_support_share must be in [0, 1]")
+    valid_labels = {"inside_train_support", "extrapolation_risk"}
+    labels = risk["risk_label"].astype(str)
+    unknown_labels = sorted(set(labels) - valid_labels)
+    if unknown_labels:
+        raise ValueError(f"unknown nonlinear extrapolation risk labels: {unknown_labels}")
+
+    worst_idx = numeric.sort_values(
+        ["out_of_support_share", "max_standardized_shift"], ascending=[False, False]
+    ).index[0]
+    risky = labels.eq("extrapolation_risk") | numeric["out_of_support_share"].gt(
+        max_safe_out_of_support_share
+    )
+    risky_terms = int(risky.sum())
+    max_out_of_support = float(numeric["out_of_support_share"].max())
+    publishable = bool(
+        risky_terms <= max_safe_risky_terms
+        and max_out_of_support <= max_safe_out_of_support_share
+    )
+    return {
+        "terms": int(len(risk)),
+        "risky_terms": risky_terms,
+        "max_out_of_support_share": max_out_of_support,
+        "mean_out_of_support_share": float(numeric["out_of_support_share"].mean()),
+        "max_standardized_shift": float(numeric["max_standardized_shift"].max()),
+        "worst_feature": str(risk.loc[worst_idx, "feature"]),
+        "publishable": publishable,
+        "review_note": "nonlinear_extrapolation_supported"
+        if publishable
+        else "nonlinear_extrapolation_fragile",
+    }
+
+
 def _stress_bin_rank(surface: pd.DataFrame, bin_columns: list[str]) -> pd.Series:
     rank_map = {"low": 0.0, "medium": 1.0, "high": 2.0}
     ranks = pd.Series(0.0, index=surface.index)

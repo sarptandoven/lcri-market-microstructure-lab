@@ -3470,6 +3470,51 @@ def test_write_research_summary_marks_missing_generalization_gap(tmp_path) -> No
     assert "_Not generated._" in text
 
 
+def test_write_research_summary_includes_nonlinear_extrapolation_gate_summary(tmp_path) -> None:
+    path = tmp_path / "summary.md"
+    metrics = pd.DataFrame(
+        [
+            {
+                "signal": "raw_imbalance",
+                "directional_accuracy": 0.55,
+                "brier_score": 0.30,
+                "rank_correlation": 0.10,
+            }
+        ]
+    )
+    transition_lift = pd.DataFrame(
+        [{"segment": "stable", "rows": 3, "directional_accuracy_lift": 0.10}]
+    )
+
+    write_research_summary(
+        path,
+        rows=10,
+        train_rows=7,
+        heldout_rows=3,
+        seed=4,
+        train_frac=0.7,
+        metrics=metrics,
+        baseline_nonlinear_extrapolation_risk_summary={
+            "terms": 4,
+            "risky_terms": 2,
+            "max_out_of_support_share": 0.35,
+            "mean_out_of_support_share": 0.12,
+            "max_standardized_shift": 7.0,
+            "worst_feature": "spread_stress_squared",
+            "publishable": False,
+            "review_note": "nonlinear_extrapolation_fragile",
+        },
+        transition_lift=transition_lift,
+        transition_robustness={},
+    )
+
+    text = path.read_text()
+    assert "## Nonlinear baseline extrapolation risk summary" in text
+    assert "- publishable: false" in text
+    assert "- review_note: nonlinear_extrapolation_fragile" in text
+    assert "- worst_feature: spread_stress_squared" in text
+
+
 def test_write_research_summary_marks_missing_regime_generalization_gap(tmp_path) -> None:
     path = tmp_path / "summary.md"
     metrics = pd.DataFrame(
