@@ -530,6 +530,27 @@ def test_verify_report_checks_execution_adjusted_lcri_quantile_diagnostics(tmp_p
         verify_report(tmp_path)
 
 
+def test_verify_report_checks_execution_adjusted_lcri_threshold_curve(tmp_path: Path) -> None:
+    (tmp_path / "execution_adjusted_lcri_threshold_curve.csv").write_text(
+        "lcri_threshold,rows,eligible_rows,eligible_share,tradable_rows,"
+        "execution_publishable_rows,execution_publishable_share,"
+        "mean_execution_adjusted_edge_ticks,median_execution_adjusted_edge_ticks,"
+        "alignment_share,publishable_side_conflict_share,dominant_execution_side,review_label\n"
+        "1.0,2,3,1.4,4,5,1.2,0.1,0.1,1.3,-0.2,sideways,unknown\n"
+    )
+    (tmp_path / "artifact_manifest.json").write_text(
+        json.dumps(
+            {
+                "artifacts": ["execution_adjusted_lcri_threshold_curve.csv"],
+                "artifact_metadata": {},
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="execution-adjusted LCRI threshold curve"):
+        verify_report(tmp_path)
+
+
 def test_verify_report_checks_queue_position_fill_monotonicity_scorecard(
     tmp_path: Path,
 ) -> None:

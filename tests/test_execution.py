@@ -29,6 +29,7 @@ from lcri_lab.execution import (
     execution_adjusted_lcri_event_window_attribution,
     execution_adjusted_lcri_event_window_release_scorecard,
     execution_adjusted_lcri_quantile_diagnostics,
+    execution_adjusted_lcri_threshold_curve,
     execution_adjusted_lcri_regime_attribution,
     execution_adjusted_lcri_side_release_scorecard,
     passive_fill_brier_decomposition,
@@ -176,6 +177,45 @@ def test_queue_position_order_size_features_rejects_negative_child_size() -> Non
 
     with pytest.raises(ValueError, match="order sizes must be non-negative"):
         add_queue_position_order_size_features(queued, levels=2, bid_order_size_col="bid_order")
+
+
+def test_execution_adjusted_lcri_threshold_curve_exposes_execution_publishability_cutoffs() -> None:
+    frame = pd.DataFrame(
+        {
+            "lcri": [2.5, -2.0, 1.2, -0.8, 0.2],
+            "best_execution_side": ["long", "abstain", "long", "short", "long"],
+            "publishable_side": ["long", "short", "short", "short", "abstain"],
+            "execution_adjusted_edge_ticks": [0.4, 0.1, 0.3, -0.2, 0.5],
+        }
+    )
+
+    curve = execution_adjusted_lcri_threshold_curve(frame, thresholds=[0.0, 1.0, 2.0], min_edge_ticks=0.25)
+
+    assert curve["lcri_threshold"].tolist() == pytest.approx([0.0, 1.0, 2.0])
+    assert curve["eligible_rows"].tolist() == [5, 3, 2]
+    assert curve["execution_publishable_rows"].tolist() == [3, 2, 1]
+    assert curve["execution_publishable_share"].tolist() == pytest.approx([3 / 5, 2 / 3, 1 / 2])
+    assert curve["alignment_share"].tolist() == pytest.approx([4 / 5, 2 / 3, 1 / 2])
+    assert curve["publishable_side_conflict_share"].tolist() == pytest.approx([3 / 5, 2 / 3, 1 / 2])
+    assert curve["dominant_execution_side"].tolist() == ["long", "long", "long"]
+    assert curve["review_label"].tolist() == [
+        "execution_threshold_publishable",
+        "execution_threshold_publishable",
+        "execution_threshold_review",
+    ]
+
+
+def test_execution_adjusted_lcri_threshold_curve_rejects_invalid_thresholds() -> None:
+    frame = pd.DataFrame(
+        {
+            "lcri": [1.0],
+            "best_execution_side": ["long"],
+            "execution_adjusted_edge_ticks": [0.2],
+        }
+    )
+
+    with pytest.raises(ValueError, match="thresholds must be finite and non-negative"):
+        execution_adjusted_lcri_threshold_curve(frame, thresholds=[1.0, -0.5])
 
 
 def test_latency_adjusted_passive_fill_probabilities_discount_stale_queue_state() -> None:

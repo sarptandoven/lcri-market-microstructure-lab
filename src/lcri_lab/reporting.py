@@ -1127,6 +1127,79 @@ def verify_execution_adjusted_lcri_quantile_diagnostics(
     return errors
 
 
+def verify_execution_adjusted_lcri_threshold_curve(
+    output_dir: Path,
+    artifact: str = "execution_adjusted_lcri_threshold_curve.csv",
+) -> list[str]:
+    """Return errors for execution-adjusted LCRI threshold policy curves."""
+    path = output_dir / artifact
+    if not path.exists():
+        return [f"missing execution-adjusted LCRI threshold curve: {artifact}"]
+    frame = pd.read_csv(path)
+    required = {
+        "lcri_threshold",
+        "rows",
+        "eligible_rows",
+        "eligible_share",
+        "tradable_rows",
+        "execution_publishable_rows",
+        "execution_publishable_share",
+        "mean_execution_adjusted_edge_ticks",
+        "median_execution_adjusted_edge_ticks",
+        "alignment_share",
+        "publishable_side_conflict_share",
+        "dominant_execution_side",
+        "review_label",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return [f"incomplete execution-adjusted LCRI threshold curve {artifact}: {missing}"]
+
+    numeric_columns = list(required - {"dominant_execution_side", "review_label"})
+    numeric = frame[numeric_columns].astype(float)
+    errors: list[str] = []
+    if not np.isfinite(numeric.to_numpy()).all():
+        errors.append(f"non-finite execution-adjusted LCRI threshold curve values in {artifact}")
+    count_columns = ["rows", "eligible_rows", "tradable_rows", "execution_publishable_rows"]
+    if not numeric[count_columns].ge(0.0).all().all():
+        errors.append(f"negative execution-adjusted LCRI threshold curve counts in {artifact}")
+    if not numeric["lcri_threshold"].ge(0.0).all():
+        errors.append(f"negative execution-adjusted LCRI threshold values in {artifact}")
+    probability_columns = [
+        "eligible_share",
+        "execution_publishable_share",
+        "alignment_share",
+        "publishable_side_conflict_share",
+    ]
+    if not numeric[probability_columns].apply(lambda col: col.between(0.0, 1.0).all()).all():
+        errors.append(f"bounded execution-adjusted LCRI threshold curve probabilities violated in {artifact}")
+    if (numeric["eligible_rows"] > numeric["rows"]).any():
+        errors.append(f"execution-adjusted LCRI threshold eligible rows exceed total rows in {artifact}")
+    if (numeric["tradable_rows"] > numeric["eligible_rows"]).any():
+        errors.append(f"execution-adjusted LCRI threshold tradable rows exceed eligible rows in {artifact}")
+    if (numeric["execution_publishable_rows"] > numeric["eligible_rows"]).any():
+        errors.append(
+            f"execution-adjusted LCRI threshold publishable rows exceed eligible rows in {artifact}"
+        )
+    if not numeric["lcri_threshold"].is_monotonic_increasing:
+        errors.append(f"execution-adjusted LCRI threshold curve is not sorted in {artifact}")
+    valid_sides = {"long", "short", "abstain", "none"}
+    invalid_sides = sorted(set(frame["dominant_execution_side"].astype(str)) - valid_sides)
+    if invalid_sides:
+        errors.append(f"invalid execution-adjusted LCRI threshold dominant sides in {artifact}: {invalid_sides}")
+    valid_labels = {
+        "execution_threshold_insufficient_coverage",
+        "execution_threshold_no_publishable_rows",
+        "execution_threshold_review",
+        "execution_threshold_alignment_review",
+        "execution_threshold_publishable",
+    }
+    invalid_labels = sorted(set(frame["review_label"].astype(str)) - valid_labels)
+    if invalid_labels:
+        errors.append(f"invalid execution-adjusted LCRI threshold labels in {artifact}: {invalid_labels}")
+    return errors
+
+
 def verify_execution_adjusted_lcri_event_window_release_scorecard(
     output_dir: Path,
     artifact: str = "execution_adjusted_lcri_event_window_release_scorecard.json",

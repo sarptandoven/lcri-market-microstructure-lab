@@ -106,6 +106,7 @@ from lcri_lab.execution import (
     execution_adjusted_lcri_event_window_attribution,
     execution_adjusted_lcri_event_window_release_scorecard,
     execution_adjusted_lcri_quantile_diagnostics,
+    execution_adjusted_lcri_threshold_curve,
     execution_adjusted_lcri_regime_attribution,
     execution_adjusted_lcri_side_attribution,
     execution_adjusted_lcri_side_release_scorecard,
@@ -213,6 +214,7 @@ from lcri_lab.reporting import (
     verify_execution_adjusted_edge_component_attribution,
     verify_execution_adjusted_lcri_event_window_release_scorecard,
     verify_execution_adjusted_lcri_quantile_diagnostics,
+    verify_execution_adjusted_lcri_threshold_curve,
     verify_execution_adjusted_lcri_side_attribution,
     verify_execution_publishability_review_artifacts,
     verify_execution_publishability_release_gate,
@@ -1035,6 +1037,8 @@ def run_demo(
     heldout_execution_lcri_quantile_diagnostics = execution_adjusted_lcri_quantile_diagnostics(
         heldout_scored
     )
+    execution_lcri_threshold_curve = execution_adjusted_lcri_threshold_curve(scored)
+    heldout_execution_lcri_threshold_curve = execution_adjusted_lcri_threshold_curve(heldout_scored)
     queue_lcri_tail_fill_residuals = queue_position_lcri_tail_fill_residuals(passive_fill_labeled)
     heldout_queue_lcri_tail_fill_residuals = queue_position_lcri_tail_fill_residuals(
         heldout_passive_fill_labeled
@@ -1262,6 +1266,8 @@ def run_demo(
         "heldout_execution_adjusted_lcri_regime_attribution.csv",
         "execution_adjusted_lcri_quantile_diagnostics.csv",
         "heldout_execution_adjusted_lcri_quantile_diagnostics.csv",
+        "execution_adjusted_lcri_threshold_curve.csv",
+        "heldout_execution_adjusted_lcri_threshold_curve.csv",
         "queue_position_lcri_tail_fill_residuals.csv",
         "heldout_queue_position_lcri_tail_fill_residuals.csv",
         "queue_position_unfilled_opportunity_curve.csv",
@@ -1926,6 +1932,12 @@ def run_demo(
     heldout_execution_lcri_quantile_diagnostics.to_csv(
         output / "heldout_execution_adjusted_lcri_quantile_diagnostics.csv", index=False
     )
+    execution_lcri_threshold_curve.to_csv(
+        output / "execution_adjusted_lcri_threshold_curve.csv", index=False
+    )
+    heldout_execution_lcri_threshold_curve.to_csv(
+        output / "heldout_execution_adjusted_lcri_threshold_curve.csv", index=False
+    )
     queue_lcri_tail_fill_residuals.to_csv(
         output / "queue_position_lcri_tail_fill_residuals.csv", index=False
     )
@@ -2297,6 +2309,14 @@ def run_demo(
     print(
         "heldout execution-adjusted LCRI quantile diagnostics: "
         f"{output / 'heldout_execution_adjusted_lcri_quantile_diagnostics.csv'}"
+    )
+    print(
+        "execution-adjusted LCRI threshold curve: "
+        f"{output / 'execution_adjusted_lcri_threshold_curve.csv'}"
+    )
+    print(
+        "heldout execution-adjusted LCRI threshold curve: "
+        f"{output / 'heldout_execution_adjusted_lcri_threshold_curve.csv'}"
     )
     print(f"execution publishability release gate: {output / 'execution_publishability_release_gate.json'}")
     print(
@@ -3015,6 +3035,18 @@ def verify_report(report_dir: Path) -> None:
                 report_dir, "heldout_execution_adjusted_lcri_quantile_diagnostics.csv"
             )
             if "heldout_execution_adjusted_lcri_quantile_diagnostics.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_execution_adjusted_lcri_threshold_curve(report_dir)
+            if "execution_adjusted_lcri_threshold_curve.csv" in manifest_artifacts
+            else []
+        ),
+        *(
+            verify_execution_adjusted_lcri_threshold_curve(
+                report_dir, "heldout_execution_adjusted_lcri_threshold_curve.csv"
+            )
+            if "heldout_execution_adjusted_lcri_threshold_curve.csv" in manifest_artifacts
             else []
         ),
         *(

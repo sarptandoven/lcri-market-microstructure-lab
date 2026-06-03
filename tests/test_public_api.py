@@ -103,6 +103,11 @@ def test_public_api_exports_execution_adjusted_lcri_quantile_diagnostics() -> No
     assert "execution_adjusted_lcri_quantile_diagnostics" in lcri_lab.__all__
 
 
+def test_public_api_exports_execution_adjusted_lcri_threshold_curve() -> None:
+    assert callable(lcri_lab.execution_adjusted_lcri_threshold_curve)
+    assert "execution_adjusted_lcri_threshold_curve" in lcri_lab.__all__
+
+
 def test_public_api_exports_execution_adjusted_lcri_side_attribution() -> None:
     assert callable(lcri_lab.execution_adjusted_lcri_side_attribution)
     assert "execution_adjusted_lcri_side_attribution" in lcri_lab.__all__

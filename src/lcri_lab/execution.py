@@ -13263,6 +13263,136 @@ def execution_adjusted_edge_summary(frame: pd.DataFrame) -> dict[str, float | in
     }
 
 
+def execution_adjusted_lcri_threshold_curve(
+    frame: pd.DataFrame,
+    *,
+    thresholds: list[float] | tuple[float, ...] | None = None,
+    signal_col: str = "lcri",
+    min_edge_ticks: float = 0.0,
+) -> pd.DataFrame:
+    """Audit which LCRI magnitudes survive execution-adjusted publishability gates.
+
+    Raw absolute LCRI thresholds are easy to overfit: a larger residual pressure
+    cutoff may improve statistical lift while losing queue availability, flipping
+    the executable side, or turning edge negative after passive-fill/adverse-fill
+    drag. This curve treats each threshold as a candidate policy and reports how
+    many rows remain execution-publishable, aligned with the raw LCRI side, and
+    consistent with any pre-execution ``publishable_side`` label.
+    """
+    if thresholds is None:
+        thresholds = [0.0, 0.5, 1.0, 1.5, 2.0]
+    threshold_values = [float(value) for value in thresholds]
+    if not threshold_values:
+        raise ValueError("thresholds must be non-empty")
+    if any(not math.isfinite(value) or value < 0.0 for value in threshold_values):
+        raise ValueError("thresholds must be finite and non-negative")
+    if not math.isfinite(min_edge_ticks):
+        raise ValueError("min_edge_ticks must be finite")
+
+    output_columns = [
+        "lcri_threshold",
+        "rows",
+        "eligible_rows",
+        "eligible_share",
+        "tradable_rows",
+        "execution_publishable_rows",
+        "execution_publishable_share",
+        "mean_execution_adjusted_edge_ticks",
+        "median_execution_adjusted_edge_ticks",
+        "alignment_share",
+        "publishable_side_conflict_share",
+        "dominant_execution_side",
+        "review_label",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=output_columns)
+
+    required = {signal_col, "best_execution_side", "execution_adjusted_edge_ticks"}
+    _require_columns(frame, required, "execution-adjusted LCRI threshold curve")
+    values = _finite_values(
+        frame,
+        [signal_col, "execution_adjusted_edge_ticks"],
+        "execution-adjusted LCRI threshold curve",
+    )
+    best_side = frame["best_execution_side"].astype(str)
+    valid_sides = {"long", "short", "abstain"}
+    unknown_sides = sorted(set(best_side) - valid_sides)
+    if unknown_sides:
+        raise ValueError(f"unknown execution sides: {unknown_sides}")
+    publishable_side = frame["publishable_side"].astype(str) if "publishable_side" in frame.columns else None
+
+    signal = values[signal_col]
+    edge = values["execution_adjusted_edge_ticks"]
+    lcri_side = pd.Series(
+        np.select([signal > 0.0, signal < 0.0], ["long", "short"], default="neutral"),
+        index=frame.index,
+    )
+    rows: list[dict[str, float | int | str]] = []
+    total_rows = len(frame)
+    for threshold in sorted(set(threshold_values)):
+        eligible = signal.abs() >= threshold
+        eligible_rows = int(eligible.sum())
+        if eligible_rows == 0:
+            rows.append(
+                {
+                    "lcri_threshold": threshold,
+                    "rows": total_rows,
+                    "eligible_rows": 0,
+                    "eligible_share": 0.0,
+                    "tradable_rows": 0,
+                    "execution_publishable_rows": 0,
+                    "execution_publishable_share": 0.0,
+                    "mean_execution_adjusted_edge_ticks": 0.0,
+                    "median_execution_adjusted_edge_ticks": 0.0,
+                    "alignment_share": 0.0,
+                    "publishable_side_conflict_share": 0.0,
+                    "dominant_execution_side": "none",
+                    "review_label": "execution_threshold_insufficient_coverage",
+                }
+            )
+            continue
+
+        eligible_side = best_side[eligible]
+        tradable = eligible_side != "abstain"
+        eligible_edge = edge[eligible]
+        edge_ok = eligible_edge >= min_edge_ticks
+        execution_publishable = tradable & edge_ok
+        aligned = (eligible_side == lcri_side[eligible]) & (lcri_side[eligible] != "neutral")
+        side_counts = eligible_side[tradable].value_counts()
+        dominant_side = "none" if side_counts.empty else str(side_counts.idxmax())
+        conflict_share = 0.0
+        if publishable_side is not None:
+            conflict_share = float((publishable_side[eligible] != eligible_side).mean())
+        execution_publishable_share = float(execution_publishable.mean())
+        if execution_publishable_share <= 0.0:
+            review_label = "execution_threshold_no_publishable_rows"
+        elif execution_publishable_share <= 0.50:
+            review_label = "execution_threshold_review"
+        elif float(aligned.mean()) < 0.50:
+            review_label = "execution_threshold_alignment_review"
+        else:
+            review_label = "execution_threshold_publishable"
+
+        rows.append(
+            {
+                "lcri_threshold": threshold,
+                "rows": total_rows,
+                "eligible_rows": eligible_rows,
+                "eligible_share": float(eligible.mean()),
+                "tradable_rows": int(tradable.sum()),
+                "execution_publishable_rows": int(execution_publishable.sum()),
+                "execution_publishable_share": execution_publishable_share,
+                "mean_execution_adjusted_edge_ticks": float(eligible_edge.mean()),
+                "median_execution_adjusted_edge_ticks": float(eligible_edge.median()),
+                "alignment_share": float(aligned.mean()),
+                "publishable_side_conflict_share": conflict_share,
+                "dominant_execution_side": dominant_side,
+                "review_label": review_label,
+            }
+        )
+    return pd.DataFrame(rows)[output_columns]
+
+
 def _empty_execution_adjusted_lcri_side_attribution() -> pd.DataFrame:
     return pd.DataFrame(
         columns=[
