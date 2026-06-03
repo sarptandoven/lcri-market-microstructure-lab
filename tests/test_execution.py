@@ -991,8 +991,30 @@ def test_execution_adjusted_edge_selects_best_side() -> None:
     output = add_execution_adjusted_edge(frame)
 
     assert output["best_execution_side"].tolist() == ["long", "short"]
+    assert output["execution_lcri_side_alignment"].tolist() == ["aligned", "aligned"]
     assert output["execution_adjusted_edge_ticks"].tolist() == pytest.approx([1.0, 1.0])
     assert output["execution_adjusted_lcri_score"].tolist() == pytest.approx([2.0, -2.0])
+
+
+def test_execution_adjusted_edge_zeroes_lcri_score_when_best_side_inverts_signal() -> None:
+    frame = pd.DataFrame(
+        {
+            "lcri": [2.0, -2.0, 0.0],
+            "lcri_probability": [0.75, 0.25, 0.5],
+            "long_net_return_ticks": [-0.5, 2.0, 1.0],
+            "short_net_return_ticks": [2.0, -0.5, 1.0],
+            "bid_fill_probability": [0.20, 0.80, 0.70],
+            "ask_fill_probability": [0.80, 0.20, 0.60],
+            "bid_adverse_fill_probability": [0.10, 0.10, 0.05],
+            "ask_adverse_fill_probability": [0.10, 0.10, 0.05],
+        }
+    )
+
+    output = add_execution_adjusted_edge(frame)
+
+    assert output["best_execution_side"].tolist() == ["short", "long", "long"]
+    assert output["execution_lcri_side_alignment"].tolist() == ["inverted", "inverted", "neutral"]
+    assert output["execution_adjusted_lcri_score"].tolist() == pytest.approx([0.0, 0.0, 0.0])
 
 
 def test_execution_adjusted_edge_abstains_when_both_edges_negative() -> None:
@@ -1012,6 +1034,7 @@ def test_execution_adjusted_edge_abstains_when_both_edges_negative() -> None:
     output = add_execution_adjusted_edge(frame)
 
     assert output.loc[0, "best_execution_side"] == "abstain"
+    assert output.loc[0, "execution_lcri_side_alignment"] == "abstain"
     assert output.loc[0, "execution_adjusted_edge_ticks"] == pytest.approx(-0.36)
     assert output.loc[0, "execution_adjusted_lcri_score"] == 0.0
 

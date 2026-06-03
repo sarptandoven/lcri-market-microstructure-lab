@@ -841,7 +841,6 @@ def trade_confirmed_passive_fill_latency_summary(
             cancel_only_cols,
             trade_depletion_cols,
             cancel_depletion_cols,
-            strict=True,
         )
     ]
     rows.append(
@@ -886,7 +885,7 @@ def queue_position_trade_confirmation_competing_risk_curve(
         raise ValueError("latency_thresholds must be non-empty")
     if any(not math.isfinite(threshold) or threshold < 0.0 for threshold in thresholds):
         raise ValueError("latency_thresholds must be finite non-negative values")
-    if any(right <= left for left, right in zip(thresholds, thresholds[1:], strict=False)):
+    if any(right <= left for left, right in zip(thresholds, thresholds[1:])):
         raise ValueError("latency_thresholds must be strictly increasing")
     if not math.isfinite(max_cancel_only_clear_rate) or not 0.0 <= max_cancel_only_clear_rate <= 1.0:
         raise ValueError("max_cancel_only_clear_rate must be finite and in [0, 1]")
@@ -957,7 +956,7 @@ def queue_position_trade_confirmation_competing_risk_curve(
         return summaries
 
     rows: list[dict[str, float | int | str]] = []
-    for side, fill_col, latency_col, cancel_col in zip(sides, fill_cols, latency_cols, cancel_only_cols, strict=True):
+    for side, fill_col, latency_col, cancel_col in zip(sides, fill_cols, latency_cols, cancel_only_cols):
         rows.extend(summarize_side(side, fill_values[fill_col], latency_values[latency_col], cancel_values[cancel_col]))
     rows.extend(
         summarize_side(
@@ -1058,7 +1057,7 @@ def passive_fill_proxy_disagreement(
 
     rows = [
         summarize(side, values[snapshot_col], values[event_col])
-        for side, snapshot_col, event_col in zip(sides, snapshot_cols, event_cols, strict=True)
+        for side, snapshot_col, event_col in zip(sides, snapshot_cols, event_cols)
     ]
     stacked_snapshot = pd.concat([values[column] for column in snapshot_cols], ignore_index=True)
     stacked_event = pd.concat([values[column] for column in event_cols], ignore_index=True)
@@ -1318,17 +1317,25 @@ def add_execution_adjusted_edge(
         ["long", "short"],
         default="abstain",
     )
+    raw_side = np.select(
+        [signal > 0.0, signal < 0.0],
+        ["long", "short"],
+        default="neutral",
+    )
+    side_aligned = (best_side == raw_side) & (raw_side != "neutral")
+    side_alignment = np.select(
+        [raw_side == "neutral", best_side == "abstain", side_aligned],
+        ["neutral", "abstain", "aligned"],
+        default="inverted",
+    )
 
     output = frame.copy()
     output["long_fill_adjusted_edge_ticks"] = long_edge
     output["short_fill_adjusted_edge_ticks"] = short_edge
     output["best_execution_side"] = best_side
+    output["execution_lcri_side_alignment"] = side_alignment
     output["execution_adjusted_edge_ticks"] = best_edge
-    output["execution_adjusted_lcri_score"] = np.select(
-        [best_side == "long", best_side == "short"],
-        [signal, signal],
-        default=0.0,
-    )
+    output["execution_adjusted_lcri_score"] = np.where(side_aligned, signal, 0.0)
     return output
 
 
@@ -10695,7 +10702,7 @@ def queue_position_unfilled_opportunity_curve(
             else:
                 label = "opportunity_captured"
             row: dict[str, float | int | str] = {}
-            for column, key in zip(groupers, keys, strict=True):
+            for column, key in zip(groupers, keys):
                 if column != "_all":
                     row[column] = str(key)
             row.update(

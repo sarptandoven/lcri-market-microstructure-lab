@@ -835,7 +835,7 @@ def baseline_nonlinear_stress_surface(
     holdout["nonlinear_residual"] = holdout_y - fit_predict(nonlinear_indexes)
 
     labels = ["low", "medium", "high"] if bins == 3 else [f"bin_{idx + 1}" for idx in range(bins)]
-    for col, bin_col in zip(stress_cols, bin_columns, strict=True):
+    for col, bin_col in zip(stress_cols, bin_columns):
         pct = holdout[col].rank(method="first", pct=True).to_numpy(dtype=float)
         indexes = np.minimum(np.floor(pct * bins).astype(int), bins - 1)
         holdout[bin_col] = pd.Categorical([labels[idx] for idx in indexes], categories=labels, ordered=True)
@@ -857,7 +857,7 @@ def baseline_nonlinear_stress_surface(
         else:
             label = "neutral"
         row: dict[str, float | int | str] = {
-            "stress_cell": "|".join(f"{col}={key}" for col, key in zip(stress_cols, keys, strict=True)),
+            "stress_cell": "|".join(f"{col}={key}" for col, key in zip(stress_cols, keys)),
             "rows": int(len(group)),
             "row_share": float(len(group) / total_rows),
             "core_rmse": core_rmse,
@@ -867,7 +867,7 @@ def baseline_nonlinear_stress_surface(
             "nonlinear_residual_mean": float(nonlinear_residual.mean()),
             "surface_label": label,
         }
-        for bin_col, key in zip(bin_columns, keys, strict=True):
+        for bin_col, key in zip(bin_columns, keys):
             row[bin_col] = str(key)
         rows.append(row)
 
@@ -1021,7 +1021,6 @@ def baseline_component_attribution(frame: pd.DataFrame, baseline: LiquidityBasel
             mean_contribution,
             mean_abs_contribution,
             shares,
-            strict=True,
         )
     ]
     return pd.DataFrame(rows, columns=columns).sort_values(
@@ -1087,7 +1086,7 @@ def baseline_liquidity_stress_curve(
             "feature_value": float(value),
             "expected_imbalance": predict_at(float(value)),
         }
-        for quantile, value in zip(quantiles, feature_values, strict=True)
+        for quantile, value in zip(quantiles, feature_values)
     ]
     for row in rows:
         row["delta_vs_median"] = float(row["expected_imbalance"] - median_prediction)
