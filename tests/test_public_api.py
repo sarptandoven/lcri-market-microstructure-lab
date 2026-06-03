@@ -173,6 +173,13 @@ def test_public_api_exports_queue_position_lcri_execution_interaction_release_sc
     assert "queue_position_lcri_execution_interaction_release_scorecard" in lcri_lab.__all__
 
 
+def test_public_api_exports_queue_position_lcri_tail_fill_residual_drift() -> None:
+    assert callable(lcri_lab.queue_position_lcri_tail_fill_residual_drift)
+    assert callable(lcri_lab.queue_position_lcri_tail_fill_residual_drift_scorecard)
+    assert "queue_position_lcri_tail_fill_residual_drift" in lcri_lab.__all__
+    assert "queue_position_lcri_tail_fill_residual_drift_scorecard" in lcri_lab.__all__
+
+
 def test_public_api_exports_queue_position_trade_confirmation_regime_scorecard() -> None:
     assert callable(lcri_lab.queue_position_trade_confirmation_regime_scorecard)
     assert "queue_position_trade_confirmation_regime_scorecard" in lcri_lab.__all__

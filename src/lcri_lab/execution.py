@@ -2163,6 +2163,208 @@ def queue_position_lcri_tail_fill_residual_scorecard(
     return scorecard
 
 
+def queue_position_lcri_tail_fill_residual_drift(
+    residuals: pd.DataFrame,
+    *,
+    min_cell_rows: int = 1,
+    block_residual_drift: float = 0.20,
+    review_residual_drift: float = 0.10,
+) -> pd.DataFrame:
+    """Summarize regime drift in selected-side LCRI-tail passive-fill residuals.
+
+    A global tail residual scorecard can pass while one liquidity/event regime is
+    materially more overfilled in-sample than another. This reducer keeps only the
+    strongest LCRI tail bin, row-weights calibration residuals within each regime,
+    and measures how far each regime's residual sits below the best-calibrated
+    regime. Large negative-regime drift means LCRI tail claims depend on a regime
+    where passive fills are systematically overstated.
+    """
+    if not isinstance(min_cell_rows, int) or isinstance(min_cell_rows, bool):
+        raise ValueError("min_cell_rows must be a positive integer")
+    if min_cell_rows < 1:
+        raise ValueError("min_cell_rows must be a positive integer")
+    for name, value in {
+        "block_residual_drift": block_residual_drift,
+        "review_residual_drift": review_residual_drift,
+    }.items():
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"{name} must be finite and non-negative")
+    if review_residual_drift > block_residual_drift:
+        raise ValueError("review_residual_drift must be less than or equal to block_residual_drift")
+
+    columns = [
+        "regime",
+        "tail_bin",
+        "eligible_cells",
+        "tail_rows",
+        "weighted_fill_residual",
+        "weighted_abs_fill_residual",
+        "weighted_residual_edge_drag_ticks",
+        "overstated_row_share",
+        "residual_drift_vs_best_regime",
+        "tail_fill_residual_drift_label",
+    ]
+    if residuals.empty:
+        return pd.DataFrame(columns=columns)
+
+    required = {
+        "lcri_tail_bin",
+        "rows",
+        "fill_residual",
+        "absolute_fill_residual",
+        "residual_edge_drag_ticks",
+        "tail_fill_residual_label",
+    }
+    regime_col = "regime" if "regime" in residuals.columns else None
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(residuals, required, "queue position LCRI tail fill residual drift")
+    values = _finite_values(
+        residuals,
+        ["lcri_tail_bin", "rows", "fill_residual", "absolute_fill_residual", "residual_edge_drag_ticks"],
+        "queue position LCRI tail fill residual drift",
+    )
+    if (values[["lcri_tail_bin", "rows", "absolute_fill_residual", "residual_edge_drag_ticks"]] < 0.0).any().any():
+        raise ValueError("queue position LCRI tail fill residual drift counts and magnitudes must be non-negative")
+    if not values["lcri_tail_bin"].apply(lambda value: math.isclose(value, round(value), abs_tol=1e-9)).all():
+        raise ValueError("queue position LCRI tail fill residual drift tail bins must be integers")
+
+    data = values.copy()
+    data["regime"] = residuals[regime_col].astype(str) if regime_col is not None else "all"
+    data["tail_fill_residual_label"] = residuals["tail_fill_residual_label"].astype(str)
+    tail_bin = int(data["lcri_tail_bin"].max())
+    eligible = data[(data["lcri_tail_bin"] == float(tail_bin)) & (data["rows"] >= float(min_cell_rows))].copy()
+    if eligible.empty:
+        return pd.DataFrame(columns=columns)
+
+    rows: list[dict[str, float | int | str]] = []
+    for regime, group in eligible.groupby("regime", sort=True):
+        tail_rows = int(group["rows"].sum())
+        if tail_rows == 0:
+            continue
+        weights = group["rows"] / float(tail_rows)
+        overstated_rows = int(
+            group.loc[group["tail_fill_residual_label"] == "tail_fill_overstated", "rows"].sum()
+        )
+        rows.append(
+            {
+                "regime": str(regime),
+                "tail_bin": tail_bin,
+                "eligible_cells": int(len(group)),
+                "tail_rows": tail_rows,
+                "weighted_fill_residual": float((group["fill_residual"] * weights).sum()),
+                "weighted_abs_fill_residual": float((group["absolute_fill_residual"] * weights).sum()),
+                "weighted_residual_edge_drag_ticks": float((group["residual_edge_drag_ticks"] * weights).sum()),
+                "overstated_row_share": float(overstated_rows) / float(tail_rows),
+            }
+        )
+    if not rows:
+        return pd.DataFrame(columns=columns)
+
+    output = pd.DataFrame(rows)
+    best_residual = float(output["weighted_fill_residual"].max())
+    output["residual_drift_vs_best_regime"] = (
+        best_residual - output["weighted_fill_residual"]
+    ).clip(lower=0.0)
+    output["tail_fill_residual_drift_label"] = np.where(
+        output["residual_drift_vs_best_regime"] >= block_residual_drift,
+        "tail_residual_drift_block",
+        np.where(
+            output["residual_drift_vs_best_regime"] >= review_residual_drift,
+            "tail_residual_drift_review",
+            "tail_residual_drift_stable",
+        ),
+    )
+    return output[columns]
+
+
+def _empty_queue_position_lcri_tail_fill_residual_drift_scorecard() -> dict[str, float | int | str]:
+    return {
+        "observed_tail_residual_drift_regimes": 0,
+        "total_tail_residual_drift_rows": 0,
+        "blocked_tail_residual_drift_regimes": 0,
+        "review_tail_residual_drift_regimes": 0,
+        "max_tail_residual_drift": 0.0,
+        "worst_tail_residual_drift_regime": "none",
+        "worst_tail_residual_drift_rows": 0,
+        "worst_tail_residual_drift": 0.0,
+        "worst_tail_residual_overstated_row_share": 0.0,
+        "worst_tail_residual_edge_drag_ticks": 0.0,
+        "tail_fill_residual_drift_release_label": "pass",
+        "blocking_reasons": "none",
+        "review_reasons": "none",
+    }
+
+
+def queue_position_lcri_tail_fill_residual_drift_scorecard(
+    drift: pd.DataFrame,
+) -> dict[str, float | int | str]:
+    """Gate regime-specific LCRI-tail fill residual drift for release artifacts.
+
+    The residual drift surface identifies whether high-LCRI passive-fill optimism is
+    localized to one liquidity/event regime. This scorecard turns that surface into
+    a compact publishability gate: block on any drift-block regime, review on any
+    drift-review regime, and preserve the worst regime plus its edge drag for demo
+    and evaluation handoffs.
+    """
+    scorecard = _empty_queue_position_lcri_tail_fill_residual_drift_scorecard()
+    if drift.empty:
+        return scorecard
+
+    required = {
+        "regime",
+        "tail_rows",
+        "weighted_residual_edge_drag_ticks",
+        "overstated_row_share",
+        "residual_drift_vs_best_regime",
+        "tail_fill_residual_drift_label",
+    }
+    _require_columns(drift, required, "queue position LCRI tail fill residual drift scorecard")
+    values = _finite_values(
+        drift,
+        [
+            "tail_rows",
+            "weighted_residual_edge_drag_ticks",
+            "overstated_row_share",
+            "residual_drift_vs_best_regime",
+        ],
+        "queue position LCRI tail fill residual drift scorecard",
+    )
+    if (values[["tail_rows", "weighted_residual_edge_drag_ticks", "residual_drift_vs_best_regime"]] < 0.0).any().any():
+        raise ValueError("queue position LCRI tail fill residual drift scorecard magnitudes must be non-negative")
+    if not values["overstated_row_share"].between(0.0, 1.0).all():
+        raise ValueError("queue position LCRI tail fill residual drift scorecard shares must be between 0 and 1")
+
+    labels = drift["tail_fill_residual_drift_label"].astype(str)
+    blocked = labels == "tail_residual_drift_block"
+    review = labels == "tail_residual_drift_review"
+    worst_idx = values.sort_values(
+        ["residual_drift_vs_best_regime", "tail_rows"],
+        ascending=[False, False],
+    ).index[0]
+    worst = drift.loc[worst_idx]
+    release_label = "block" if blocked.any() else "review" if review.any() else "pass"
+
+    scorecard.update(
+        {
+            "observed_tail_residual_drift_regimes": int(len(drift)),
+            "total_tail_residual_drift_rows": int(values["tail_rows"].sum()),
+            "blocked_tail_residual_drift_regimes": int(blocked.sum()),
+            "review_tail_residual_drift_regimes": int(review.sum()),
+            "max_tail_residual_drift": float(values["residual_drift_vs_best_regime"].max()),
+            "worst_tail_residual_drift_regime": str(worst["regime"]),
+            "worst_tail_residual_drift_rows": int(worst["tail_rows"]),
+            "worst_tail_residual_drift": float(worst["residual_drift_vs_best_regime"]),
+            "worst_tail_residual_overstated_row_share": float(worst["overstated_row_share"]),
+            "worst_tail_residual_edge_drag_ticks": float(worst["weighted_residual_edge_drag_ticks"]),
+            "tail_fill_residual_drift_release_label": release_label,
+            "blocking_reasons": "tail_residual_drift_regime" if blocked.any() else "none",
+            "review_reasons": "tail_residual_drift_regime" if not blocked.any() and review.any() else "none",
+        }
+    )
+    return scorecard
+
+
 def queue_position_lcri_tail_adverse_selection_surface(
     frame: pd.DataFrame,
     *,

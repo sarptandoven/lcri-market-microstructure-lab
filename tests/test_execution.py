@@ -102,6 +102,8 @@ from lcri_lab.execution import (
     queue_position_lcri_execution_interaction_release_scorecard,
     queue_position_lcri_execution_interaction_surface,
     queue_position_lcri_tail_adverse_selection_surface,
+    queue_position_lcri_tail_fill_residual_drift,
+    queue_position_lcri_tail_fill_residual_drift_scorecard,
     queue_position_lcri_tail_fill_residual_scorecard,
     queue_position_lcri_tail_fill_residuals,
     queue_position_path_drawdown_episodes,
@@ -334,6 +336,81 @@ def test_queue_position_lcri_execution_interaction_release_scorecard_reviews_mis
     assert scorecard["execution_interaction_release_label"] == "review"
     assert scorecard["review_reasons"] == "fragile_tail_row_share,tail_fill_shortfall"
     assert scorecard["blocking_reasons"] == "none"
+
+
+def test_queue_position_lcri_tail_fill_residual_drift_flags_regime_specific_overstatement() -> None:
+    residuals = pd.DataFrame(
+        {
+            "regime": ["calm", "calm", "stress", "stress", "calm"],
+            "best_execution_side": ["long", "short", "long", "short", "long"],
+            "lcri_tail_bin": [2, 2, 2, 2, 1],
+            "rows": [30, 20, 40, 10, 50],
+            "fill_residual": [0.02, -0.04, -0.35, -0.25, -0.10],
+            "absolute_fill_residual": [0.02, 0.04, 0.35, 0.25, 0.10],
+            "residual_edge_drag_ticks": [0.002, 0.004, 0.105, 0.050, 0.010],
+            "tail_fill_residual_label": [
+                "tail_fill_calibrated",
+                "tail_fill_calibrated",
+                "tail_fill_overstated",
+                "tail_fill_overstated",
+                "tail_fill_overstated",
+            ],
+        }
+    )
+
+    drift = queue_position_lcri_tail_fill_residual_drift(
+        residuals,
+        min_cell_rows=10,
+        block_residual_drift=0.20,
+        review_residual_drift=0.10,
+    )
+
+    assert list(drift.columns) == [
+        "regime",
+        "tail_bin",
+        "eligible_cells",
+        "tail_rows",
+        "weighted_fill_residual",
+        "weighted_abs_fill_residual",
+        "weighted_residual_edge_drag_ticks",
+        "overstated_row_share",
+        "residual_drift_vs_best_regime",
+        "tail_fill_residual_drift_label",
+    ]
+    stress = drift[drift["regime"] == "stress"].iloc[0]
+    assert stress["tail_bin"] == 2
+    assert stress["tail_rows"] == 50
+    assert stress["weighted_fill_residual"] == pytest.approx(-0.33)
+    assert stress["overstated_row_share"] == pytest.approx(1.0)
+    assert stress["residual_drift_vs_best_regime"] == pytest.approx(0.326)
+    assert stress["tail_fill_residual_drift_label"] == "tail_residual_drift_block"
+
+
+def test_queue_position_lcri_tail_fill_residual_drift_scorecard_blocks_worst_regime() -> None:
+    drift = pd.DataFrame(
+        {
+            "regime": ["calm", "stress"],
+            "tail_bin": [2, 2],
+            "eligible_cells": [2, 2],
+            "tail_rows": [50, 50],
+            "weighted_fill_residual": [-0.004, -0.330],
+            "weighted_abs_fill_residual": [0.028, 0.330],
+            "weighted_residual_edge_drag_ticks": [0.0028, 0.094],
+            "overstated_row_share": [0.0, 1.0],
+            "residual_drift_vs_best_regime": [0.0, 0.326],
+            "tail_fill_residual_drift_label": [
+                "tail_residual_drift_stable",
+                "tail_residual_drift_block",
+            ],
+        }
+    )
+
+    scorecard = queue_position_lcri_tail_fill_residual_drift_scorecard(drift)
+
+    assert scorecard["tail_fill_residual_drift_release_label"] == "block"
+    assert scorecard["worst_tail_residual_drift_regime"] == "stress"
+    assert scorecard["worst_tail_residual_drift"] == pytest.approx(0.326)
+    assert scorecard["blocking_reasons"] == "tail_residual_drift_regime"
 
 
 def test_execution_adjusted_lcri_threshold_curve_exposes_execution_publishability_cutoffs() -> None:
