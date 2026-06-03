@@ -15341,3 +15341,358 @@ def queue_position_trade_confirmation_surface(
             }
         )
     return pd.DataFrame(rows)[list(_empty_queue_position_trade_confirmation_surface().columns)]
+
+
+def _empty_queue_position_lcri_execution_interaction_surface() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "regime",
+            "lcri_bucket",
+            "queue_clear_bucket",
+            "rows",
+            "mean_abs_lcri",
+            "mean_queue_clear_share",
+            "mean_predicted_fill_probability",
+            "realized_fill_rate",
+            "mean_adverse_fill_probability",
+            "mean_execution_adjusted_edge_ticks",
+            "fill_shortfall",
+            "execution_interaction_label",
+        ]
+    )
+
+
+def queue_position_lcri_execution_interaction_surface(
+    frame: pd.DataFrame,
+    *,
+    lcri_bins: int = 4,
+    queue_bins: int = 4,
+    side_col: str = "best_execution_side",
+    regime_col: str | None = None,
+    min_fill_rate: float = 0.50,
+    max_adverse_probability: float = 0.35,
+    min_edge_ticks: float = 0.0,
+) -> pd.DataFrame:
+    """Surface LCRI tails by selected-side queue burden and passive executability.
+
+    Strong absolute LCRI values are only useful if the side implied by execution
+    selection can actually rest and fill without toxic adverse selection. This
+    diagnostic selects bid/ask passive-fill, adverse-selection, realized-fill, and
+    queue-clear fields using ``best_execution_side``, then cross-buckets absolute
+    LCRI and queue-clear share. The resulting surface highlights high-LCRI cells
+    that remain executable versus cells where queue burden/adverse fill risk turns
+    the raw signal into an execution fragility.
+    """
+    for name, value in {"lcri_bins": lcri_bins, "queue_bins": queue_bins}.items():
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ValueError(f"{name} must be an integer")
+        if value < 1:
+            raise ValueError(f"{name} must be at least 1")
+    for name, value in {
+        "min_fill_rate": min_fill_rate,
+        "max_adverse_probability": max_adverse_probability,
+    }.items():
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be finite and in [0, 1]")
+    if not math.isfinite(min_edge_ticks):
+        raise ValueError("min_edge_ticks must be finite")
+
+    edge_col = "execution_adjusted_edge_ticks"
+    required = {
+        "lcri",
+        side_col,
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+        "bid_realized_fill",
+        "ask_realized_fill",
+        "bid_queue_clear_share",
+        "ask_queue_clear_share",
+    }
+    if edge_col in frame.columns:
+        required.add(edge_col)
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(frame, required, "queue position LCRI execution interaction surface")
+    if frame.empty:
+        return _empty_queue_position_lcri_execution_interaction_surface()
+
+    numeric_columns = sorted(required - {side_col} - ({regime_col} if regime_col is not None else set()))
+    values = _finite_values(frame, numeric_columns, "queue position LCRI execution interaction surface")
+    bounded_columns = [
+        "bid_fill_probability",
+        "ask_fill_probability",
+        "bid_adverse_fill_probability",
+        "ask_adverse_fill_probability",
+        "bid_realized_fill",
+        "ask_realized_fill",
+    ]
+    if not values[bounded_columns].apply(lambda column: column.between(0.0, 1.0).all()).all():
+        raise ValueError("probabilities and realized fills must be in [0, 1]")
+    if not values[["bid_queue_clear_share", "ask_queue_clear_share"]].ge(0.0).all().all():
+        raise ValueError("queue clear shares must be non-negative")
+
+    side = frame[side_col].astype(str)
+    selected = pd.DataFrame(index=frame.index)
+    selected["regime"] = frame[regime_col].astype(str) if regime_col is not None else "all"
+    selected["abs_lcri"] = values["lcri"].abs()
+    selected["predicted_fill_probability"] = np.select(
+        [side == "long", side == "short"],
+        [values["bid_fill_probability"], values["ask_fill_probability"]],
+        default=np.nan,
+    )
+    selected["adverse_fill_probability"] = np.select(
+        [side == "long", side == "short"],
+        [values["bid_adverse_fill_probability"], values["ask_adverse_fill_probability"]],
+        default=np.nan,
+    )
+    selected["realized_fill"] = np.select(
+        [side == "long", side == "short"],
+        [values["bid_realized_fill"], values["ask_realized_fill"]],
+        default=np.nan,
+    )
+    selected["queue_clear_share"] = np.select(
+        [side == "long", side == "short"],
+        [values["bid_queue_clear_share"], values["ask_queue_clear_share"]],
+        default=np.nan,
+    )
+    selected["execution_adjusted_edge_ticks"] = (
+        values[edge_col] if edge_col in values.columns else pd.Series(0.0, index=frame.index)
+    )
+    selected = selected.loc[side.isin(["long", "short"])].copy()
+    if selected.empty:
+        return _empty_queue_position_lcri_execution_interaction_surface()
+
+    actual_lcri_bins = min(lcri_bins, len(selected))
+    lcri_ranks = selected["abs_lcri"].rank(method="first")
+    selected["lcri_bucket_id"] = pd.qcut(
+        lcri_ranks, q=actual_lcri_bins, labels=False, duplicates="drop"
+    )
+    actual_lcri_bins = int(selected["lcri_bucket_id"].max()) + 1
+    selected["lcri_bucket"] = selected["lcri_bucket_id"].map(
+        lambda bucket_id: f"lcri_q{int(bucket_id) + 1:02d}"
+    )
+
+    actual_queue_bins = min(queue_bins, len(selected))
+    queue_ranks = selected["queue_clear_share"].rank(method="first")
+    selected["queue_bucket_id"] = pd.qcut(
+        queue_ranks, q=actual_queue_bins, labels=False, duplicates="drop"
+    )
+    actual_queue_bins = int(selected["queue_bucket_id"].max()) + 1
+    selected["queue_clear_bucket"] = selected["queue_bucket_id"].map(
+        lambda bucket_id: f"queue_q{int(bucket_id) + 1:02d}"
+    )
+    high_lcri_label = f"lcri_q{actual_lcri_bins:02d}"
+
+    rows: list[dict[str, float | int | str]] = []
+    for (regime, lcri_bucket, queue_bucket), group in selected.groupby(
+        ["regime", "lcri_bucket", "queue_clear_bucket"], sort=True
+    ):
+        realized_fill_rate = float(group["realized_fill"].mean())
+        adverse_probability = float(group["adverse_fill_probability"].mean())
+        edge = float(group["execution_adjusted_edge_ticks"].mean())
+        fill_shortfall = float(group["predicted_fill_probability"].mean() - realized_fill_rate)
+        if lcri_bucket == high_lcri_label and adverse_probability > max_adverse_probability:
+            label = "lcri_tail_adverse_queue_risk"
+        elif lcri_bucket == high_lcri_label and realized_fill_rate < min_fill_rate:
+            label = "lcri_tail_unfilled_queue_risk"
+        elif lcri_bucket == high_lcri_label and edge < min_edge_ticks:
+            label = "lcri_tail_negative_execution_edge"
+        elif lcri_bucket == high_lcri_label:
+            label = "lcri_tail_execution_supported"
+        else:
+            label = "non_tail_execution_context"
+        rows.append(
+            {
+                "regime": str(regime),
+                "lcri_bucket": str(lcri_bucket),
+                "queue_clear_bucket": str(queue_bucket),
+                "rows": int(len(group)),
+                "mean_abs_lcri": float(group["abs_lcri"].mean()),
+                "mean_queue_clear_share": float(group["queue_clear_share"].mean()),
+                "mean_predicted_fill_probability": float(
+                    group["predicted_fill_probability"].mean()
+                ),
+                "realized_fill_rate": realized_fill_rate,
+                "mean_adverse_fill_probability": adverse_probability,
+                "mean_execution_adjusted_edge_ticks": edge,
+                "fill_shortfall": fill_shortfall,
+                "execution_interaction_label": label,
+            }
+        )
+    return pd.DataFrame(rows)[list(_empty_queue_position_lcri_execution_interaction_surface().columns)]
+
+
+def _empty_queue_position_lcri_execution_interaction_release_scorecard() -> dict[str, float | int | str]:
+    return {
+        "observed_execution_interaction_cells": 0,
+        "tail_execution_interaction_cells": 0,
+        "eligible_tail_cells": 0,
+        "total_tail_rows": 0,
+        "fragile_tail_cells": 0,
+        "fragile_tail_rows": 0,
+        "fragile_tail_row_share": 0.0,
+        "supported_tail_cells": 0,
+        "supported_tail_rows": 0,
+        "candidate_weighted_tail_fill_shortfall": 0.0,
+        "candidate_weighted_tail_adverse_probability": 0.0,
+        "candidate_weighted_tail_edge_ticks": 0.0,
+        "worst_tail_cell": "none",
+        "worst_tail_cell_rows": 0,
+        "worst_tail_cell_fill_shortfall": 0.0,
+        "worst_tail_cell_adverse_probability": 0.0,
+        "worst_tail_cell_mean_execution_adjusted_edge_ticks": 0.0,
+        "execution_interaction_release_label": "pass",
+        "blocking_reasons": "none",
+        "review_reasons": "none",
+    }
+
+
+def queue_position_lcri_execution_interaction_release_scorecard(
+    surface: pd.DataFrame,
+    *,
+    min_cell_rows: int = 1,
+    block_fragile_tail_row_share: float = 0.35,
+    review_fragile_tail_row_share: float = 0.15,
+    block_weighted_tail_edge_ticks: float = 0.0,
+    review_fill_shortfall: float = 0.25,
+) -> dict[str, float | int | str]:
+    """Gate LCRI execution-interaction surfaces for publishable passive alpha.
+
+    The interaction surface separates raw LCRI tails that are actually executable
+    from tail cells where queue burden, adverse-selection, or realized-fill misses
+    dominate. This compact scorecard is intended for demos/release reports: it
+    only evaluates LCRI-tail cells, row-weights the tail execution metrics, and
+    blocks or reviews when fragile tail rows would make the strategy look tradable
+    before passive execution supports it.
+    """
+    if not isinstance(min_cell_rows, int) or isinstance(min_cell_rows, bool):
+        raise ValueError("min_cell_rows must be a positive integer")
+    if min_cell_rows < 1:
+        raise ValueError("min_cell_rows must be a positive integer")
+    for name, value in {
+        "block_fragile_tail_row_share": block_fragile_tail_row_share,
+        "review_fragile_tail_row_share": review_fragile_tail_row_share,
+    }.items():
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be finite and between 0 and 1")
+    for name, value in {
+        "block_weighted_tail_edge_ticks": block_weighted_tail_edge_ticks,
+        "review_fill_shortfall": review_fill_shortfall,
+    }.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+    if review_fill_shortfall < 0.0:
+        raise ValueError("review_fill_shortfall must be non-negative")
+    if surface.empty:
+        return _empty_queue_position_lcri_execution_interaction_release_scorecard()
+
+    required = {
+        "lcri_bucket",
+        "queue_clear_bucket",
+        "rows",
+        "mean_adverse_fill_probability",
+        "mean_execution_adjusted_edge_ticks",
+        "fill_shortfall",
+        "execution_interaction_label",
+    }
+    regime_col = "regime" if "regime" in surface.columns else None
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(surface, required, "queue position LCRI execution interaction release scorecard")
+    values = _finite_values(
+        surface,
+        [
+            "rows",
+            "mean_adverse_fill_probability",
+            "mean_execution_adjusted_edge_ticks",
+            "fill_shortfall",
+        ],
+        "queue position LCRI execution interaction release scorecard",
+    )
+    if (values["rows"] < 0.0).any():
+        raise ValueError("queue position LCRI execution interaction release scorecard rows must be non-negative")
+    data = values.copy()
+    data["lcri_bucket"] = surface["lcri_bucket"].astype(str)
+    data["queue_clear_bucket"] = surface["queue_clear_bucket"].astype(str)
+    data["execution_interaction_label"] = surface["execution_interaction_label"].astype(str)
+    data["regime"] = surface[regime_col].astype(str) if regime_col is not None else "all"
+
+    tail = data[data["lcri_bucket"] == data["lcri_bucket"].max()].copy()
+    scorecard = _empty_queue_position_lcri_execution_interaction_release_scorecard()
+    scorecard["observed_execution_interaction_cells"] = int(len(surface))
+    scorecard["tail_execution_interaction_cells"] = int(len(tail))
+    total_tail_rows = int(tail["rows"].sum())
+    scorecard["total_tail_rows"] = total_tail_rows
+    if total_tail_rows == 0:
+        return scorecard
+
+    weights = tail["rows"] / float(total_tail_rows)
+    scorecard.update(
+        {
+            "candidate_weighted_tail_fill_shortfall": float((tail["fill_shortfall"] * weights).sum()),
+            "candidate_weighted_tail_adverse_probability": float(
+                (tail["mean_adverse_fill_probability"] * weights).sum()
+            ),
+            "candidate_weighted_tail_edge_ticks": float(
+                (tail["mean_execution_adjusted_edge_ticks"] * weights).sum()
+            ),
+        }
+    )
+    eligible = tail[tail["rows"] >= float(min_cell_rows)].copy()
+    scorecard["eligible_tail_cells"] = int(len(eligible))
+    if eligible.empty:
+        scorecard["execution_interaction_release_label"] = "review"
+        scorecard["review_reasons"] = "insufficient_tail_cell_rows"
+        return scorecard
+
+    fragile_labels = {
+        "lcri_tail_adverse_queue_risk",
+        "lcri_tail_unfilled_queue_risk",
+        "lcri_tail_negative_execution_edge",
+    }
+    fragile = eligible[eligible["execution_interaction_label"].isin(fragile_labels)]
+    supported = eligible[eligible["execution_interaction_label"] == "lcri_tail_execution_supported"]
+    fragile_rows = int(fragile["rows"].sum())
+    fragile_row_share = float(fragile_rows) / float(total_tail_rows)
+
+    worst_idx = eligible.sort_values(
+        ["mean_execution_adjusted_edge_ticks", "fill_shortfall", "mean_adverse_fill_probability", "rows"],
+        ascending=[True, False, False, False],
+    ).index[0]
+    worst = data.loc[worst_idx]
+    worst_tail_cell = f"{worst['regime']}:{worst['lcri_bucket']}:{worst['queue_clear_bucket']}"
+
+    blocking_reasons = []
+    if fragile_row_share >= block_fragile_tail_row_share:
+        blocking_reasons.append("fragile_tail_row_share")
+    if float(scorecard["candidate_weighted_tail_edge_ticks"]) <= block_weighted_tail_edge_ticks:
+        blocking_reasons.append("negative_tail_execution_edge")
+    review_reasons = []
+    if not blocking_reasons and fragile_row_share >= review_fragile_tail_row_share:
+        review_reasons.append("fragile_tail_row_share")
+    if not blocking_reasons and (eligible["fill_shortfall"] >= review_fill_shortfall).any():
+        review_reasons.append("tail_fill_shortfall")
+    label = "block" if blocking_reasons else "review" if review_reasons else "pass"
+
+    scorecard.update(
+        {
+            "fragile_tail_cells": int(len(fragile)),
+            "fragile_tail_rows": fragile_rows,
+            "fragile_tail_row_share": fragile_row_share,
+            "supported_tail_cells": int(len(supported)),
+            "supported_tail_rows": int(supported["rows"].sum()),
+            "worst_tail_cell": worst_tail_cell,
+            "worst_tail_cell_rows": int(worst["rows"]),
+            "worst_tail_cell_fill_shortfall": float(worst["fill_shortfall"]),
+            "worst_tail_cell_adverse_probability": float(worst["mean_adverse_fill_probability"]),
+            "worst_tail_cell_mean_execution_adjusted_edge_ticks": float(
+                worst["mean_execution_adjusted_edge_ticks"]
+            ),
+            "execution_interaction_release_label": label,
+            "blocking_reasons": ",".join(blocking_reasons) if blocking_reasons else "none",
+            "review_reasons": ",".join(review_reasons) if review_reasons else "none",
+        }
+    )
+    return scorecard

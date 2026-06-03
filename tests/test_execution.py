@@ -99,6 +99,8 @@ from lcri_lab.execution import (
     queue_position_latency_regime_surface,
     queue_position_latency_release_scorecard,
     queue_position_lcri_tail_adverse_selection_release_scorecard,
+    queue_position_lcri_execution_interaction_release_scorecard,
+    queue_position_lcri_execution_interaction_surface,
     queue_position_lcri_tail_adverse_selection_surface,
     queue_position_lcri_tail_fill_residuals,
     queue_position_path_drawdown_episodes,
@@ -178,6 +180,159 @@ def test_queue_position_order_size_features_rejects_negative_child_size() -> Non
 
     with pytest.raises(ValueError, match="order sizes must be non-negative"):
         add_queue_position_order_size_features(queued, levels=2, bid_order_size_col="bid_order")
+
+
+def test_queue_position_lcri_execution_interaction_surface_flags_tail_queue_risk() -> None:
+    frame = pd.DataFrame(
+        {
+            "lcri": [0.2, 0.5, 2.2, -2.6, 3.0, -3.4],
+            "best_execution_side": ["long", "short", "long", "short", "long", "short"],
+            "regime": ["calm", "calm", "stress", "stress", "stress", "stress"],
+            "bid_fill_probability": [0.70, 0.20, 0.85, 0.25, 0.80, 0.20],
+            "ask_fill_probability": [0.30, 0.72, 0.30, 0.82, 0.20, 0.75],
+            "bid_adverse_fill_probability": [0.10, 0.20, 0.20, 0.20, 0.55, 0.20],
+            "ask_adverse_fill_probability": [0.20, 0.10, 0.20, 0.25, 0.20, 0.58],
+            "bid_realized_fill": [1.0, 0.0, 1.0, 0.0, 1.0, 0.0],
+            "ask_realized_fill": [0.0, 1.0, 0.0, 1.0, 0.0, 0.0],
+            "bid_queue_clear_share": [0.10, 0.20, 0.25, 0.30, 0.95, 0.20],
+            "ask_queue_clear_share": [0.20, 0.15, 0.30, 0.05, 0.20, 0.90],
+            "execution_adjusted_edge_ticks": [0.10, 0.15, 0.30, 0.20, -0.10, -0.20],
+        }
+    )
+
+    surface = queue_position_lcri_execution_interaction_surface(
+        frame,
+        lcri_bins=2,
+        queue_bins=2,
+        regime_col="regime",
+        min_fill_rate=0.75,
+        max_adverse_probability=0.40,
+        min_edge_ticks=0.0,
+    )
+
+    assert list(surface.columns) == [
+        "regime",
+        "lcri_bucket",
+        "queue_clear_bucket",
+        "rows",
+        "mean_abs_lcri",
+        "mean_queue_clear_share",
+        "mean_predicted_fill_probability",
+        "realized_fill_rate",
+        "mean_adverse_fill_probability",
+        "mean_execution_adjusted_edge_ticks",
+        "fill_shortfall",
+        "execution_interaction_label",
+    ]
+    tail_supported = surface[
+        (surface["regime"] == "stress")
+        & (surface["lcri_bucket"] == "lcri_q02")
+        & (surface["queue_clear_bucket"] == "queue_q01")
+    ].iloc[0]
+    assert tail_supported["execution_interaction_label"] == "lcri_tail_execution_supported"
+    tail_risky = surface[
+        (surface["regime"] == "stress")
+        & (surface["lcri_bucket"] == "lcri_q02")
+        & (surface["queue_clear_bucket"] == "queue_q02")
+    ].iloc[0]
+    assert tail_risky["fill_shortfall"] == pytest.approx(0.275)
+    assert tail_risky["execution_interaction_label"] == "lcri_tail_adverse_queue_risk"
+
+
+def test_queue_position_lcri_execution_interaction_surface_rejects_invalid_rates() -> None:
+    frame = pd.DataFrame(
+        {
+            "lcri": [1.0],
+            "best_execution_side": ["long"],
+            "bid_fill_probability": [1.2],
+            "ask_fill_probability": [0.1],
+            "bid_adverse_fill_probability": [0.1],
+            "ask_adverse_fill_probability": [0.1],
+            "bid_realized_fill": [1.0],
+            "ask_realized_fill": [0.0],
+            "bid_queue_clear_share": [0.2],
+            "ask_queue_clear_share": [0.2],
+        }
+    )
+
+    with pytest.raises(ValueError, match=r"probabilities and realized fills must be in \[0, 1\]"):
+        queue_position_lcri_execution_interaction_surface(frame)
+
+
+def test_queue_position_lcri_execution_interaction_release_scorecard_blocks_tail_fragility() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["stress", "stress", "calm"],
+            "lcri_bucket": ["lcri_q02", "lcri_q02", "lcri_q01"],
+            "queue_clear_bucket": ["queue_q02", "queue_q01", "queue_q01"],
+            "rows": [40, 20, 30],
+            "mean_abs_lcri": [3.2, 2.8, 0.4],
+            "mean_queue_clear_share": [0.90, 0.25, 0.10],
+            "mean_predicted_fill_probability": [0.80, 0.75, 0.60],
+            "realized_fill_rate": [0.30, 0.80, 0.58],
+            "mean_adverse_fill_probability": [0.62, 0.20, 0.10],
+            "mean_execution_adjusted_edge_ticks": [-0.20, 0.15, 0.05],
+            "fill_shortfall": [0.50, -0.05, 0.02],
+            "execution_interaction_label": [
+                "lcri_tail_adverse_queue_risk",
+                "lcri_tail_execution_supported",
+                "non_tail_execution_context",
+            ],
+        }
+    )
+
+    scorecard = queue_position_lcri_execution_interaction_release_scorecard(
+        surface,
+        min_cell_rows=10,
+        block_fragile_tail_row_share=0.50,
+        review_fragile_tail_row_share=0.20,
+        block_weighted_tail_edge_ticks=0.0,
+        review_fill_shortfall=0.25,
+    )
+
+    assert scorecard["execution_interaction_release_label"] == "block"
+    assert scorecard["eligible_tail_cells"] == 2
+    assert scorecard["fragile_tail_rows"] == 40
+    assert scorecard["fragile_tail_row_share"] == pytest.approx(40 / 60)
+    assert scorecard["candidate_weighted_tail_edge_ticks"] == pytest.approx(-0.08333333333333334)
+    assert scorecard["worst_tail_cell"] == "stress:lcri_q02:queue_q02"
+    assert scorecard["blocking_reasons"] == "fragile_tail_row_share,negative_tail_execution_edge"
+
+
+def test_queue_position_lcri_execution_interaction_release_scorecard_reviews_miscalibration() -> None:
+    surface = pd.DataFrame(
+        {
+            "regime": ["all", "all", "all"],
+            "lcri_bucket": ["lcri_q02", "lcri_q02", "lcri_q01"],
+            "queue_clear_bucket": ["queue_q02", "queue_q01", "queue_q01"],
+            "rows": [25, 25, 25],
+            "mean_abs_lcri": [2.5, 2.1, 0.4],
+            "mean_queue_clear_share": [0.70, 0.25, 0.20],
+            "mean_predicted_fill_probability": [0.78, 0.70, 0.60],
+            "realized_fill_rate": [0.42, 0.72, 0.58],
+            "mean_adverse_fill_probability": [0.25, 0.12, 0.10],
+            "mean_execution_adjusted_edge_ticks": [0.08, 0.12, 0.03],
+            "fill_shortfall": [0.36, -0.02, 0.02],
+            "execution_interaction_label": [
+                "lcri_tail_unfilled_queue_risk",
+                "lcri_tail_execution_supported",
+                "non_tail_execution_context",
+            ],
+        }
+    )
+
+    scorecard = queue_position_lcri_execution_interaction_release_scorecard(
+        surface,
+        min_cell_rows=10,
+        block_fragile_tail_row_share=0.90,
+        review_fragile_tail_row_share=0.20,
+        block_weighted_tail_edge_ticks=-0.50,
+        review_fill_shortfall=0.30,
+    )
+
+    assert scorecard["execution_interaction_release_label"] == "review"
+    assert scorecard["review_reasons"] == "fragile_tail_row_share,tail_fill_shortfall"
+    assert scorecard["blocking_reasons"] == "none"
 
 
 def test_execution_adjusted_lcri_threshold_curve_exposes_execution_publishability_cutoffs() -> None:

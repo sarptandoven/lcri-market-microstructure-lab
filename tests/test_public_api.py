@@ -163,6 +163,16 @@ def test_public_api_exports_queue_position_trade_confirmation_surface() -> None:
     assert "queue_position_trade_confirmation_surface" in lcri_lab.__all__
 
 
+def test_public_api_exports_queue_position_lcri_execution_interaction_surface() -> None:
+    assert callable(lcri_lab.queue_position_lcri_execution_interaction_surface)
+    assert "queue_position_lcri_execution_interaction_surface" in lcri_lab.__all__
+
+
+def test_public_api_exports_queue_position_lcri_execution_interaction_release_scorecard() -> None:
+    assert callable(lcri_lab.queue_position_lcri_execution_interaction_release_scorecard)
+    assert "queue_position_lcri_execution_interaction_release_scorecard" in lcri_lab.__all__
+
+
 def test_public_api_exports_queue_position_trade_confirmation_regime_scorecard() -> None:
     assert callable(lcri_lab.queue_position_trade_confirmation_regime_scorecard)
     assert "queue_position_trade_confirmation_regime_scorecard" in lcri_lab.__all__
