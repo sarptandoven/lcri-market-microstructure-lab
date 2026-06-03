@@ -3747,6 +3747,118 @@ def queue_position_expected_value_frontier(
     return pd.DataFrame(rows)[columns]
 
 
+def queue_position_expected_value_frontier_efficiency(
+    frontier: pd.DataFrame,
+    *,
+    min_incremental_candidate_share: float = 0.05,
+    max_marginal_ev_decay_ticks: float = 0.15,
+) -> pd.DataFrame:
+    """Audit queue-policy capacity expansion against marginal expected-value decay.
+
+    The expected-value frontier can hide a common passive-execution failure mode:
+    relaxing the visible queue cap adds capacity, but only by admitting stale/deep
+    orders whose risk-adjusted EV collapses. This reducer sorts each
+    regime/fill-threshold frontier by queue allowance and marks capacity expansion
+    rows that are dominated, capacity-free, or edge-decaying before policy
+    selection promotes them into demo/release artifacts.
+    """
+    columns = [
+        "regime",
+        "min_fill_probability",
+        "max_queue_share",
+        "candidate_rows",
+        "candidate_share",
+        "risk_adjusted_expected_value_ticks",
+        "incremental_candidate_share",
+        "marginal_ev_decay_ticks",
+        "capacity_adjusted_expected_value_ticks",
+        "frontier_dominated",
+        "efficiency_label",
+    ]
+    required = {
+        "regime",
+        "min_fill_probability",
+        "max_queue_share",
+        "candidate_rows",
+        "candidate_share",
+        "risk_adjusted_expected_value_ticks",
+        "expected_value_ticks",
+    }
+    _require_columns(frontier, required, "queue position expected value frontier efficiency")
+    for name, value in {
+        "min_incremental_candidate_share": min_incremental_candidate_share,
+        "max_marginal_ev_decay_ticks": max_marginal_ev_decay_ticks,
+    }.items():
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"{name} must be finite and non-negative")
+    if frontier.empty:
+        return pd.DataFrame(columns=columns)
+
+    numeric_columns = [
+        "min_fill_probability",
+        "max_queue_share",
+        "candidate_rows",
+        "candidate_share",
+        "risk_adjusted_expected_value_ticks",
+        "expected_value_ticks",
+    ]
+    values = _finite_values(frontier, numeric_columns, "queue position expected value frontier efficiency")
+    if (values[["candidate_rows", "candidate_share", "max_queue_share"]] < 0.0).any().any():
+        raise ValueError("queue position expected value frontier efficiency capacity values must be non-negative")
+    if not values["candidate_share"].between(0.0, 1.0).all():
+        raise ValueError("queue position expected value frontier efficiency candidate_share must be in [0, 1]")
+    if not values["min_fill_probability"].between(0.0, 1.0).all():
+        raise ValueError("queue position expected value frontier efficiency min_fill_probability must be in [0, 1]")
+
+    work = frontier.copy()
+    work[numeric_columns] = values
+    rows: list[dict[str, float | int | str | bool]] = []
+    for (_regime, _min_fill), group in work.groupby(["regime", "min_fill_probability"], sort=True):
+        ordered = group.sort_values(["max_queue_share", "candidate_share"], kind="mergesort")
+        best_ev_so_far = -float("inf")
+        best_share_so_far = -float("inf")
+        previous_share = 0.0
+        previous_ev = 0.0
+        for _, row in ordered.iterrows():
+            candidate_share = float(row["candidate_share"])
+            risk_ev = float(row["risk_adjusted_expected_value_ticks"])
+            incremental_share = max(candidate_share - previous_share, 0.0)
+            marginal_decay = max(previous_ev - risk_ev, 0.0) if previous_share > 0.0 else 0.0
+            dominated = bool(candidate_share <= best_share_so_far + 1e-12 and risk_ev <= best_ev_so_far + 1e-12)
+            if candidate_share <= 0.0 or int(row["candidate_rows"]) <= 0:
+                label = "no_capacity"
+            elif dominated:
+                label = "dominated_queue_policy"
+            elif incremental_share < min_incremental_candidate_share and previous_share > 0.0:
+                label = "capacity_increment_too_small"
+            elif marginal_decay > max_marginal_ev_decay_ticks:
+                label = "capacity_edge_decay_review"
+            elif risk_ev <= 0.0:
+                label = "negative_expected_value"
+            else:
+                label = "capacity_efficient"
+            rows.append(
+                {
+                    "regime": str(row["regime"]),
+                    "min_fill_probability": float(row["min_fill_probability"]),
+                    "max_queue_share": float(row["max_queue_share"]),
+                    "candidate_rows": int(row["candidate_rows"]),
+                    "candidate_share": candidate_share,
+                    "risk_adjusted_expected_value_ticks": risk_ev,
+                    "incremental_candidate_share": incremental_share,
+                    "marginal_ev_decay_ticks": marginal_decay,
+                    "capacity_adjusted_expected_value_ticks": float(risk_ev * candidate_share),
+                    "frontier_dominated": dominated,
+                    "efficiency_label": label,
+                }
+            )
+            best_ev_so_far = max(best_ev_so_far, risk_ev)
+            best_share_so_far = max(best_share_so_far, candidate_share)
+            previous_share = candidate_share
+            previous_ev = risk_ev
+    return pd.DataFrame(rows, columns=columns)
+
+
 def queue_position_expected_value_policy_selection(
     frontier: pd.DataFrame,
     *,

@@ -85,6 +85,7 @@ from lcri_lab.execution import (
     queue_position_order_size_capacity_frontier,
     queue_position_order_size_sweep,
     queue_position_expected_value_frontier,
+    queue_position_expected_value_frontier_efficiency,
     queue_position_expected_value_policy_selection,
     queue_position_expected_value_policy_scorecard,
     queue_position_expected_value_oos_validation,
@@ -4735,6 +4736,75 @@ def test_queue_position_expected_value_frontier_scores_queue_and_fill_cutoffs() 
     assert calm_broad["policy_label"] == "broad_positive_ev_queue_policy"
     stress_broad = frontier[(frontier["regime"] == "stress") & (frontier["max_queue_share"] == 0.50)].iloc[0]
     assert stress_broad["policy_label"] == "queue_policy_toxicity_review"
+
+
+def test_queue_position_expected_value_frontier_efficiency_marks_capacity_edge_tradeoffs() -> None:
+    frontier = pd.DataFrame(
+        {
+            "regime": ["calm", "calm", "calm", "calm", "stress"],
+            "min_fill_probability": [0.60, 0.60, 0.80, 0.80, 0.60],
+            "max_queue_share": [0.25, 0.50, 0.25, 0.50, 0.25],
+            "tradable_rows": [2, 2, 2, 2, 1],
+            "candidate_rows": [1, 2, 1, 1, 0],
+            "candidate_share": [0.50, 1.00, 0.50, 0.50, 0.0],
+            "risk_adjusted_expected_value_ticks": [0.48, 0.21, 0.48, 0.48, 0.0],
+            "expected_value_ticks": [0.54, 0.335, 0.54, 0.54, 0.0],
+        }
+    )
+
+    efficiency = queue_position_expected_value_frontier_efficiency(
+        frontier,
+        min_incremental_candidate_share=0.10,
+        max_marginal_ev_decay_ticks=0.20,
+    )
+
+    assert efficiency.columns.tolist() == [
+        "regime",
+        "min_fill_probability",
+        "max_queue_share",
+        "candidate_rows",
+        "candidate_share",
+        "risk_adjusted_expected_value_ticks",
+        "incremental_candidate_share",
+        "marginal_ev_decay_ticks",
+        "capacity_adjusted_expected_value_ticks",
+        "frontier_dominated",
+        "efficiency_label",
+    ]
+    calm_relaxed = efficiency[(efficiency["regime"] == "calm") & (efficiency["max_queue_share"] == 0.50)].iloc[0]
+    assert calm_relaxed["incremental_candidate_share"] == pytest.approx(0.50)
+    assert calm_relaxed["marginal_ev_decay_ticks"] == pytest.approx(0.27)
+    assert calm_relaxed["capacity_adjusted_expected_value_ticks"] == pytest.approx(0.21)
+    assert calm_relaxed["efficiency_label"] == "capacity_edge_decay_review"
+    duplicate = efficiency[
+        (efficiency["regime"] == "calm")
+        & (efficiency["min_fill_probability"] == 0.80)
+        & (efficiency["max_queue_share"] == 0.50)
+    ].iloc[0]
+    assert bool(duplicate["frontier_dominated"])
+    assert duplicate["efficiency_label"] == "dominated_queue_policy"
+    stress = efficiency[efficiency["regime"] == "stress"].iloc[0]
+    assert stress["efficiency_label"] == "no_capacity"
+
+
+def test_queue_position_expected_value_frontier_efficiency_rejects_invalid_frontier() -> None:
+    with pytest.raises(ValueError, match="missing queue position expected value frontier efficiency columns"):
+        queue_position_expected_value_frontier_efficiency(pd.DataFrame({"regime": ["all"]}))
+    with pytest.raises(ValueError, match="min_incremental_candidate_share must be finite and non-negative"):
+        queue_position_expected_value_frontier_efficiency(
+            pd.DataFrame(
+                {
+                    "regime": ["all"],
+                    "min_fill_probability": [0.5],
+                    "max_queue_share": [0.5],
+                    "candidate_rows": [1],
+                    "candidate_share": [0.5],
+                    "risk_adjusted_expected_value_ticks": [0.1],
+                    "expected_value_ticks": [0.2],
+                }
+            ),
+            min_incremental_candidate_share=-0.1,
+        )
 
 
 def test_queue_position_expected_value_policy_selection_picks_best_deployable_policy() -> None:
