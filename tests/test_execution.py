@@ -102,6 +102,7 @@ from lcri_lab.execution import (
     queue_position_lcri_execution_interaction_release_scorecard,
     queue_position_lcri_execution_interaction_surface,
     queue_position_lcri_tail_adverse_selection_surface,
+    queue_position_lcri_tail_fill_residual_scorecard,
     queue_position_lcri_tail_fill_residuals,
     queue_position_path_drawdown_episodes,
     queue_position_path_drawdown_summary,
@@ -1844,6 +1845,75 @@ def test_queue_position_lcri_tail_fill_residuals_rejects_bad_inputs() -> None:
         queue_position_lcri_tail_fill_residuals(pd.DataFrame(), lcri_bins=0)
     with pytest.raises(ValueError, match="missing queue position LCRI tail fill residual columns"):
         queue_position_lcri_tail_fill_residuals(pd.DataFrame({"best_execution_side": ["long"]}))
+
+
+def test_queue_position_lcri_tail_fill_residual_scorecard_gates_overstated_tail_fills() -> None:
+    residuals = pd.DataFrame(
+        {
+            "regime": ["open", "open", "thin"],
+            "best_execution_side": ["long", "short", "short"],
+            "lcri_tail_bin": [1, 2, 2],
+            "rows": [3, 5, 2],
+            "mean_abs_lcri": [1.0, 3.2, 4.0],
+            "mean_predicted_fill_probability": [0.60, 0.90, 0.85],
+            "realized_fill_rate": [0.55, 0.10, 0.30],
+            "fill_residual": [-0.05, -0.80, -0.55],
+            "absolute_fill_residual": [0.05, 0.80, 0.55],
+            "mean_execution_adjusted_edge_ticks": [0.40, -0.20, 0.10],
+            "residual_edge_drag_ticks": [0.02, 0.16, 0.055],
+            "tail_fill_residual_label": [
+                "tail_fill_calibrated",
+                "tail_fill_overstated",
+                "tail_fill_overstated",
+            ],
+        }
+    )
+
+    scorecard = queue_position_lcri_tail_fill_residual_scorecard(
+        residuals,
+        min_cell_rows=2,
+        block_overstated_tail_row_share=0.70,
+        review_overstated_tail_row_share=0.25,
+        max_weighted_abs_fill_residual=0.40,
+    )
+
+    assert scorecard == {
+        "observed_tail_fill_residual_cells": 3,
+        "evaluated_tail_fill_residual_cells": 2,
+        "total_tail_rows": 7,
+        "overstated_tail_cells": 2,
+        "overstated_tail_rows": 7,
+        "overstated_tail_row_share": 1.0,
+        "weighted_tail_fill_residual": pytest.approx(-0.7285714285714286),
+        "weighted_tail_abs_fill_residual": pytest.approx(0.7285714285714286),
+        "weighted_tail_residual_edge_drag_ticks": pytest.approx(0.13),
+        "worst_tail_cell": "open:short:2",
+        "worst_tail_cell_rows": 5,
+        "worst_tail_cell_fill_residual": pytest.approx(-0.80),
+        "tail_fill_residual_release_label": "block",
+        "blocking_reasons": "overstated_tail_row_share,tail_fill_residual_miscalibration",
+        "review_reasons": "none",
+    }
+
+
+def test_queue_position_lcri_tail_fill_residual_scorecard_reviews_sparse_tail_evidence() -> None:
+    residuals = pd.DataFrame(
+        {
+            "regime": ["open"],
+            "best_execution_side": ["long"],
+            "lcri_tail_bin": [2],
+            "rows": [1],
+            "fill_residual": [-0.10],
+            "absolute_fill_residual": [0.10],
+            "residual_edge_drag_ticks": [0.03],
+            "tail_fill_residual_label": ["tail_fill_calibrated"],
+        }
+    )
+
+    scorecard = queue_position_lcri_tail_fill_residual_scorecard(residuals, min_cell_rows=2)
+
+    assert scorecard["tail_fill_residual_release_label"] == "review"
+    assert scorecard["review_reasons"] == "insufficient_tail_cell_rows"
 
 
 def test_queue_position_fraction_sweep_quantifies_quote_placement_decay() -> None:

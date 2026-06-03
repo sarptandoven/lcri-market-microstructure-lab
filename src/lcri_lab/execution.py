@@ -2033,6 +2033,136 @@ def queue_position_lcri_tail_fill_residuals(
     return output
 
 
+def _empty_queue_position_lcri_tail_fill_residual_scorecard() -> dict[str, float | int | str]:
+    return {
+        "observed_tail_fill_residual_cells": 0,
+        "evaluated_tail_fill_residual_cells": 0,
+        "total_tail_rows": 0,
+        "overstated_tail_cells": 0,
+        "overstated_tail_rows": 0,
+        "overstated_tail_row_share": 0.0,
+        "weighted_tail_fill_residual": 0.0,
+        "weighted_tail_abs_fill_residual": 0.0,
+        "weighted_tail_residual_edge_drag_ticks": 0.0,
+        "worst_tail_cell": "none",
+        "worst_tail_cell_rows": 0,
+        "worst_tail_cell_fill_residual": 0.0,
+        "tail_fill_residual_release_label": "pass",
+        "blocking_reasons": "none",
+        "review_reasons": "none",
+    }
+
+
+def queue_position_lcri_tail_fill_residual_scorecard(
+    residuals: pd.DataFrame,
+    *,
+    min_cell_rows: int = 1,
+    block_overstated_tail_row_share: float = 0.50,
+    review_overstated_tail_row_share: float = 0.20,
+    max_weighted_abs_fill_residual: float = 0.25,
+) -> dict[str, float | int | str]:
+    """Gate LCRI-tail passive-fill calibration before execution claims ship.
+
+    ``queue_position_lcri_tail_fill_residuals`` exposes where selected-side passive
+    fill probabilities are too optimistic in absolute-LCRI tails. This reducer
+    evaluates only the strongest LCRI tail bin, row-weights residual errors, and
+    returns a compact release label so demo/publishability artifacts block when
+    high-LCRI passive edge depends on systematically overstated queue fills.
+    """
+    if not isinstance(min_cell_rows, int) or isinstance(min_cell_rows, bool):
+        raise ValueError("min_cell_rows must be a positive integer")
+    if min_cell_rows < 1:
+        raise ValueError("min_cell_rows must be a positive integer")
+    for name, value in {
+        "block_overstated_tail_row_share": block_overstated_tail_row_share,
+        "review_overstated_tail_row_share": review_overstated_tail_row_share,
+    }.items():
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be finite and between 0 and 1")
+    if not math.isfinite(max_weighted_abs_fill_residual) or max_weighted_abs_fill_residual < 0.0:
+        raise ValueError("max_weighted_abs_fill_residual must be finite and non-negative")
+    if residuals.empty:
+        return _empty_queue_position_lcri_tail_fill_residual_scorecard()
+
+    required = {
+        "best_execution_side",
+        "lcri_tail_bin",
+        "rows",
+        "fill_residual",
+        "absolute_fill_residual",
+        "residual_edge_drag_ticks",
+        "tail_fill_residual_label",
+    }
+    regime_col = "regime" if "regime" in residuals.columns else None
+    if regime_col is not None:
+        required.add(regime_col)
+    _require_columns(residuals, required, "queue position LCRI tail fill residual scorecard")
+    values = _finite_values(
+        residuals,
+        ["lcri_tail_bin", "rows", "fill_residual", "absolute_fill_residual", "residual_edge_drag_ticks"],
+        "queue position LCRI tail fill residual scorecard",
+    )
+    if (values[["lcri_tail_bin", "rows", "absolute_fill_residual", "residual_edge_drag_ticks"]] < 0.0).any().any():
+        raise ValueError("queue position LCRI tail fill residual scorecard counts and magnitudes must be non-negative")
+    if not values["lcri_tail_bin"].apply(lambda value: math.isclose(value, round(value), abs_tol=1e-9)).all():
+        raise ValueError("queue position LCRI tail fill residual scorecard tail bins must be integers")
+
+    data = values.copy()
+    data["regime"] = residuals[regime_col].astype(str) if regime_col is not None else "all"
+    data["best_execution_side"] = residuals["best_execution_side"].astype(str)
+    data["tail_fill_residual_label"] = residuals["tail_fill_residual_label"].astype(str)
+    tail_bin = int(data["lcri_tail_bin"].max())
+    tail = data[data["lcri_tail_bin"] == float(tail_bin)].copy()
+
+    scorecard = _empty_queue_position_lcri_tail_fill_residual_scorecard()
+    scorecard["observed_tail_fill_residual_cells"] = int(len(residuals))
+    eligible = tail[tail["rows"] >= float(min_cell_rows)].copy()
+    scorecard["evaluated_tail_fill_residual_cells"] = int(len(eligible))
+    total_tail_rows = int(eligible["rows"].sum())
+    scorecard["total_tail_rows"] = total_tail_rows
+    if tail.empty or int(tail["rows"].sum()) == 0:
+        return scorecard
+    if total_tail_rows == 0:
+        scorecard["tail_fill_residual_release_label"] = "review"
+        scorecard["review_reasons"] = "insufficient_tail_cell_rows"
+        return scorecard
+
+    weights = eligible["rows"] / float(total_tail_rows)
+    overstated = eligible[eligible["tail_fill_residual_label"] == "tail_fill_overstated"]
+    overstated_rows = int(overstated["rows"].sum())
+    overstated_row_share = float(overstated_rows) / float(total_tail_rows)
+    worst_idx = eligible.sort_values(["fill_residual", "rows"], ascending=[True, False]).index[0]
+    worst = data.loc[worst_idx]
+    blocking_reasons = []
+    weighted_abs_residual = float((eligible["absolute_fill_residual"] * weights).sum())
+    if overstated_row_share >= block_overstated_tail_row_share:
+        blocking_reasons.append("overstated_tail_row_share")
+    if weighted_abs_residual > max_weighted_abs_fill_residual:
+        blocking_reasons.append("tail_fill_residual_miscalibration")
+    review_reasons = []
+    if not blocking_reasons and overstated_row_share >= review_overstated_tail_row_share:
+        review_reasons.append("overstated_tail_row_share")
+    label = "block" if blocking_reasons else "review" if review_reasons else "pass"
+
+    scorecard.update(
+        {
+            "overstated_tail_cells": int(len(overstated)),
+            "overstated_tail_rows": overstated_rows,
+            "overstated_tail_row_share": overstated_row_share,
+            "weighted_tail_fill_residual": float((eligible["fill_residual"] * weights).sum()),
+            "weighted_tail_abs_fill_residual": weighted_abs_residual,
+            "weighted_tail_residual_edge_drag_ticks": float((eligible["residual_edge_drag_ticks"] * weights).sum()),
+            "worst_tail_cell": f"{worst['regime']}:{worst['best_execution_side']}:{tail_bin}",
+            "worst_tail_cell_rows": int(worst["rows"]),
+            "worst_tail_cell_fill_residual": float(worst["fill_residual"]),
+            "tail_fill_residual_release_label": label,
+            "blocking_reasons": ",".join(blocking_reasons) if blocking_reasons else "none",
+            "review_reasons": ",".join(review_reasons) if review_reasons else "none",
+        }
+    )
+    return scorecard
+
+
 def queue_position_lcri_tail_adverse_selection_surface(
     frame: pd.DataFrame,
     *,
