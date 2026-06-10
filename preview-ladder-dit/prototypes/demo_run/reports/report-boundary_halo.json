@@ -1,0 +1,30 @@
+{
+  "artifacts": {
+    "final": null,
+    "preview": null
+  },
+  "environment": {
+    "case": "boundary_halo",
+    "fixture": "prototypes/demo_run/fixtures/boundary_halo.json"
+  },
+  "latency_log": {
+    "events": []
+  },
+  "metrics": {
+    "aggregate_consistency_score": 0.5505147427180567,
+    "background_preservation_error": 0.018442622950819672,
+    "boundary_consistency_error": 0.21113671282309793,
+    "mask_occupancy_delta": 0.0,
+    "preview_final_l1": 0.15284178205774468,
+    "temporal_edge_jitter": 0.005650735921644478,
+    "temporal_flicker_delta": 0.08148006661118137,
+    "trajectory_center_error": 0.0
+  },
+  "model": {
+    "backend": "fixture_evaluator",
+    "commitment_policy": "accepted_preview_is_contract"
+  },
+  "run_id": "synthetic-evaluate-boundary_halo",
+  "schema_version": "preview-ladder-report/v0.1",
+  "task_id": "synthetic-boundary_halo"
+}

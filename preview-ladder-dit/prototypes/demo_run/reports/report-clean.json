@@ -1,0 +1,30 @@
+{
+  "artifacts": {
+    "final": null,
+    "preview": null
+  },
+  "environment": {
+    "case": "clean",
+    "fixture": "prototypes/demo_run/fixtures/clean.json"
+  },
+  "latency_log": {
+    "events": []
+  },
+  "metrics": {
+    "aggregate_consistency_score": 0.0,
+    "background_preservation_error": 0.0,
+    "boundary_consistency_error": 0.0,
+    "mask_occupancy_delta": 0.0,
+    "preview_final_l1": 0.0,
+    "temporal_edge_jitter": 0.0,
+    "temporal_flicker_delta": 0.0,
+    "trajectory_center_error": 0.0
+  },
+  "model": {
+    "backend": "fixture_evaluator",
+    "commitment_policy": "accepted_preview_is_contract"
+  },
+  "run_id": "synthetic-evaluate-clean",
+  "schema_version": "preview-ladder-report/v0.1",
+  "task_id": "synthetic-clean"
+}
