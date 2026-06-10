@@ -1,0 +1,42 @@
+{
+  "demo_sets": [
+    {
+      "must_show": [
+        "source",
+        "mask",
+        "preview",
+        "final",
+        "metric table"
+      ],
+      "name": "clean_commitment",
+      "purpose": "Shows preview structure preserved through final refinement."
+    },
+    {
+      "must_show": [
+        "boundary crop",
+        "temporal crop",
+        "failure annotation"
+      ],
+      "name": "boundary_failure",
+      "purpose": "Shows why boundary consistency and temporal edge jitter matter."
+    },
+    {
+      "must_show": [
+        "centroid trace overlay",
+        "preview/final split"
+      ],
+      "name": "motion_mismatch",
+      "purpose": "Shows trajectory drift between accepted preview and final render."
+    }
+  ],
+  "required_assets_per_demo": [
+    "source.mp4",
+    "mask.mp4 or mask.rle.json",
+    "preview.mp4",
+    "final.mp4",
+    "side_by_side.mp4",
+    "report.json",
+    "README.md"
+  ],
+  "schema_version": "preview-ladder-demo-manifest/v0.1"
+}
