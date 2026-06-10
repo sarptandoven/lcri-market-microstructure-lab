@@ -1,0 +1,23 @@
+{
+  "study_id": "pld-human-eval-v0",
+  "assignment_id": "local-demo-001",
+  "task_id": "replace-car-door-0001",
+  "condition": "preview_committed_vs_independent_final",
+  "source": {"uri": "media/source.mp4", "label": "Source"},
+  "mask_overlay": {"uri": "media/mask_overlay.mp4", "label": "Mask overlay"},
+  "preview": {"uri": "media/preview.mp4", "label": "Fast preview"},
+  "final_a": {"uri": "media/final_a.mp4", "label": "Final A"},
+  "final_b": {"uri": "media/final_b.mp4", "label": "Final B"},
+  "prompt": "Replace the marked car door with a clean matte-black panel while preserving camera motion and reflections.",
+  "checks": [
+    {"check_id": "mask_focus", "type": "instructional", "question": "Which region should you evaluate most closely?", "expected": "masked"},
+    {"check_id": "duplicate_pair", "type": "golden_pair", "expected_preference": "tie"}
+  ],
+  "metric_context": {
+    "preview_latency_s": 3.2,
+    "final_latency_s": 86.0,
+    "preview_final_l1": 0.074,
+    "boundary_consistency_error": 0.061,
+    "temporal_flicker_delta": 0.044
+  }
+}
