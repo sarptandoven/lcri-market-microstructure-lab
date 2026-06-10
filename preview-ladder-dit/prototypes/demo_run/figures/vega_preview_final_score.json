@@ -1,0 +1,53 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "data": {
+    "url": "figure_metrics_by_task.csv"
+  },
+  "description": "Preview-Final Consistency aggregate score by task. Lower is better.",
+  "encoding": {
+    "tooltip": [
+      {
+        "field": "aggregate_consistency_score",
+        "type": "quantitative"
+      },
+      {
+        "field": "preview_final_l1",
+        "type": "quantitative"
+      },
+      {
+        "field": "boundary_consistency_error",
+        "type": "quantitative"
+      },
+      {
+        "field": "temporal_flicker_delta",
+        "type": "quantitative"
+      },
+      {
+        "field": "background_preservation_error",
+        "type": "quantitative"
+      },
+      {
+        "field": "trajectory_center_error",
+        "type": "quantitative"
+      },
+      {
+        "field": "mask_occupancy_delta",
+        "type": "quantitative"
+      },
+      {
+        "field": "temporal_edge_jitter",
+        "type": "quantitative"
+      }
+    ],
+    "x": {
+      "field": "task_id",
+      "sort": null,
+      "type": "nominal"
+    },
+    "y": {
+      "field": "aggregate_consistency_score",
+      "type": "quantitative"
+    }
+  },
+  "mark": "bar"
+}

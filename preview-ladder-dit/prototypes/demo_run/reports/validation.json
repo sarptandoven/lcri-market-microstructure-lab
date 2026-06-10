@@ -1,0 +1,41 @@
+{
+  "aggregate_score_mean": 0.3806585407476744,
+  "errors": [
+    "prototypes/demo_run/reports/report-boundary_halo.json: missing metric confidence_weighted_l1",
+    "prototypes/demo_run/reports/report-boundary_halo.json: missing metric occupancy_iou_error",
+    "prototypes/demo_run/reports/report-boundary_halo.json: missing metric low_frequency_drift",
+    "prototypes/demo_run/reports/report-boundary_halo.json: missing metric local_temporal_residual_flicker",
+    "prototypes/demo_run/reports/report-boundary_halo.json: missing metric commitment_weighted_error",
+    "prototypes/demo_run/reports/report-clean.json: missing metric confidence_weighted_l1",
+    "prototypes/demo_run/reports/report-clean.json: missing metric occupancy_iou_error",
+    "prototypes/demo_run/reports/report-clean.json: missing metric low_frequency_drift",
+    "prototypes/demo_run/reports/report-clean.json: missing metric local_temporal_residual_flicker",
+    "prototypes/demo_run/reports/report-clean.json: missing metric commitment_weighted_error",
+    "prototypes/demo_run/reports/report-temporal_flicker.json: missing metric confidence_weighted_l1",
+    "prototypes/demo_run/reports/report-temporal_flicker.json: missing metric occupancy_iou_error",
+    "prototypes/demo_run/reports/report-temporal_flicker.json: missing metric low_frequency_drift",
+    "prototypes/demo_run/reports/report-temporal_flicker.json: missing metric local_temporal_residual_flicker",
+    "prototypes/demo_run/reports/report-temporal_flicker.json: missing metric commitment_weighted_error"
+  ],
+  "metric_presence": {
+    "background_preservation_error": 3,
+    "boundary_consistency_error": 3,
+    "commitment_weighted_error": 0,
+    "confidence_weighted_l1": 0,
+    "local_temporal_residual_flicker": 0,
+    "low_frequency_drift": 0,
+    "mask_occupancy_delta": 3,
+    "occupancy_iou_error": 0,
+    "preview_final_l1": 3,
+    "temporal_edge_jitter": 3,
+    "temporal_flicker_delta": 3,
+    "trajectory_center_error": 3
+  },
+  "ok": false,
+  "report_count": 3,
+  "warnings": [
+    "prototypes/demo_run/reports/report-boundary_halo.json: no latency events, acceptable for synthetic fixtures but not for product benchmark submissions",
+    "prototypes/demo_run/reports/report-clean.json: no latency events, acceptable for synthetic fixtures but not for product benchmark submissions",
+    "prototypes/demo_run/reports/report-temporal_flicker.json: no latency events, acceptable for synthetic fixtures but not for product benchmark submissions"
+  ]
+}

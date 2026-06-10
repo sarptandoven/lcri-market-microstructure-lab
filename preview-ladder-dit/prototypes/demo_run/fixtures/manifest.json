@@ -1,0 +1,15 @@
+{
+  "cases": [
+    "clean",
+    "boundary_halo",
+    "temporal_flicker"
+  ],
+  "files": [
+    "clean.json",
+    "boundary_halo.json",
+    "temporal_flicker.json"
+  ],
+  "frames": 6,
+  "height": 16,
+  "width": 16
+}

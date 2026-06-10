@@ -1,0 +1,55 @@
+{
+  "case_count": 3,
+  "lower_is_better": [
+    "preview_final_l1",
+    "boundary_consistency_error",
+    "temporal_flicker_delta",
+    "background_preservation_error",
+    "trajectory_center_error",
+    "mask_occupancy_delta",
+    "temporal_edge_jitter",
+    "aggregate_consistency_score"
+  ],
+  "metrics": {
+    "aggregate_consistency_score": {
+      "max": 0.5914608795249666,
+      "mean": 0.3806585407476744,
+      "min": 0.0
+    },
+    "background_preservation_error": {
+      "max": 0.018442622950819672,
+      "mean": 0.006147540983606557,
+      "min": 0.0
+    },
+    "boundary_consistency_error": {
+      "max": 0.21113671282309793,
+      "mean": 0.09465314980972406,
+      "min": 0.0
+    },
+    "mask_occupancy_delta": {
+      "max": 0.0,
+      "mean": 0.0,
+      "min": 0.0
+    },
+    "preview_final_l1": {
+      "max": 0.18205684151518567,
+      "mean": 0.1116328745243101,
+      "min": 0.0
+    },
+    "temporal_edge_jitter": {
+      "max": 0.007295628367702425,
+      "mean": 0.004315454763115634,
+      "min": 0.0
+    },
+    "temporal_flicker_delta": {
+      "max": 0.250323116781129,
+      "mean": 0.11060106113077013,
+      "min": 0.0
+    },
+    "trajectory_center_error": {
+      "max": 0.0,
+      "mean": 0.0,
+      "min": 0.0
+    }
+  }
+}

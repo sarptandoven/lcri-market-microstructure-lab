@@ -1,0 +1,4 @@
+task_id,run_id,preview_final_l1,boundary_consistency_error,temporal_flicker_delta,background_preservation_error,trajectory_center_error,mask_occupancy_delta,temporal_edge_jitter,aggregate_consistency_score
+synthetic-boundary_halo,synthetic-evaluate-boundary_halo,0.15284178205774468,0.21113671282309793,0.08148006661118137,0.018442622950819672,0.0,0.0,0.005650735921644478,0.5505147427180567
+synthetic-clean,synthetic-evaluate-clean,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+synthetic-temporal_flicker,synthetic-evaluate-temporal_flicker,0.18205684151518567,0.07282273660607427,0.250323116781129,0.0,0.0,0.0,0.007295628367702425,0.5914608795249666
