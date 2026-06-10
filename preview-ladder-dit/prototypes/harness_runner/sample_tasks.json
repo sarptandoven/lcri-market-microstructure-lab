@@ -1,0 +1,37 @@
+{
+  "suite_id": "preview-final-consistency-smoke-v0",
+  "tasks": [
+    {
+      "task_id": "fixture-clean",
+      "run_id": "fixture-clean-run",
+      "hypothesis": "A final render that accepts preview structure should produce zero or near-zero preview-final drift on deterministic fixtures.",
+      "fps": 8.0,
+      "boundary_radius": 1,
+      "adapters": [
+        {
+          "adapter": "fixture",
+          "case": "clean",
+          "frames": 8,
+          "height": 32,
+          "width": 32
+        }
+      ]
+    },
+    {
+      "task_id": "fixture-temporal-flicker",
+      "run_id": "fixture-temporal-flicker-run",
+      "hypothesis": "A final render that ignores accepted preview temporal structure should be separable by temporal_flicker_delta and preview_final_l1.",
+      "fps": 8.0,
+      "boundary_radius": 1,
+      "adapters": [
+        {
+          "adapter": "fixture",
+          "case": "temporal_flicker",
+          "frames": 8,
+          "height": 32,
+          "width": 32
+        }
+      ]
+    }
+  ]
+}
