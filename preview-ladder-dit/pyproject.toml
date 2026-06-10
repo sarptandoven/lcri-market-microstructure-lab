@@ -1,0 +1,15 @@
+[project]
+name = "preview-ladder-dit"
+version = "0.1.0"
+description = "Preview-to-final consistency benchmark and method scaffold for latency-aware video replacement."
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+preview-ladder-dit = "preview_ladder_dit.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
