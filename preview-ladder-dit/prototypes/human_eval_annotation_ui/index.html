@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preview Ladder DiT Human Evaluation Prototype</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Preview Ladder DiT Human Evaluation</h1>
+      <p id="taskMeta">Load a task JSON file or use the bundled sample.</p>
+      <input id="taskFile" type="file" accept="application/json">
+      <button id="loadSample">Load sample_task.json</button>
+    </header>
+
+    <section class="prompt-card">
+      <h2>Edit request</h2>
+      <p id="promptText">No task loaded.</p>
+    </section>
+
+    <section class="grid three">
+      <article>
+        <h2>Source</h2>
+        <video id="sourceVideo" controls loop muted playsinline></video>
+      </article>
+      <article>
+        <h2>Mask overlay</h2>
+        <video id="maskVideo" controls loop muted playsinline></video>
+      </article>
+      <article>
+        <h2>Fast preview</h2>
+        <video id="previewVideo" controls loop muted playsinline></video>
+      </article>
+    </section>
+
+    <section class="ratings">
+      <h2>Preview trust survey</h2>
+      <label>How well does the preview communicate the final composition, motion path, and object extent?
+        <input id="trustStructural" type="range" min="1" max="7" value="4">
+        <span data-value-for="trustStructural">4</span>
+      </label>
+      <label>How likely would you be to approve this preview before waiting for a final render?
+        <input id="approvePreview" type="range" min="1" max="7" value="4">
+        <span data-value-for="approvePreview">4</span>
+      </label>
+      <label>Expected risk that the final render will change the important structure.
+        <input id="expectedDriftRisk" type="range" min="1" max="7" value="4">
+        <span data-value-for="expectedDriftRisk">4</span>
+      </label>
+    </section>
+
+    <section class="grid two">
+      <article>
+        <h2>Final A</h2>
+        <video id="finalAVideo" controls loop muted playsinline></video>
+      </article>
+      <article>
+        <h2>Final B</h2>
+        <video id="finalBVideo" controls loop muted playsinline></video>
+      </article>
+    </section>
+
+    <section class="ratings">
+      <h2>Pairwise final preference</h2>
+      <fieldset>
+        <legend>Which final is better for the requested masked replacement?</legend>
+        <label><input type="radio" name="preference" value="A"> Final A</label>
+        <label><input type="radio" name="preference" value="B"> Final B</label>
+        <label><input type="radio" name="preference" value="tie"> Tie or indistinguishable</label>
+      </fieldset>
+      <label>Why? Mention mask boundary, motion consistency, identity/material preservation, and background damage when relevant.
+        <textarea id="rationale" rows="5"></textarea>
+      </label>
+    </section>
+
+    <section class="ratings">
+      <h2>Interaction study event log</h2>
+      <div class="actions">
+        <button data-event="first_preview_seen">First preview seen</button>
+        <button data-event="prompt_or_mask_changed">Prompt or mask changed</button>
+        <button data-event="preview_accepted">Preview accepted</button>
+        <button data-event="final_accepted">Final accepted</button>
+        <button data-event="task_abandoned">Task abandoned</button>
+      </div>
+      <ol id="eventLog"></ol>
+    </section>
+
+    <section class="ratings">
+      <h2>Quality controls</h2>
+      <label>Instruction check: Which region should you evaluate most closely?
+        <select id="instructionCheck">
+          <option value="">Select one</option>
+          <option value="whole_frame">Whole frame equally</option>
+          <option value="masked">The masked/replaced region and its boundary</option>
+          <option value="background_only">Only the untouched background</option>
+        </select>
+      </label>
+      <label><input id="playedPreview" type="checkbox"> I played the preview before answering.</label>
+      <label><input id="playedFinals" type="checkbox"> I played both final videos before choosing.</label>
+    </section>
+
+    <footer>
+      <button id="exportJson">Export annotation JSON</button>
+      <pre id="output"></pre>
+    </footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
