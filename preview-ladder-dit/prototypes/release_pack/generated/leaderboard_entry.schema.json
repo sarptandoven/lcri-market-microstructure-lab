@@ -1,0 +1,141 @@
+{
+  "$id": "https://preview-ladder-dit.org/schemas/leaderboard-entry-v0.1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "artifacts": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "required": [
+        "report_json",
+        "preview_grid",
+        "final_grid",
+        "failure_grid"
+      ],
+      "type": "object"
+    },
+    "latency": {
+      "properties": {
+        "final_latency_s": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "hardware": {
+          "type": "string"
+        },
+        "time_to_first_preview_s": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "total_latency_s": {
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "time_to_first_preview_s",
+        "final_latency_s",
+        "total_latency_s",
+        "hardware"
+      ],
+      "type": "object"
+    },
+    "method": {
+      "properties": {
+        "code_url": {
+          "type": "string"
+        },
+        "commitment_policy": {
+          "type": "string"
+        },
+        "final_backend": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "paper_url": {
+          "type": "string"
+        },
+        "preview_backend": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "preview_backend",
+        "final_backend",
+        "commitment_policy"
+      ],
+      "type": "object"
+    },
+    "metrics": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "required": [
+        "preview_final_l1",
+        "boundary_consistency_error",
+        "temporal_flicker_delta",
+        "background_preservation_error",
+        "trajectory_center_error",
+        "mask_occupancy_delta",
+        "temporal_edge_jitter",
+        "acceptance_weighted_latency_s"
+      ],
+      "type": "object"
+    },
+    "reproducibility": {
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "container": {
+          "type": "string"
+        },
+        "model_hashes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "seed": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seed",
+        "container",
+        "model_hashes",
+        "command"
+      ],
+      "type": "object"
+    },
+    "run_id": {
+      "minLength": 3,
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "preview-ladder-leaderboard/v0.1"
+    },
+    "task_suite": {
+      "enum": [
+        "synthetic-v0",
+        "masked-replacement-open-v0",
+        "ltx2.3-dev-v0"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "run_id",
+    "task_suite",
+    "method",
+    "metrics",
+    "latency",
+    "artifacts",
+    "reproducibility"
+  ],
+  "title": "Preview Ladder DiT leaderboard entry",
+  "type": "object"
+}
