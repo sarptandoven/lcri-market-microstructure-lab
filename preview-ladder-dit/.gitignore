@@ -1,0 +1,7 @@
+.pytest_cache/
+**/__pycache__/
+*.py[cod]
+prototypes/demo_run/tmp/
+prototypes/demo_run/**/*.mp4
+prototypes/demo_run/**/*.gif
+prototypes/demo_run/**/*.png
